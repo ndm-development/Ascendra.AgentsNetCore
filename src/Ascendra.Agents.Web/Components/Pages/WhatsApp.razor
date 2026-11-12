@@ -1,0 +1,105 @@
+@page "/whatsapp"
+@attribute [Authorize]
+@inject DashboardQueries Queries
+@inject DashboardSession Session
+@inject WhatsAppTemplateCatalog Templates
+@inject IJSRuntime JS
+
+<section class="whatsapp-hero glass-card">
+    <div class="whatsapp-heading">
+        <p class="eyebrow">WHATSAPP</p>
+        <h1>Mensajes de WhatsApp</h1>
+        <p>Selecciona una nomenclatura y confirma el cliente antes de copiar.</p>
+        @if (!string.IsNullOrWhiteSpace(Notice)) { <p class="lookup-notice @NoticeTone">@Notice</p> }
+    </div>
+    <div class="whatsapp-controls">
+        <div class="field">
+            <label for="nomenclature">Nomenclatura</label>
+            <select id="nomenclature" @bind="TemplateValue">
+                <option value="">Selecciona un mensaje</option>
+                @foreach (var template in Templates.All) { <option value="@template.Value">@template.Label</option> }
+            </select>
+        </div>
+        <div class="field">
+            <label for="whatsapp-phone">Número telefónico</label>
+            <div class="inline-control">
+                <input id="whatsapp-phone" @bind="Phone" @bind:event="oninput" inputmode="numeric" maxlength="20" placeholder="10 dígitos" />
+                <button type="button" class="secondary-button" @onclick="Locate">Localizar</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+@if (Candidates.Count > 1)
+{
+    <section class="selection-card glass-card">
+        <p class="eyebrow">CONFIRMACIÓN REQUERIDA</p>
+        <h2>Este número pertenece a más de un cliente</h2>
+        <p>Selecciona el CLIENTE_UNICO correcto antes de preparar el mensaje.</p>
+        <div class="client-choice-grid">
+            @foreach (var candidate in Candidates)
+            {
+                <button type="button" class="client-choice @(SelectedClientId == candidate.ClientId ? "client-choice--selected" : "")" @onclick="() => Select(candidate.ClientId)">
+                    <span><strong>@(string.IsNullOrWhiteSpace(candidate.ClientName) ? "Sin nombre vigente" : candidate.ClientName)</strong><small>CLIENTE_UNICO @candidate.ClientId</small></span>
+                    <span class="status-badge @(candidate.Status.Equals("Activo", StringComparison.OrdinalIgnoreCase) ? "status-active" : "")">@(string.IsNullOrWhiteSpace(candidate.Status) ? "Sin estatus" : candidate.Status)</span>
+                    <small>@candidate.Product · @(candidate.TotalBalance is null ? "Saldo no disponible" : DashboardQueries.Currency(candidate.TotalBalance.Value))</small>
+                </button>
+            }
+        </div>
+    </section>
+}
+
+@if (Selected is not null)
+{
+    <section class="whatsapp-response-grid">
+        <article class="whatsapp-client-card glass-card">
+            <div class="result-heading"><div><p class="eyebrow">CLIENTE CONFIRMADO</p><h2>Datos del cliente</h2><p>@(string.IsNullOrWhiteSpace(Selected.ReferenceName) ? "Teléfono registrado en cartera." : $"Contacto asociado: {Selected.ReferenceName}.")</p></div><span class="status-badge @(Selected.Status.Equals("Activo", StringComparison.OrdinalIgnoreCase) ? "status-active" : "")">@(string.IsNullOrWhiteSpace(Selected.Status) ? "Sin estatus" : Selected.Status)</span></div>
+            <dl class="client-facts client-facts--compact">
+                <div><dt>CLIENTE_UNICO</dt><dd>@Selected.ClientId</dd></div>
+                <div><dt>Nombre</dt><dd>@(string.IsNullOrWhiteSpace(Selected.ClientName) ? "No disponible en cartera vigente" : Selected.ClientName)</dd></div>
+                <div><dt>Producto</dt><dd>@(string.IsNullOrWhiteSpace(Selected.Product) ? "No disponible en cartera vigente" : Selected.Product)</dd></div>
+                <div><dt>Saldo total</dt><dd>@(Selected.TotalBalance is null ? "No disponible" : DashboardQueries.Currency(Selected.TotalBalance.Value))</dd></div>
+            </dl>
+        </article>
+        <article class="message-card glass-card">
+            <div class="result-heading"><div><p class="eyebrow">VISTA PREVIA</p><h2>Mensaje para WhatsApp</h2></div><button type="button" class="primary-button" disabled="@(string.IsNullOrWhiteSpace(Message))" @onclick="Copy">Copiar mensaje</button></div>
+            <textarea readonly aria-label="Mensaje listo para copiar">@Message</textarea>
+        </article>
+    </section>
+}
+
+@code {
+    private string Phone { get; set; } = string.Empty;
+    private string TemplateValue { get; set; } = string.Empty;
+    private string? SelectedClientId { get; set; }
+    private IReadOnlyList<ContactRecord> Candidates { get; set; } = [];
+    private string Notice { get; set; } = "Escribe un número telefónico para localizar al cliente.";
+    private string NoticeTone { get; set; } = string.Empty;
+    private ContactRecord? Selected => Candidates.FirstOrDefault(x => x.ClientId == SelectedClientId);
+    private string Message => Selected is null || string.IsNullOrWhiteSpace(TemplateValue) ? string.Empty : Templates.Build(TemplateValue, Selected, Session.ShortName);
+
+    private void Locate()
+    {
+        var phone = TextNormalization.Phone(Phone);
+        if (phone.Length != 10)
+        {
+            Candidates = []; SelectedClientId = null; Notice = "Ingresa un número telefónico mexicano de 10 dígitos."; NoticeTone = "lookup-notice--error"; return;
+        }
+        Candidates = Queries.FindWhatsAppCandidates(phone);
+        if (Candidates.Count == 0)
+        {
+            SelectedClientId = null; Notice = "No encontramos un CLIENTE_UNICO asociado a ese número."; NoticeTone = "lookup-notice--error";
+        }
+        else if (Candidates.Count == 1)
+        {
+            SelectedClientId = Candidates[0].ClientId; Notice = "Cliente localizado. Revisa los datos antes de copiar el mensaje."; NoticeTone = "lookup-notice--success";
+        }
+        else
+        {
+            SelectedClientId = null; Notice = "Este número está asociado a más de un CLIENTE_UNICO. Selecciona el cliente correcto."; NoticeTone = "lookup-notice--attention";
+        }
+    }
+
+    private void Select(string clientId) => SelectedClientId = clientId;
+    private async Task Copy() { if (!string.IsNullOrWhiteSpace(Message)) await JS.InvokeVoidAsync("ascendraClipboard.copy", Message); }
+}

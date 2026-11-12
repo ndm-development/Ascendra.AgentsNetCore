@@ -1,0 +1,55 @@
+@inherits LayoutComponentBase
+@inject DashboardSession Session
+@inject ExcelSnapshotStore SnapshotStore
+@inject NavigationManager Navigation
+
+<AuthorizeView Context="auth">
+    <Authorized>
+        @{ Session.Apply(auth.User); }
+        <div class="app-shell @(IsDark ? "theme-dark" : "theme-light")">
+            <main class="page-content">
+                <header class="brand-card glass-card">
+                    <div class="brand-block">
+                        <div class="brand-logo-frame" aria-hidden="true"><img src="assets/xolo-wolf.png" alt="" /></div>
+                        <div>
+                            <p class="brand-name">Ascendra</p>
+                            <p class="brand-greeting">@Session.Greeting</p>
+                            <p class="brand-subtitle">Xolo · Agentes</p>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <span class="environment-pill"><span class="status-dot"></span>Xolo · Agentes</span>
+                        <button type="button" class="theme-button" @onclick="ToggleTheme">@(IsDark ? "Modo claro" : "Modo oscuro")</button>
+                        <form method="post" action="/account/logout">
+                            <AntiforgeryToken />
+                            <button class="logout-button" type="submit">Cerrar sesión</button>
+                        </form>
+                    </div>
+                </header>
+
+                <nav class="main-tabs glass-card" aria-label="Módulos principales">
+                    <NavLink href="/referencias" class="nav-tab">Referencias</NavLink>
+                    <NavLink href="/whatsapp" class="nav-tab">WhatsApp</NavLink>
+                    <NavLink href="/" Match="NavLinkMatch.All" class="nav-tab">Mi recuperación</NavLink>
+                    <NavLink href="/promesas" class="nav-tab">Mis promesas</NavLink>
+                </nav>
+
+                @if (!SnapshotStore.Health.IsReady)
+                {
+                    <aside class="data-warning glass-card" role="status">
+                        <strong>Corte pendiente</strong>
+                        <span>@SnapshotStore.Health.Message</span>
+                    </aside>
+                }
+
+                @Body
+            </main>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool IsDark { get; set; }
+
+    private void ToggleTheme() => IsDark = !IsDark;
+}

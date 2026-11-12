@@ -1,0 +1,77 @@
+@page "/"
+@attribute [Authorize]
+@inject DashboardQueries Queries
+
+@{
+    var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
+    if (_week == 0) _week = Queries.CurrentWeek(scope);
+    var pulse = Queries.WeeklyPulse(scope, _week);
+    var payments = scope.Payments.Where(x => x.Week == _week && x.Recovery > 0m).OrderByDescending(x => x.ReceivedOn).Take(180).ToArray();
+}
+
+<section class="operations-filter-card glass-card agent-collections-filters recovery-filter-card" aria-label="Filtros de mi recuperación">
+    <div class="field compact-field">
+        <label for="week">Semana</label>
+        <select id="week" @bind="_week">
+            @foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }
+        </select>
+    </div>
+    <div class="field client-query-field">
+        <label for="client-query">Buscar cliente único</label>
+        <input id="client-query" @bind="ClientQuery" @bind:event="oninput" placeholder="Escribe un cliente único" />
+    </div>
+</section>
+
+@if (scope.Weeks.Count == 0)
+{
+    <section class="empty-state glass-card"><h2>Tu corte aún no tiene datos operativos</h2><p>Cuando se cargue el Excel de cobranza, aquí aparecerá tu avance semanal.</p></section>
+}
+else
+{
+    <section class="weekly-pulse glass-card">
+        <div class="weekly-pulse__recovery">
+            <p class="eyebrow">MI AVANCE SEMANAL</p>
+            <div class="weekly-pulse__amount">@DashboardQueries.Currency(pulse.Recovery)<span>recuperados</span></div>
+            <p>@pulse.PaymentCount pagos registrados · @pulse.ClientCount cuentas con recuperación</p>
+        </div>
+        <div class="weekly-pulse__bonus">
+        <div class="weekly-pulse__bonus-heading">
+                <div><p class="eyebrow">BONO ESTIMADO</p><strong>@DashboardQueries.Currency(pulse.EstimatedBonus)</strong></div>
+                <span class="tier-badge">@pulse.TierLabel</span>
+            </div>
+            <div class="progress-track" aria-label="Avance al siguiente nivel de bono" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Math.Round(pulse.Progress * 100)" role="progressbar"><span style="@($"width: {pulse.Progress:P0}")"></span></div>
+            @if (pulse.RemainingToNextTier is null)
+            {
+                <p class="weekly-pulse__note">Alcanzaste el nivel máximo de la escala vigente.</p>
+            }
+            else
+            {
+                @if (pulse.EstimatedBonus == 0m)
+                {
+                    <p class="weekly-pulse__note">Tu primer nivel comienza en $20,000 de recuperación.</p>
+                }
+                <p class="weekly-pulse__note">Te faltan @DashboardQueries.Currency(pulse.RemainingToNextTier.Value) para @pulse.NextTierLabel y llevarte @DashboardQueries.Currency(pulse.NextTierBonus ?? 0m).</p>
+            }
+        </div>
+    </section>
+
+    <section class="chart-card glass-card personal-chart-card">
+        <div class="result-heading collection-chart-heading"><div><h1>Mi recuperación</h1><p>Consulta tus pagos registrados durante la semana.</p></div><div class="collection-export-actions"><button type="button" class="secondary-button" @onclick="ClearFilters">Limpiar filtros</button></div></div>
+        <PlotlyChart Id="personal-recovery" Model="Queries.DailyRecoveryChart(scope, _week, true)" AccessibleLabel="Mi recuperación por día" />
+    </section>
+
+    <section class="table-card glass-card activity-detail">
+        <div class="result-heading"><div><p class="eyebrow">DETALLE SEMANAL</p><h2>Pagos registrados</h2></div><p>@payments.Length registros visibles de la semana seleccionada.</p></div>
+        <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente único</th><th>Nombre</th><th>Producto</th><th>Pago recibido</th></tr></thead><tbody>
+            @foreach (var payment in payments)
+            { <tr><td>@(payment.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@payment.ClientId</td><td>@payment.ClientName</td><td>@payment.Product</td><td>@DashboardQueries.Currency(payment.Recovery)</td></tr> }
+        </tbody></table></div>
+    </section>
+}
+
+@code
+{
+    private int _week;
+    private string ClientQuery { get; set; } = string.Empty;
+    private void ClearFilters() => ClientQuery = string.Empty;
+}

@@ -1,0 +1,9 @@
+.git
+.github
+**/bin
+**/obj
+.DS_Store
+.env
+.env.*
+data/input/*.xlsx
+data/generated/*.xlsx

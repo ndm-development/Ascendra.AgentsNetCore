@@ -1,0 +1,25 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div id="@Id" class="plotly-chart" aria-label="@AccessibleLabel"></div>
+
+@code {
+    [Parameter, EditorRequired] public ChartModel Model { get; set; } = default!;
+    [Parameter] public string Id { get; set; } = $"chart-{Guid.NewGuid():N}";
+    [Parameter] public string AccessibleLabel { get; set; } = "Gráfica interactiva";
+    private bool _interactiveRendered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        _interactiveRendered = true;
+        await JS.InvokeVoidAsync("ascendraCharts.render", Id, Model.Data, Model.Layout, Model.Config);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_interactiveRendered) return;
+        try { await JS.InvokeVoidAsync("ascendraCharts.dispose", Id); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+}

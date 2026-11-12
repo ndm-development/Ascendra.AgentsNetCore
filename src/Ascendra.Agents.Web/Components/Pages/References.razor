@@ -1,0 +1,58 @@
+@page "/referencias"
+@attribute [Authorize]
+@inject DashboardQueries Queries
+
+<section class="lookup-shell glass-card">
+    <div class="lookup-heading">
+        <p class="eyebrow">CONSULTA SEGURA</p>
+        <h1>Referencias</h1>
+        <p>Busca un teléfono o un CLIENTE_UNICO. El resultado agrupa todos los números y referencias relacionados.</p>
+    </div>
+    <div class="lookup-controls">
+        <div class="segmented-control" role="group" aria-label="Tipo de búsqueda">
+            <button class="@(!ByPhone ? "" : "selected")" @onclick="() => ByPhone = true">Teléfono</button>
+            <button class="@(ByPhone ? "" : "selected")" @onclick="() => ByPhone = false">CLIENTE_UNICO</button>
+        </div>
+        <div class="lookup-input-row">
+            <input @bind="Query" @bind:event="oninput" inputmode="@(ByPhone ? "numeric" : "text")" placeholder="@(ByPhone ? "Escribe un número telefónico" : "Escribe un CLIENTE_UNICO")" aria-label="Consulta" />
+            <button type="button" class="primary-button" @onclick="Search">Consultar</button>
+            <button type="button" class="secondary-button" @onclick="Clear">Limpiar</button>
+        </div>
+    </div>
+</section>
+
+@if (Searched && Results.Count == 0)
+{
+    <section class="empty-state glass-card"><h2>Sin coincidencias</h2><p>Verifica el dato y confirma que el CRM generado corresponda al corte actual.</p></section>
+}
+else if (Results.Count > 0)
+{
+    @foreach (var group in Results.GroupBy(x => x.ClientId).OrderBy(x => x.Key))
+    {
+        var first = group.First();
+        <section class="reference-result glass-card">
+            <div class="result-heading">
+                <div><p class="eyebrow">CLIENTE_UNICO</p><h2>@group.Key</h2></div>
+                <span class="status-badge @(first.Status.Equals("Activo", StringComparison.OrdinalIgnoreCase) ? "status-active" : "")">@(string.IsNullOrWhiteSpace(first.Status) ? "Sin estatus" : first.Status)</span>
+            </div>
+            <dl class="client-facts">
+                <div><dt>Nombre</dt><dd>@(string.IsNullOrWhiteSpace(first.ClientName) ? "No disponible en cartera vigente" : first.ClientName)</dd></div>
+                <div><dt>Producto</dt><dd>@(string.IsNullOrWhiteSpace(first.Product) ? "No disponible en cartera vigente" : first.Product)</dd></div>
+                <div><dt>Saldo total</dt><dd>@(first.TotalBalance is null ? "No disponible" : DashboardQueries.Currency(first.TotalBalance.Value))</dd></div>
+            </dl>
+            <div class="table-wrap"><table><thead><tr><th>Teléfono</th><th>Referencia</th><th>Parentesco</th><th>Origen</th></tr></thead><tbody>
+                @foreach (var row in group.OrderBy(x => x.Phone).ThenBy(x => x.ReferenceName))
+                { <tr><td class="phone-cell">@row.Phone</td><td>@(string.IsNullOrWhiteSpace(row.ReferenceName) ? "—" : row.ReferenceName)</td><td>@(string.IsNullOrWhiteSpace(row.Relationship) ? "—" : row.Relationship)</td><td>@row.Source</td></tr> }
+            </tbody></table></div>
+        </section>
+    }
+}
+
+@code {
+    private bool ByPhone { get; set; } = true;
+    private string Query { get; set; } = string.Empty;
+    private bool Searched { get; set; }
+    private IReadOnlyList<ContactRecord> Results { get; set; } = [];
+    private void Search() { Results = Queries.FindContacts(Query, ByPhone); Searched = true; }
+    private void Clear() { Query = string.Empty; Results = []; Searched = false; }
+}

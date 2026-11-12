@@ -1,0 +1,33 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@layout LoginLayout
+@inject ExcelSnapshotStore SnapshotStore
+@inject NavigationManager Navigation
+
+<section class="login-stack" aria-labelledby="ascendra-title">
+    <header class="login-brand">
+        <div class="login-mark" aria-hidden="true">A</div>
+        <h1 id="ascendra-title">Ascendra</h1>
+        <p class="login-workspace">Xolo · Agentes</p>
+    </header>
+    <form method="post" action="/account/login" class="login-form" aria-label="Acceso a Agentes">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+        @if (HasError) { <div class="form-alert form-alert--error" role="alert">Usuario o contraseña no válidos.</div> }
+        @if (!SnapshotStore.Health.IsReady) { <div class="form-alert">@SnapshotStore.Health.Message</div> }
+        <label class="sr-only" for="username">Usuario</label>
+        <input id="username" name="username" placeholder="Usuario" autocomplete="username" required autofocus />
+        <label class="sr-only" for="password">Contraseña</label>
+        <input id="password" name="password" type="password" placeholder="Contraseña" autocomplete="current-password" required />
+        <button type="submit" class="primary-button">Continuar</button>
+    </form>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")] public string? Error { get; set; }
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? RequestedReturnUrl { get; set; }
+    private bool HasError => Error == "1";
+    private string ReturnUrl => !string.IsNullOrWhiteSpace(RequestedReturnUrl) && RequestedReturnUrl.StartsWith('/') && !RequestedReturnUrl.StartsWith("//")
+        ? RequestedReturnUrl
+        : "/";
+}

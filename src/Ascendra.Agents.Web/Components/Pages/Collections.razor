@@ -1,0 +1,71 @@
+@inject DashboardQueries Queries
+
+@{
+    var baseScope = Queries.Scope();
+    var scope = Queries.FilterAgentStatus(baseScope, AgentStatus);
+    if (_week == 0 || !scope.Weeks.Contains(_week)) _week = Queries.CurrentWeek(scope);
+    if (_selectedWeeks.Count == 0) _selectedWeeks = scope.Weeks.ToHashSet();
+    var selectedWeeks = _selectedWeeks.Where(scope.Weeks.Contains).Order().ToArray();
+    var chart = View switch
+    {
+        "day" => Queries.TeamDailyRecoveryChart(scope, _week, Agent),
+        "product" => Queries.TeamProductRecoveryChart(scope, _week, Agent),
+        "weekly" => Queries.TeamWeeklyRecoveryChart(scope, selectedWeeks, Agent),
+        _ => Queries.TeamPromiseComplianceChart(scope, _week, Agent),
+    };
+    var title = View switch
+    {
+        "day" => "Cobranza por agente y día",
+        "product" => "Cobranza por agente y producto",
+        "weekly" => "Comparativo semanal",
+        _ => "Cumplimiento de promesas",
+    };
+    var description = View switch
+    {
+        "day" => "Recuperación atribuida al equipo de agentes.",
+        "product" => "Recuperación atribuida al equipo de agentes.",
+        "weekly" => "Recuperación por agente para las semanas seleccionadas.",
+        _ => "Porcentaje de promesas activas por agente y día; la última columna consolida la semana.",
+    };
+}
+
+<section class="operations-filter-card glass-card" aria-label="Controles de cobranza">
+    <div class="field"><label for="team-view">Vista</label><select id="team-view" @bind="View"><option value="compliance">Cumplimiento de promesas</option><option value="day">Agente × día</option><option value="product">Agente × producto</option><option value="weekly">Comparativo semanal</option></select></div>
+    <div class="field"><label for="team-agent">Agente</label><select id="team-agent" @bind="Agent"><option value="">Todos los agentes</option>@foreach (var name in Queries.AgentNames(scope)) { <option value="@name">@name</option> }</select></div>
+    <div class="field"><label for="team-agent-status">Estatus del agente</label><select id="team-agent-status" @bind="AgentStatus"><option value="">Activos e inactivos</option><option value="Activo">Activos</option><option value="Inactivo">Inactivos</option></select></div>
+    @if (View == "weekly")
+    {
+        <div class="field weeks-field"><label>Semanas</label><div class="week-options">@foreach (var week in scope.Weeks) { <label><input type="checkbox" checked="@_selectedWeeks.Contains(week)" @onchange="args => ToggleWeek(week, args)" />Semana @week</label> }</div></div>
+    }
+    else
+    {
+        <div class="field"><label for="team-week">Semana</label><select id="team-week" @bind="_week">@foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }</select></div>
+    }
+    <button type="button" class="secondary-button filter-reset" @onclick="Clear">Limpiar filtros</button>
+</section>
+
+@if (scope.Weeks.Count == 0)
+{
+    <section class="empty-state glass-card"><h2>No hay pagos en el corte</h2><p>Deposita <code>agents_collections.xlsx</code> para activar la vista de cobranza.</p></section>
+}
+else
+{
+    <section class="chart-card glass-card team-chart-card">
+        <div class="chart-heading"><div><h1>@title</h1><p>@description</p></div><span>@(View == "weekly" ? $"{selectedWeeks.Length} semana(s) seleccionada(s)" : $"Semana {_week}")</span></div>
+        <PlotlyChart Id="team-chart" Model="chart" AccessibleLabel="@title" />
+    </section>
+}
+
+@code {
+    private int _week;
+    private string View { get; set; } = "compliance";
+    private string Agent { get; set; } = string.Empty;
+    private string AgentStatus { get; set; } = string.Empty;
+    private HashSet<int> _selectedWeeks = [];
+    private void Clear() { View = "compliance"; Agent = string.Empty; AgentStatus = string.Empty; _selectedWeeks = []; }
+    private void ToggleWeek(int week, ChangeEventArgs args)
+    {
+        if (bool.TryParse(args.Value?.ToString(), out var isSelected) && isSelected) _selectedWeeks.Add(week);
+        else _selectedWeeks.Remove(week);
+    }
+}

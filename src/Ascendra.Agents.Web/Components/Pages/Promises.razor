@@ -1,0 +1,71 @@
+@page "/promesas"
+@attribute [Authorize]
+@inject DashboardQueries Queries
+
+@{
+    var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
+    if (_week == 0) _week = Queries.CurrentWeek(scope);
+    var rows = Queries.FilterPromises(scope, null, null, null, null, Status, null, null, null, null, _week);
+    var visible = rows.Take(250).ToArray();
+    var summary = Queries.PersonalPromiseSummary(scope, _week);
+}
+
+<section class="operations-filter-card glass-card agent-collections-filters" aria-label="Filtros de mis promesas">
+    <div class="field compact-field">
+        <label for="promise-week">Semana</label>
+        <select id="promise-week" @bind="_week">@foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }</select>
+    </div>
+    <div class="field client-query-field">
+        <label for="promise-client">Buscar cliente único</label>
+        <input id="promise-client" @bind="ClientQuery" @bind:event="oninput" placeholder="Escribe un cliente único" />
+    </div>
+    <div class="field compact-field">
+        <label for="promise-status">Estatus</label>
+        <select id="promise-status" @bind="Status"><option value="">Todos los estatus</option>@foreach (var value in Queries.PromiseStatuses(scope)) { <option value="@value">@value</option> }</select>
+    </div>
+    <button type="button" class="secondary-button filter-reset" @onclick="Clear">Limpiar filtros</button>
+</section>
+
+@if (scope.Weeks.Count == 0)
+{
+    <section class="empty-state glass-card"><h2>Tu corte aún no tiene promesas</h2><p>Cuando se cargue el Excel de promesas, aquí aparecerá tu seguimiento semanal.</p></section>
+}
+else
+{
+    <section class="compliance-summary glass-card">
+        <div class="compliance-summary__intro"><p class="eyebrow">TU CUMPLIMIENTO</p><h1>Mis promesas</h1><p>@summary.Focus</p></div>
+        <div class="compliance-score @(ComplianceTone(summary.Rate))"><strong>@(summary.Rate?.ToString("P0") ?? "—")</strong><span>cumplimiento</span></div>
+        <div class="compliance-metrics">
+            <div class="compliance-metric compliance-metric--active"><strong>@summary.Active</strong><span>Activas</span></div>
+            <div class="compliance-metric compliance-metric--open"><strong>@summary.Open</strong><span>Vigentes</span></div>
+            <div class="compliance-metric compliance-metric--failed"><strong>@summary.Failed</strong><span>Incumplidas</span></div>
+            <div class="compliance-metric compliance-metric--stolen"><strong>@summary.Stolen</strong><span>Robadas</span></div>
+            <div class="compliance-metric compliance-metric--duplicate"><strong>@summary.Duplicate</strong><span>Duplicadas</span></div>
+            <div class="compliance-metric"><strong>@summary.Eligible</strong><span>Elegibles</span></div>
+        </div>
+    </section>
+
+    <section class="chart-card glass-card personal-chart-card">
+        <div class="result-heading collection-chart-heading"><div><h2>Mis promesas por día</h2><p>Vigentes, activas, incumplidas, robadas y duplicadas.</p></div></div>
+        <PlotlyChart Id="personal-promises" Model="Queries.PromiseStatusChart(scope, _week)" AccessibleLabel="Mis promesas por día" />
+    </section>
+
+    <section class="table-card glass-card agent-promise-card">
+        <div class="result-heading"><div><p class="eyebrow">DETALLE</p><h2>Promesas registradas</h2></div><p>@visible.Length registros visibles de la semana seleccionada.</p></div>
+        <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Cliente único</th><th>Nombre</th><th>Teléfono</th><th>Fecha promesa</th><th>Monto inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
+            @foreach (var row in visible)
+            {
+                <tr><td>@row.Id</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td>@(row.CreatedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td><span class="promise-status @StatusClass(row.Status)">@row.Status</span></td></tr>
+            }
+        </tbody></table></div>
+    </section>
+}
+
+@code {
+    private string ClientQuery { get; set; } = string.Empty;
+    private string Status { get; set; } = string.Empty;
+    private int _week;
+    private void Clear() { ClientQuery = string.Empty; Status = string.Empty; }
+    private static string ComplianceTone(decimal? rate) => rate switch { >= .60m => "compliance-score--positive", >= .45m => "compliance-score--caution", < .45m => "compliance-score--attention", _ => string.Empty };
+    private static string StatusClass(string status) => TextNormalization.Normalize(status) switch { "robada" => "promise-status--stolen", "duplicada" => "promise-status--duplicate", "incumplida" => "promise-status--failed", "activa" or "cumplida" or "cumplido" => "promise-status--paid", "vigente" => "promise-status--open", _ => "promise-status--neutral" };
+}
