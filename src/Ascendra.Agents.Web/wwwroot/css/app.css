@@ -222,7 +222,64 @@ button { cursor: pointer; }
 .theme-dark .lookup-input-row input::placeholder,
 .theme-dark textarea::placeholder { color: #c5d2e4; opacity: 1; }
 
+/* Densidad operativa: replica el ritmo más compacto de la versión Dash sin
+   reducir la talla de lectura. Se contraen superficies y espacios, no datos. */
+.page-content { padding-bottom: 32px; }
+.glass-card { border-radius: 20px; }
+.brand-card { gap: 18px; padding: 10px 16px; margin-bottom: 9px; }
+.brand-logo-frame { width: 50px; height: 50px; border-radius: 16px; }
+.brand-logo-frame img { width: 34px; height: 34px; }
+.brand-name { font-size: 26px; }
+.brand-greeting { margin-top: 3px; }
+.brand-subtitle { margin-top: 1px; }
+.environment-pill, .theme-button, .logout-button { min-height: 36px; padding: 0 13px; }
+.main-tabs { margin-bottom: 9px; }
+.nav-tab { min-height: 34px; }
+.page-heading, .lookup-shell, .whatsapp-hero { gap: 18px; padding: 18px 20px; margin-bottom: 11px; }
+.page-heading h1, .lookup-heading h1, .whatsapp-heading h1 { font-size: clamp(25px, 2.2vw, 32px); }
+.field label { margin-bottom: 6px; }
+.field input, .field select, .lookup-input-row input, textarea { min-height: 44px; }
+.primary-button, .secondary-button { min-height: 43px; padding: 0 15px; }
+.metric-grid { gap: 10px; margin-bottom: 11px; }
+.metric-card { min-height: 98px; padding: 14px; border-radius: 16px; }
+.metric-card strong { margin-top: 7px; }
+.metric-card::after { left: 14px; bottom: 10px; }
+.chart-card { padding: 10px 14px 12px; margin-bottom: 11px; }
+.plotly-chart { min-height: 240px; }
+.reference-result, .table-card, .selection-card { padding: 17px 19px; margin-bottom: 13px; }
+.result-heading { margin-bottom: 13px; }
+.result-heading h2 { font-size: 20px; }
+.client-facts { gap: 9px; margin-bottom: 13px; }
+.client-facts div { padding: 12px; border-radius: 13px; }
+th, td { padding: 10px 12px; }
+.whatsapp-client-card, .message-card { padding: 18px; }
+.message-card textarea { min-height: 158px; padding: 15px; }
+.weekly-pulse { gap: 20px; margin-bottom: 11px; padding: 14px 18px; }
+.weekly-pulse__amount { margin-top: 6px; font-size: clamp(27px, 2.35vw, 35px); }
+.weekly-pulse__recovery > p:last-child, .weekly-pulse__note { margin-top: 8px; }
+.weekly-pulse__bonus { padding-left: 20px; }
+.weekly-pulse__bonus-heading strong { margin-top: 4px; font-size: 23px; }
+.progress-track { height: 8px; margin-top: 12px; }
+.compliance-summary { gap: 14px; margin-bottom: 11px; padding: 15px 18px; grid-template-columns: minmax(190px, .9fr) 112px minmax(340px, 1.4fr); }
+.compliance-summary__intro h2 { font-size: 21px; }
+.compliance-summary__intro p:last-child { margin-top: 6px; }
+.compliance-score strong { font-size: 27px; }
+.compliance-metrics { gap: 7px; }
+.compliance-metric { min-height: 60px; padding: 9px 10px; border-radius: 12px; }
+.compliance-metric strong { font-size: 18px; }
+.compliance-metric span { margin-top: 2px; }
+
 .operations-filter-card,.promise-filters-grid { display:grid; gap:14px; margin-bottom:18px; padding:15px 18px 17px; position:relative; z-index:2; }.operations-filter-card { grid-template-columns:repeat(3,minmax(220px,1fr)); }.promise-filters-grid { grid-template-columns:repeat(4,minmax(155px,1fr)); padding:19px 22px 21px; }.operations-filter-card .field,.promise-filters-grid .field { min-width:0; }.operations-filter-card .field select,.promise-filters-grid .field select,.operations-filter-card .field input,.promise-filters-grid .field input { min-height:46px; }.filter-reset { align-self:end; justify-self:start; }.weeks-field { grid-column:span 2; }.week-options { display:flex; min-height:46px; align-items:center; gap:9px; overflow-x:auto; padding:8px 11px; border:1px solid var(--line); border-radius:14px; background:var(--glass-control); }.week-options label { display:inline-flex; flex:0 0 auto; align-items:center; gap:5px; color:var(--ink); font-size:12px; font-weight:650; }.week-options input { min-height:auto !important; width:auto !important; accent-color:var(--accent); }.team-chart-card { padding:20px 22px; }.chart-heading { display:flex; align-items:start; justify-content:space-between; gap:18px; padding:1px 3px 8px; }.chart-heading h1 { font-size:22px; letter-spacing:-.043em; }.chart-heading p { margin-top:6px; color:var(--ink-muted); font-size:13px; line-height:1.45; }.chart-heading > span { flex:0 0 auto; padding:7px 10px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.23); color:var(--ink-muted); font-size:11px; font-weight:720; }
+/* Estas reglas quedan después de la base de filtros para preservar la escala
+   compacta también en Cobranza y Promesas. */
+.operations-filter-card, .promise-filters-grid { gap: 11px; margin-bottom: 13px; padding: 13px 16px 15px; }
+.promise-filters-grid { padding: 16px 18px 18px; }
+.operations-filter-card .field select, .promise-filters-grid .field select,
+.operations-filter-card .field input, .promise-filters-grid .field input,
+.week-options { min-height: 42px; }
+.team-chart-card { padding: 15px 18px; }
+.chart-heading { gap: 14px; padding-bottom: 5px; }
+.chart-heading h1 { font-size: 20px; }
 .recovery-filter-card { grid-template-columns:minmax(240px,.7fr) minmax(340px,1.3fr); align-items:end; }.recovery-filter-card .client-query-field { min-width:340px; }.collection-chart-heading { padding:0 2px 12px; }
 
 @media (max-width: 940px) { .metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.page-heading,.lookup-shell,.whatsapp-hero,.page-heading--filters,.whatsapp-response-grid,.weekly-pulse,.compliance-summary { grid-template-columns: 1fr; }.table-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }.compact-field { max-width:none; }.brand-card { align-items:flex-start; }.header-actions { justify-content:flex-start; }.weekly-pulse__bonus { padding:19px 0 0; border-top:1px solid var(--line); border-left:0; }.promise-filters-grid { grid-template-columns:repeat(3,minmax(155px,1fr)); }.operations-filter-card { grid-template-columns:repeat(2,minmax(220px,1fr)); } }

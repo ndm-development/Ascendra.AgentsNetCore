@@ -210,7 +210,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         }],
         BaseLayout(
             personal ? $"Mi recuperación por día · Semana {week}<br><sup>{Currency(values.Sum())} registrados en la semana. Selecciona una barra para ver los pagos.</sup>" : $"Cobranza diaria · Semana {week}",
-            "Recuperación", 390, 88),
+            "Recuperación", 338, 74),
         Config());
     }
 
@@ -233,7 +233,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             marker = new { color = status.Color, line = new { color = status.Border, width = 1 }, cornerradius = 6 },
             hovertemplate = $"<b>%{{x}}</b><br><b>{status.Label}:</b> %{{y}}<extra></extra>",
         }).ToArray();
-        return new ChartModel(series, BaseLayout($"Mis promesas por día · Semana {week}<br><sup>Selecciona un segmento para revisar las promesas que lo componen.</sup>", "Promesas", 430, 88, "stack"), Config());
+        return new ChartModel(series, BaseLayout($"Mis promesas por día · Semana {week}<br><sup>Selecciona un segmento para revisar las promesas que lo componen.</sup>", "Promesas", 364, 74, "stack"), Config());
     }
 
     /// <summary>Devuelve las promesas del mismo día y estatus de una barra personal.</summary>
@@ -373,13 +373,13 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     private static string MoneyLabel(decimal value) => value == 0 ? string.Empty : value.ToString("C0", CultureInfo.GetCultureInfo("es-MX"));
     private static string RecoveryColor(decimal value) => value >= 5_000m ? "#1f9b72" : value >= 4_000m ? "#c38d25" : value > 0m ? "#c74857" : "rgba(124,145,169,.48)";
     private static object Config() => new { responsive = true, displayModeBar = false };
-    private static ChartModel EmptyChart(string title, string message) => new([new { type = "scatter", x = Array.Empty<string>(), y = Array.Empty<string>() }], new { title = new { text = title, x = .02 }, annotations = new[] { new { text = message, showarrow = false, x = .5, y = .5, xref = "paper", yref = "paper" } }, height = 360, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)" }, Config());
+    private static ChartModel EmptyChart(string title, string message) => new([new { type = "scatter", x = Array.Empty<string>(), y = Array.Empty<string>() }], new { title = new { text = title, x = .02 }, annotations = new[] { new { text = message, showarrow = false, x = .5, y = .5, xref = "paper", yref = "paper" } }, height = 300, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)" }, Config());
     private static object HeatmapLayout(string title, int rowCount) => new
     {
-        title = new { text = title, x = .015, font = new { size = 17, color = "#111827" } }, height = Math.Max(510, 180 + rowCount * 38), margin = new { l = 230, r = 85, t = 92, b = 62 }, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)", font = new { family = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif", color = "#111827" }, xaxis = new { side = "top", fixedrange = true, gridcolor = "rgba(47,68,94,.22)" }, yaxis = new { autorange = "reversed", fixedrange = true, tickfont = new { size = 12, color = "#0b1220" }, gridcolor = "rgba(47,68,94,.22)" },
+        title = new { text = title, x = .015, font = new { size = 16, color = "#111827" } }, height = Math.Max(440, 156 + rowCount * 34), margin = new { l = 210, r = 76, t = 78, b = 54 }, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)", font = new { family = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif", color = "#111827" }, xaxis = new { side = "top", fixedrange = true, gridcolor = "rgba(47,68,94,.22)" }, yaxis = new { autorange = "reversed", fixedrange = true, tickfont = new { size = 12, color = "#0b1220" }, gridcolor = "rgba(47,68,94,.22)" },
     };
     private static object BaseLayout(string title, string yAxis, int height, int topMargin, string? barmode = null) => new
     {
-        title = new { text = title, x = .015, font = new { size = 17, color = "#111827" } }, height, margin = new { l = 66, r = 46, t = topMargin, b = 60 }, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)", font = new { family = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif", color = "#111827" }, xaxis = new { fixedrange = true, gridcolor = "rgba(47,68,94,.16)", tickfont = new { color = "#111827", size = 12 } }, yaxis = new { title = yAxis, tickprefix = yAxis == "Recuperación" || yAxis == "Cobranza" ? "$" : "", tickformat = yAxis == "Promesas" ? ",d" : ",.0f", rangemode = "tozero", fixedrange = true, gridcolor = "rgba(47,68,94,.16)", tickfont = new { color = "#111827", size = 12 } }, legend = new { orientation = "h", yanchor = "bottom", y = 1.02, xanchor = "right", x = 1d, font = new { size = 12 } }, barmode,
+        title = new { text = title, x = .015, font = new { size = 16, color = "#111827" } }, height, margin = new { l = 60, r = 34, t = topMargin, b = 52 }, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)", font = new { family = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif", color = "#111827" }, xaxis = new { fixedrange = true, gridcolor = "rgba(47,68,94,.16)", tickfont = new { color = "#111827", size = 12 } }, yaxis = new { title = yAxis, tickprefix = yAxis == "Recuperación" || yAxis == "Cobranza" ? "$" : "", tickformat = yAxis == "Promesas" ? ",d" : ",.0f", rangemode = "tozero", fixedrange = true, gridcolor = "rgba(47,68,94,.16)", tickfont = new { color = "#111827", size = 12 } }, legend = new { orientation = "h", yanchor = "bottom", y = 1.02, xanchor = "right", x = 1d, font = new { size = 11 } }, barmode,
     };
 }
