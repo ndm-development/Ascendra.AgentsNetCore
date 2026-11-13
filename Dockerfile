@@ -10,12 +10,12 @@ RUN dotnet publish "Ascendra.Agents.Web.csproj" -c Release -o /app/publish /p:Us
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
-RUN addgroup --system ascendra && adduser --system --ingroup ascendra ascendra
 COPY --from=build /app/publish .
 COPY --from=build /src/data ./data
 COPY --from=build /src/assets ./assets
-RUN chown -R ascendra:ascendra /app
-USER ascendra
+# Las imágenes oficiales .NET 8+ ya incluyen el usuario no privilegiado app.
+# APP_UID evita depender de adduser/addgroup, que no existe en todas las bases.
+USER $APP_UID
 ENV ASPNETCORE_URLS=http://+:10000
 ENV Data__InputPath=data/input
 ENV Data__GeneratedPath=data/generated
