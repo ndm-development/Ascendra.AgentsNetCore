@@ -209,7 +209,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             hovertemplate = "<b>%{x}</b><br><b>Recuperación:</b> $%{y:,.2f}<br><b>Pagos:</b> %{customdata[0]}<extra></extra>",
         }],
         BaseLayout(
-            personal ? $"Mi recuperación por día · Semana {week}<br><sup>{Currency(values.Sum())} registrados en la semana.</sup>" : $"Cobranza diaria · Semana {week}",
+            personal ? $"Mi recuperación por día · Semana {week}<br><sup>{Currency(values.Sum())} registrados en la semana. Selecciona una barra para ver los pagos.</sup>" : $"Cobranza diaria · Semana {week}",
             "Recuperación", 390, 88),
         Config());
     }
@@ -233,8 +233,46 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             marker = new { color = status.Color, line = new { color = status.Border, width = 1 }, cornerradius = 6 },
             hovertemplate = $"<b>%{{x}}</b><br><b>{status.Label}:</b> %{{y}}<extra></extra>",
         }).ToArray();
-        return new ChartModel(series, BaseLayout($"Mis promesas por día · Semana {week}<br><sup>Vigentes, activas, incumplidas, robadas y duplicadas.</sup>", "Promesas", 430, 88, "stack"), Config());
+        return new ChartModel(series, BaseLayout($"Mis promesas por día · Semana {week}<br><sup>Selecciona un segmento para revisar las promesas que lo componen.</sup>", "Promesas", 430, 88, "stack"), Config());
     }
+
+    /// <summary>Devuelve las promesas del mismo día y estatus de una barra personal.</summary>
+    public IReadOnlyList<PromiseRecord> PromiseChartDetail(
+        ScopedOperations scope, int week, string? day, string? chartStatus)
+    {
+        if (!Days.Contains(day ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(chartStatus)) return [];
+
+        return scope.Promises
+            .Where(x => PromiseWeek(x) == week
+                && DayName(x.PromiseDate).Equals(day, StringComparison.OrdinalIgnoreCase)
+                && IsChartStatus(x.Status, chartStatus))
+            .OrderByDescending(x => x.PromiseDate)
+            .ThenByDescending(x => x.CreatedOn)
+            .Take(600)
+            .ToArray();
+    }
+
+    public static string? PromiseChartStatusKey(string? traceName) =>
+        TextNormalization.Normalize(traceName) switch
+        {
+            "vigentes" => "vigente",
+            "activas" => "activa",
+            "incumplidas" => "incumplida",
+            "robadas" => "robada",
+            "duplicadas" => "duplicada",
+            _ => null,
+        };
+
+    public static string PromiseChartStatusLabel(string? chartStatus) => chartStatus switch
+    {
+        "vigente" => "vigentes",
+        "activa" => "activas",
+        "incumplida" => "incumplidas",
+        "robada" => "robadas",
+        "duplicada" => "duplicadas",
+        _ => "seleccionadas",
+    };
 
     public ChartModel TeamPromiseComplianceChart(ScopedOperations scope, int week, string? selectedAgent = null)
     {

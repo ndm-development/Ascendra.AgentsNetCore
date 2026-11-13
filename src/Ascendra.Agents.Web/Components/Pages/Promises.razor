@@ -6,22 +6,26 @@
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
     if (_week == 0) _week = Queries.CurrentWeek(scope);
     var rows = Queries.FilterPromises(scope, null, null, null, null, Status, null, null, null, null, _week);
-    var visible = rows.Take(250).ToArray();
+    var selectedPromiseRows = _selectedPromise is null
+        ? rows
+        : Queries.PromiseChartDetail(scope, _week, _selectedPromise.Day, _selectedPromise.Status);
+    var visible = selectedPromiseRows.Take(250).ToArray();
     var summary = Queries.PersonalPromiseSummary(scope, _week);
+    var selectedStatusLabel = _selectedPromise is null ? null : DashboardQueries.PromiseChartStatusLabel(_selectedPromise.Status);
 }
 
 <section class="operations-filter-card glass-card agent-collections-filters" aria-label="Filtros de mis promesas">
     <div class="field compact-field">
         <label for="promise-week">Semana</label>
-        <select id="promise-week" @bind="_week">@foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }</select>
+        <select id="promise-week" @bind="_week" @bind:after="ClearSelectedPromise">@foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }</select>
     </div>
     <div class="field client-query-field">
         <label for="promise-client">Buscar cliente único</label>
-        <input id="promise-client" @bind="ClientQuery" @bind:event="oninput" placeholder="Escribe un cliente único" />
+        <input id="promise-client" @bind="ClientQuery" @bind:event="oninput" @bind:after="ClearSelectedPromise" placeholder="Escribe un cliente único" />
     </div>
     <div class="field compact-field">
         <label for="promise-status">Estatus</label>
-        <select id="promise-status" @bind="Status"><option value="">Todos los estatus</option>@foreach (var value in Queries.PromiseStatuses(scope)) { <option value="@value">@value</option> }</select>
+        <select id="promise-status" @bind="Status" @bind:after="ClearSelectedPromise"><option value="">Todos los estatus</option>@foreach (var value in Queries.PromiseStatuses(scope)) { <option value="@value">@value</option> }</select>
     </div>
     <button type="button" class="secondary-button filter-reset" @onclick="Clear">Limpiar filtros</button>
 </section>
@@ -47,11 +51,11 @@ else
 
     <section class="chart-card glass-card personal-chart-card">
         <div class="result-heading collection-chart-heading"><div><h2>Mis promesas por día</h2><p>Vigentes, activas, incumplidas, robadas y duplicadas.</p></div></div>
-        <PlotlyChart Id="personal-promises" Model="Queries.PromiseStatusChart(scope, _week)" AccessibleLabel="Mis promesas por día" />
+        <PlotlyChart Id="personal-promises" Model="Queries.PromiseStatusChart(scope, _week)" AccessibleLabel="Mis promesas por día" OnPointSelected="SelectPromiseSegment" />
     </section>
 
-    <section class="table-card glass-card agent-promise-card">
-        <div class="result-heading"><div><p class="eyebrow">DETALLE</p><h2>Promesas registradas</h2></div><p>@visible.Length registros visibles de la semana seleccionada.</p></div>
+    <section class="table-card glass-card agent-promise-card" aria-live="polite">
+        <div class="result-heading"><div><p class="eyebrow">@(_selectedPromise is null ? "DETALLE" : "DETALLE DEL SEGMENTO")</p><h2>@(_selectedPromise is null ? "Promesas registradas" : $"Tus promesas {selectedStatusLabel} · {_selectedPromise.Day} · Semana {_week}")</h2></div><div class="collection-export-actions"><p>@selectedPromiseRows.Count registros visibles.</p>@if (_selectedPromise is not null) { <button type="button" class="secondary-button" @onclick="ClearSelectedPromise">Ver todas</button> }</div></div>
         <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Cliente único</th><th>Nombre</th><th>Teléfono</th><th>Fecha promesa</th><th>Monto inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
             @foreach (var row in visible)
             {
@@ -65,7 +69,19 @@ else
     private string ClientQuery { get; set; } = string.Empty;
     private string Status { get; set; } = string.Empty;
     private int _week;
-    private void Clear() { ClientQuery = string.Empty; Status = string.Empty; }
+    private PromiseSelection? _selectedPromise;
+    private void Clear() { ClientQuery = string.Empty; Status = string.Empty; _selectedPromise = null; }
+    private void ClearSelectedPromise() => _selectedPromise = null;
+    private Task SelectPromiseSegment(ChartPointSelection selection)
+    {
+        var status = DashboardQueries.PromiseChartStatusKey(selection.TraceName);
+        _selectedPromise = DashboardQueries.Days.Contains(selection.X, StringComparer.OrdinalIgnoreCase)
+            && status is not null
+            ? new PromiseSelection(selection.X, status)
+            : null;
+        return InvokeAsync(StateHasChanged);
+    }
+    private sealed record PromiseSelection(string Day, string Status);
     private static string ComplianceTone(decimal? rate) => rate switch { >= .60m => "compliance-score--positive", >= .45m => "compliance-score--caution", < .45m => "compliance-score--attention", _ => string.Empty };
     private static string StatusClass(string status) => TextNormalization.Normalize(status) switch { "robada" => "promise-status--stolen", "duplicada" => "promise-status--duplicate", "incumplida" => "promise-status--failed", "activa" or "cumplida" or "cumplido" => "promise-status--paid", "vigente" => "promise-status--open", _ => "promise-status--neutral" };
 }

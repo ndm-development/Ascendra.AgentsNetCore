@@ -6,13 +6,20 @@
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
     if (_week == 0) _week = Queries.CurrentWeek(scope);
     var pulse = Queries.WeeklyPulse(scope, _week);
-    var payments = scope.Payments.Where(x => x.Week == _week && x.Recovery > 0m).OrderByDescending(x => x.ReceivedOn).Take(180).ToArray();
+    var weeklyPayments = scope.Payments.Where(x => x.Week == _week && x.Recovery > 0m).ToArray();
+    var selectedDay = DashboardQueries.Days.Contains(_selectedDay ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+        ? _selectedDay : null;
+    var matchingPayments = selectedDay is null
+        ? weeklyPayments
+        : weeklyPayments.Where(x => x.Day.Equals(selectedDay, StringComparison.OrdinalIgnoreCase)).ToArray();
+    var payments = matchingPayments.OrderByDescending(x => x.ReceivedOn).Take(180).ToArray();
+    var totalReceived = matchingPayments.Sum(x => x.Recovery);
 }
 
 <section class="operations-filter-card glass-card agent-collections-filters recovery-filter-card" aria-label="Filtros de mi recuperación">
     <div class="field compact-field">
         <label for="week">Semana</label>
-        <select id="week" @bind="_week">
+        <select id="week" @bind="_week" @bind:after="ClearSelectedDay">
             @foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }
         </select>
     </div>
@@ -57,14 +64,14 @@ else
 
     <section class="chart-card glass-card personal-chart-card">
         <div class="result-heading collection-chart-heading"><div><h1>Mi recuperación</h1><p>Consulta tus pagos registrados durante la semana.</p></div><div class="collection-export-actions"><button type="button" class="secondary-button" @onclick="ClearFilters">Limpiar filtros</button></div></div>
-        <PlotlyChart Id="personal-recovery" Model="Queries.DailyRecoveryChart(scope, _week, true)" AccessibleLabel="Mi recuperación por día" />
+        <PlotlyChart Id="personal-recovery" Model="Queries.DailyRecoveryChart(scope, _week, true)" AccessibleLabel="Mi recuperación por día" OnPointSelected="SelectRecoveryDay" />
     </section>
 
-    <section class="table-card glass-card activity-detail">
-        <div class="result-heading"><div><p class="eyebrow">DETALLE SEMANAL</p><h2>Pagos registrados</h2></div><p>@payments.Length registros visibles de la semana seleccionada.</p></div>
-        <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente único</th><th>Nombre</th><th>Producto</th><th>Pago recibido</th></tr></thead><tbody>
+    <section class="table-card glass-card activity-detail" aria-live="polite">
+        <div class="result-heading"><div><p class="eyebrow">@(selectedDay is null ? "DETALLE SEMANAL" : "DETALLE DEL DÍA")</p><h2>@(selectedDay is null ? $"Tus pagos · Semana {_week}" : $"Tus pagos · {selectedDay} · Semana {_week}")</h2></div><p>@matchingPayments.Length pagos · Total recibido: @DashboardQueries.Currency(totalReceived)</p></div>
+        <div class="table-wrap"><table><thead><tr><th>Fecha de pago</th><th>Cliente único</th><th>Nombre del cliente</th><th>Producto</th><th>Pago recibido</th><th>Semana</th></tr></thead><tbody>
             @foreach (var payment in payments)
-            { <tr><td>@(payment.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@payment.ClientId</td><td>@payment.ClientName</td><td>@payment.Product</td><td>@DashboardQueries.Currency(payment.Recovery)</td></tr> }
+            { <tr><td>@(payment.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@payment.ClientId</td><td>@payment.ClientName</td><td>@payment.Product</td><td>@DashboardQueries.Currency(payment.Recovery)</td><td>@payment.Week</td></tr> }
         </tbody></table></div>
     </section>
 }
@@ -72,6 +79,15 @@ else
 @code
 {
     private int _week;
+    private string? _selectedDay;
     private string ClientQuery { get; set; } = string.Empty;
-    private void ClearFilters() => ClientQuery = string.Empty;
+    private void ClearFilters() { ClientQuery = string.Empty; _selectedDay = null; }
+    private void ClearSelectedDay() => _selectedDay = null;
+    private Task SelectRecoveryDay(ChartPointSelection selection)
+    {
+        _selectedDay = DashboardQueries.Days.Contains(selection.X, StringComparer.OrdinalIgnoreCase)
+            ? selection.X
+            : null;
+        return InvokeAsync(StateHasChanged);
+    }
 }

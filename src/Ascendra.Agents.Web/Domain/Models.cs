@@ -100,6 +100,12 @@ public sealed record MetricCard(string Label, string Value, string Supporting, s
 
 public sealed record ChartModel(object[] Data, object Layout, object? Config = null);
 
+/// <summary>
+/// Marca elegida en una gráfica Plotly. Sólo conserva el cruce operativo que
+/// permite consultar el detalle en el servidor.
+/// </summary>
+public sealed record ChartPointSelection(string X, string TraceName);
+
 public sealed record WeeklyPulse(
     decimal Recovery,
     int PaymentCount,

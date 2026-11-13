@@ -7,13 +7,25 @@
     [Parameter, EditorRequired] public ChartModel Model { get; set; } = default!;
     [Parameter] public string Id { get; set; } = $"chart-{Guid.NewGuid():N}";
     [Parameter] public string AccessibleLabel { get; set; } = "Gráfica interactiva";
+    [Parameter] public EventCallback<ChartPointSelection> OnPointSelected { get; set; }
     private bool _interactiveRendered;
+    private DotNetObjectReference<PlotlyChart>? _dotNetReference;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         _interactiveRendered = true;
-        await JS.InvokeVoidAsync("ascendraCharts.render", Id, Model.Data, Model.Layout, Model.Config);
+        var clickReference = OnPointSelected.HasDelegate
+            ? _dotNetReference ??= DotNetObjectReference.Create(this)
+            : null;
+        await JS.InvokeVoidAsync(
+            "ascendraCharts.render", Id, Model.Data, Model.Layout, Model.Config, clickReference);
     }
+
+    [JSInvokable]
+    public Task OnPlotlyClick(ChartPointSelection selection) =>
+        OnPointSelected.HasDelegate
+            ? OnPointSelected.InvokeAsync(selection)
+            : Task.CompletedTask;
 
     public async ValueTask DisposeAsync()
     {
@@ -21,5 +33,6 @@
         try { await JS.InvokeVoidAsync("ascendraCharts.dispose", Id); }
         catch (JSDisconnectedException) { }
         catch (InvalidOperationException) { }
+        _dotNetReference?.Dispose();
     }
 }

@@ -1,5 +1,5 @@
 window.ascendraCharts = {
-  render: (id, data, layout, config) => {
+  render: (id, data, layout, config, dotNetReference) => {
     const target = document.getElementById(id);
     if (!target || !window.Plotly) return;
     const dark = Boolean(target.closest('.theme-dark'));
@@ -20,10 +20,33 @@ window.ascendraCharts = {
         font: { color: '#f7fbff', family: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' }
       }
     };
-    window.Plotly.react(target, data, baseLayout, { responsive: true, displayModeBar: false, ...config });
+    const detachClick = () => {
+      if (target.__ascendraPlotlyClick && typeof target.removeListener === 'function') {
+        target.removeListener('plotly_click', target.__ascendraPlotlyClick);
+      }
+      target.__ascendraPlotlyClick = null;
+    };
+    const attachClick = () => {
+      detachClick();
+      if (!dotNetReference || typeof target.on !== 'function') return;
+      target.__ascendraPlotlyClick = event => {
+        const point = event?.points?.[0];
+        if (!point) return;
+        const x = point.x == null ? '' : String(point.x);
+        const traceName = point.data?.name ?? point.fullData?.name ?? '';
+        dotNetReference.invokeMethodAsync('OnPlotlyClick', { x, traceName: String(traceName) })
+          .catch(() => { /* La pantalla pudo cambiar antes de resolver el clic. */ });
+      };
+      target.on('plotly_click', target.__ascendraPlotlyClick);
+    };
+    return window.Plotly.react(target, data, baseLayout, { responsive: true, displayModeBar: false, ...config })
+      .then(attachClick);
   },
   dispose: id => {
     const target = document.getElementById(id);
+    if (target?.__ascendraPlotlyClick && typeof target.removeListener === 'function') {
+      target.removeListener('plotly_click', target.__ascendraPlotlyClick);
+    }
     if (target && window.Plotly) window.Plotly.purge(target);
   }
 };
