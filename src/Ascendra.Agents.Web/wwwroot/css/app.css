@@ -31,7 +31,9 @@ button { cursor: pointer; }
 
 .theme-dark {
   --background-image: var(--ascendra-night-background, url("/assets/galaxy.jpg"));
-  --background-wash: linear-gradient(125deg, rgba(5, 10, 18, .62), rgba(15, 20, 34, .42) 55%, rgba(5, 10, 18, .68));
+  /* El fondo nocturno ya es oscuro: esta capa sólo unifica la composición,
+     sin velar ni apagar la fotografía. */
+  --background-wash: linear-gradient(125deg, rgba(5, 10, 18, .22), rgba(15, 20, 34, .07) 55%, rgba(5, 10, 18, .26));
   --ink: #eef5ff;
   --ink-muted: #c5d2e4;
   --accent: #b5c4ff;

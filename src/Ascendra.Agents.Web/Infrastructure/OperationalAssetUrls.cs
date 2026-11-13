@@ -33,7 +33,7 @@ public sealed class OperationalAssetUrls(IWebHostEnvironment environment)
     public string WebUrl(string relativePath)
     {
         var safePath = relativePath.Replace('\\', '/').TrimStart('/');
-        if (safePath is not ("css/app.css" or "js/charts.js"))
+        if (safePath is not ("css/app.css" or "js/charts.js" or "js/session.js"))
         {
             throw new ArgumentException("El recurso web no es válido.", nameof(relativePath));
         }
