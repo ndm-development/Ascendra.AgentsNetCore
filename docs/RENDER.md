@@ -1,50 +1,57 @@
 # Publicación en GitHub y Render
 
-## 1. Antes de publicar
+## 1. Datos dentro del repositorio
 
-Los archivos `data/input/*.xlsx` y `data/generated/*.xlsx` están excluidos de
-Git para que datos de clientes, teléfonos, saldos y el padrón no lleguen al
-repositorio. Conserva una copia local segura de los Excel.
+Este proyecto se publica con sus archivos de datos dentro de las carpetas
+`data/input` y `data/generated`, igual que el dashboard Dash. Render recibe
+esos Excel en cada despliegue; no usa disco persistente ni carga manual de
+archivos.
 
-Genera el CRM antes de subir el corte:
+Antes de cada corte, actualiza los Excel en `data/input` y genera el CRM:
 
 ```bash
 python3 -m pip install -r scripts/requirements.txt
 python3 scripts/generar_crm_referencias.py
 ```
 
+Después publica los cambios de datos junto con el código:
+
+```bash
+git add data
+git commit -m "Actualiza corte de datos"
+git push
+```
+
+Mantén el repositorio **privado**, ya que los archivos contienen datos de
+clientes, teléfonos, saldos y el padrón de usuarios.
+
 ## 2. Repositorio GitHub
 
 Desde la carpeta raíz del proyecto crea un repositorio privado y publica la
-rama `main`. Sube código, documentación y archivos de configuración, pero no
-los Excel ni un archivo `.env`.
+rama `main`. Sube código, documentación, configuración y las carpetas `data`.
+No subas archivos `.env` ni secretos.
 
 ## 3. Servicio en Render
 
 1. En Render selecciona **New > Blueprint** y conecta el repositorio.
 2. Render detectará `render.yaml` y construirá el Dockerfile al recibir cada
    push a `main`.
-3. Confirma el servicio `ascendra-agents-netcore` y su disco
-   `/app/data`. El disco es necesario porque el sistema de archivos normal de
-   Render se reinicia en cada despliegue.
-4. En **Environment**, agrega el secreto
+3. En **Environment**, agrega el secreto
    `ASCENDRA_AGENT_CREDENTIALS_JSON`. No lo escribas en `render.yaml` ni en
    GitHub.
-5. Despliega y confirma que `/health` responda correctamente.
+4. Despliega y confirma que `/health` responda correctamente.
 
-El Blueprint ya declara las rutas de datos en el disco:
+La aplicación usa estas rutas incluidas en la imagen:
 
-| Variable | Valor |
+| Carpeta | Contenido |
 | --- | --- |
-| `Data__InputPath` | `/app/data/input` |
-| `Data__GeneratedPath` | `/app/data/generated` |
-| `Security__DataProtectionPath` | `/app/data/keys` |
-| `Security__AllowLocalPreview` | `false` |
+| `data/input` | Archivos fuente del corte |
+| `data/generated` | `CRM_Contactos.xlsx` generado |
 
-## 4. Cargar o renovar un corte
+## 4. Actualizar un corte
 
-Por medio de la Shell de Render o SFTP/SSH crea, si hace falta, las carpetas
-`/app/data/input`, `/app/data/generated` y `/app/data/keys`. Sube a `input`:
+Reemplaza en GitHub (o en tu copia local antes de hacer `push`) los siguientes
+archivos en `data/input`:
 
 - `usuarios_ascendra.xlsx`
 - `agentes_activos.xlsx`
@@ -53,9 +60,9 @@ Por medio de la Shell de Render o SFTP/SSH crea, si hace falta, las carpetas
 - `Descarga_cartera.xlsx`
 - `Referencias.xlsx`
 
-Genera el CRM en tu computadora y sube también
-`CRM_Contactos.xlsx` a `/app/data/generated`. La aplicación detecta el nuevo
-corte cada 45 segundos sin necesitar un nuevo despliegue.
+Genera el CRM en tu computadora y guarda también
+`CRM_Contactos.xlsx` en `data/generated`. Haz `commit` y `push`; Render
+reconstruirá la imagen con el nuevo corte. No hay pasos adicionales en Render.
 
 ## 5. Usuarios y contraseñas
 
@@ -70,7 +77,3 @@ El resultado es un JSON. Pégalo como valor de
 `ASCENDRA_AGENT_CREDENTIALS_JSON` en Render y guarda los cambios con
 **Save and deploy**. Para rotar una contraseña, vuelve a generar un hash para
 la persona y reemplaza el valor completo del secreto.
-
-El disco persistente requiere un servicio de pago de Render y no permite más
-de una instancia de la aplicación. Es el intercambio necesario para conservar
-los Excel entre despliegues.

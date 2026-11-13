@@ -6,7 +6,3 @@
 artifacts/
 .env
 .env.*
-data/input/*
-!data/input/README.md
-data/generated/*
-!data/generated/README.md

@@ -7,10 +7,6 @@ services:
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
-    disk:
-      name: ascendra-agents-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
@@ -18,9 +14,3 @@ services:
         value: "false"
       - key: ASCENDRA_AGENT_CREDENTIALS_JSON
         sync: false
-      - key: Security__DataProtectionPath
-        value: /app/data/keys
-      - key: Data__InputPath
-        value: /app/data/input
-      - key: Data__GeneratedPath
-        value: /app/data/generated
