@@ -63,6 +63,16 @@ public sealed record ContactRecord(
     string Status,
     string Source);
 
+/// <summary>
+/// Resultado acotado de la consulta de Referencias. Conserva los datos de
+/// contacto y únicamente expone quién registró la última promesa del cliente
+/// junto con su estatus; no incluye el detalle de promesas de otros agentes.
+/// </summary>
+public sealed record ReferenceLookupResult(
+    ContactRecord Contact,
+    string LatestPromiseAgent,
+    string LatestPromiseStatus);
+
 public sealed record AgentDirectoryRecord(string Id, string FirstName, string PaternalSurname);
 
 public sealed record AgentDataSnapshot(

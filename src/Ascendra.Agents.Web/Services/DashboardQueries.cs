@@ -88,17 +88,47 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         return BuildScope(payments, promises, scope.Portfolio);
     }
 
-    public IReadOnlyList<ContactRecord> FindContacts(string query, bool byPhone)
+    /// <summary>
+    /// Consulta referencias y agrega un resumen estrictamente limitado de la
+    /// última promesa del cliente. El detalle de promesas continúa restringido
+    /// al agente propietario en las pantallas operativas.
+    /// </summary>
+    public IReadOnlyList<ReferenceLookupResult> FindContacts(string query, bool byPhone)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];
+        IReadOnlyList<ContactRecord> contacts;
         if (byPhone)
         {
             var phone = TextNormalization.Phone(query);
             var clientIds = Snapshot.Contacts.Where(x => x.Phone == phone).Select(x => x.ClientId)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            return Snapshot.Contacts.Where(x => clientIds.Contains(x.ClientId)).OrderBy(x => x.ClientId).ToArray();
+            contacts = Snapshot.Contacts.Where(x => clientIds.Contains(x.ClientId)).OrderBy(x => x.ClientId).ToArray();
         }
-        return Snapshot.Contacts.Where(x => x.ClientId.Equals(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
+        else
+        {
+            contacts = Snapshot.Contacts.Where(x => x.ClientId.Equals(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+
+        var latestPromiseByClient = Snapshot.Promises
+            .Where(x => !string.IsNullOrWhiteSpace(x.ClientId))
+            .GroupBy(x => x.ClientId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(x => x.CreatedOn ?? DateOnly.MinValue)
+                    .ThenByDescending(x => x.PromiseDate ?? DateOnly.MinValue)
+                    .ThenByDescending(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                    .First(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return contacts.Select(contact =>
+        {
+            latestPromiseByClient.TryGetValue(contact.ClientId, out var promise);
+            return new ReferenceLookupResult(
+                contact,
+                promise?.Agent ?? string.Empty,
+                promise?.Status ?? string.Empty);
+        }).ToArray();
     }
 
     public IReadOnlyList<ContactRecord> FindWhatsAppCandidates(string phone) => Snapshot.Contacts
