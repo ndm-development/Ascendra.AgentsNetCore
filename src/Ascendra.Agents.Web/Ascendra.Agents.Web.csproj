@@ -12,4 +12,14 @@
     <PackageReference Include="ExcelDataReader.DataSet" Version="3.8.0" />
     <PackageReference Include="Norgerman.Cryptography.Scrypt" Version="2.5.0" />
   </ItemGroup>
+
+  <!-- La carpeta raíz /assets es la única fuente publicada de fondos y marca.
+       Estas copias históricas no deben competir con ella durante un despliegue. -->
+  <ItemGroup>
+    <Content Remove="wwwroot/assets/**" />
+    <Content Include="../../assets/**">
+      <Link>assets/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

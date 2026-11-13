@@ -61,11 +61,28 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSingleton<ExcelSnapshotStore>();
 builder.Services.AddHostedService<ExcelRefreshService>();
 builder.Services.AddSingleton<AgentAuthenticator>();
+builder.Services.AddSingleton<OperationalAssetUrls>();
 builder.Services.AddScoped<DashboardSession>();
 builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddSingleton<WhatsAppTemplateCatalog>();
 
 var app = builder.Build();
+
+// Una navegación siempre consulta el documento actualizado. Esto impide que
+// un navegador mantenga una pantalla de una implementación anterior después
+// de que Render termine un despliegue.
+app.Use(async (context, next) =>
+{
+    var acceptsHtml = context.Request.Headers.Accept.Any(value =>
+        value?.Contains("text/html", StringComparison.OrdinalIgnoreCase) == true);
+    if (HttpMethods.IsGet(context.Request.Method) && acceptsHtml)
+    {
+        context.Response.Headers.CacheControl = "no-store, max-age=0, must-revalidate";
+        context.Response.Headers.Pragma = "no-cache";
+    }
+
+    await next();
+});
 
 if (!app.Environment.IsDevelopment())
 {
@@ -80,16 +97,25 @@ if (!app.Environment.IsDevelopment())
 // Los fondos operativos viven en /assets en la raíz del proyecto, para que se
 // puedan sustituir sin navegar por wwwroot. Los recursos internos conservan un
 // respaldo por si la carpeta no existe en un entorno antiguo.
-var operationalAssets = ResolveOperationalAssetsPath(app.Environment);
+var operationalAssets = OperationalAssetUrls.ResolvePath(app.Environment);
 if (operationalAssets is not null)
 {
     app.UseStaticFiles(new StaticFileOptions
     {
         FileProvider = new PhysicalFileProvider(operationalAssets),
         RequestPath = "/assets",
+        OnPrepareResponse = context =>
+            context.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable",
     });
 }
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // CSS, JavaScript y la infraestructura Blazor se revalidan en cada carga.
+    // Las URLs propias también llevan versión, por lo que este ajuste es una
+    // segunda defensa cuando se despliega una corrección urgente.
+    OnPrepareResponse = context =>
+        context.Context.Response.Headers.CacheControl = "no-cache, max-age=0, must-revalidate",
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
@@ -143,12 +169,3 @@ app.Run();
 
 static bool IsSafeReturnUrl(string value) =>
     !string.IsNullOrWhiteSpace(value) && value.StartsWith('/') && !value.StartsWith("//");
-
-static string? ResolveOperationalAssetsPath(IHostEnvironment environment)
-{
-    var developmentPath = Path.GetFullPath(Path.Combine(environment.ContentRootPath, "..", "..", "assets"));
-    if (Directory.Exists(developmentPath)) return developmentPath;
-
-    var publishedPath = Path.Combine(environment.ContentRootPath, "assets");
-    return Directory.Exists(publishedPath) ? publishedPath : null;
-}

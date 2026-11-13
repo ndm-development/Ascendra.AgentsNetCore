@@ -13,7 +13,7 @@ button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 
 .theme-light {
-  --background-image: url("../assets/leaves-day.jpg");
+  --background-image: var(--ascendra-day-background, url("/assets/leaves-day.jpg"));
   --background-wash: linear-gradient(125deg, rgba(221, 232, 243, .15), rgba(232, 240, 247, .035) 58%, rgba(226, 236, 246, .11));
   --ink: #122138;
   --ink-muted: #52677e;
@@ -30,7 +30,7 @@ button { cursor: pointer; }
 }
 
 .theme-dark {
-  --background-image: url("../assets/galaxy.jpg");
+  --background-image: var(--ascendra-night-background, url("/assets/galaxy.jpg"));
   --background-wash: linear-gradient(125deg, rgba(5, 10, 18, .62), rgba(15, 20, 34, .42) 55%, rgba(5, 10, 18, .68));
   --ink: #eef5ff;
   --ink-muted: #b5c6da;
@@ -147,7 +147,7 @@ button { cursor: pointer; }
 .sr-only { clip:rect(0,0,0,0); clip-path:inset(50%); height:1px; overflow:hidden; position:absolute; white-space:nowrap; width:1px; }
 
 /* Acceso: misma composición sobria y nocturna de la aplicación Dash. */
-.login-shell { position:relative; display:grid; min-height:100vh; place-items:center; padding:38px 24px; overflow:hidden; isolation:isolate; color:#f8fbff; background:#060c19 url("../assets/login.jpg") center / cover fixed no-repeat; }
+.login-shell { position:relative; display:grid; min-height:100vh; place-items:center; padding:38px 24px; overflow:hidden; isolation:isolate; color:#f8fbff; background:#060c19 var(--ascendra-login-background, url("/assets/login.jpg")) center / cover fixed no-repeat; }
 .login-shell::before { content:""; position:absolute; inset:0; z-index:-2; pointer-events:none; background:radial-gradient(ellipse at 50% 47%,rgba(4,11,16,.02),rgba(3,9,15,.14) 67%,rgba(2,7,12,.31)),linear-gradient(180deg,rgba(3,8,12,.05),rgba(3,8,12,.18)); }
 .login-shell::after { content:""; position:absolute; width:min(70vw,820px); height:310px; top:50%; left:50%; z-index:-1; border-radius:50%; background:rgba(255,255,255,.055); filter:blur(82px); transform:translate(-50%,-27%); }
 .login-stack { display:flex; width:min(100%,412px); flex-direction:column; align-items:stretch; text-align:center; }

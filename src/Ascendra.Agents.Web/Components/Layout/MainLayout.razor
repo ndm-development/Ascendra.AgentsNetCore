@@ -2,15 +2,16 @@
 @inject DashboardSession Session
 @inject ExcelSnapshotStore SnapshotStore
 @inject NavigationManager Navigation
+@inject OperationalAssetUrls AssetUrls
 
 <AuthorizeView Context="auth">
     <Authorized>
         @{ Session.Apply(auth.User); }
-        <div class="app-shell @(IsDark ? "theme-dark" : "theme-light")">
+        <div class="app-shell @(IsDark ? "theme-dark" : "theme-light")" style="@BackgroundAssetVariables">
             <main class="page-content">
                 <header class="brand-card glass-card">
                     <div class="brand-block">
-                        <div class="brand-logo-frame" aria-hidden="true"><img src="assets/xolo-wolf.png" alt="" /></div>
+                        <div class="brand-logo-frame" aria-hidden="true"><img src="@AssetUrls.Url("xolo-wolf.png")" alt="" /></div>
                         <div>
                             <p class="brand-name">Ascendra</p>
                             <p class="brand-greeting">@Session.Greeting</p>
@@ -50,6 +51,7 @@
 
 @code {
     private bool IsDark { get; set; }
+    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}');";
 
     private void ToggleTheme() => IsDark = !IsDark;
 }
