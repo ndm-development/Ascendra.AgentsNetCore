@@ -283,6 +283,36 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             .ToArray();
     }
 
+    /// <summary>Pagos descargables de la semana seleccionada para el usuario autenticado.</summary>
+    public IReadOnlyList<PaymentRecord> WeeklyPaymentExport(ScopedOperations scope, int week) => scope.Payments
+        .Where(x => x.Week == week && x.Recovery > 0m)
+        .OrderBy(x => x.ReceivedOn)
+        .ThenBy(x => x.ClientId, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    /// <summary>
+    /// Promesas descargables de la selección actual. El scope recibido es
+    /// personal, así que nunca incorpora promesas de otros gestores.
+    /// </summary>
+    public IReadOnlyList<PromiseRecord> PromiseExport(
+        ScopedOperations scope, int week, string? status, string? day, string? chartStatus)
+    {
+        IEnumerable<PromiseRecord> records = scope.Promises.Where(x => PromiseWeek(x) == week);
+        if (!string.IsNullOrWhiteSpace(status))
+            records = records.Where(x => x.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
+        if (Days.Contains(day ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(chartStatus))
+        {
+            records = records.Where(x => DayName(x.PromiseDate).Equals(day, StringComparison.OrdinalIgnoreCase)
+                && IsChartStatus(x.Status, chartStatus));
+        }
+        return records
+            .OrderByDescending(x => x.PromiseDate)
+            .ThenByDescending(x => x.CreatedOn)
+            .ThenBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public static string? PromiseChartStatusKey(string? traceName) =>
         TextNormalization.Normalize(traceName) switch
         {

@@ -14,6 +14,7 @@
         : weeklyPayments.Where(x => x.Day.Equals(selectedDay, StringComparison.OrdinalIgnoreCase)).ToArray();
     var payments = matchingPayments.OrderByDescending(x => x.ReceivedOn).Take(180).ToArray();
     var totalReceived = matchingPayments.Sum(x => x.Recovery);
+    var paymentExportUrl = $"/exports/payments?week={_week}&client={Uri.EscapeDataString(ClientQuery)}";
 }
 
 <section class="operations-filter-card glass-card agent-collections-filters recovery-filter-card" aria-label="Filtros de mi recuperación">
@@ -63,7 +64,7 @@ else
     </section>
 
     <section class="chart-card glass-card personal-chart-card">
-        <div class="result-heading collection-chart-heading"><div><h1>Mi recuperación</h1><p>Consulta tus pagos registrados durante la semana.</p></div><div class="collection-export-actions"><button type="button" class="secondary-button" @onclick="ClearFilters">Limpiar filtros</button></div></div>
+        <div class="result-heading collection-chart-heading"><div><h1>Mi recuperación</h1><p>Consulta tus pagos registrados durante la semana.</p></div><div class="collection-export-actions"><a class="secondary-button collection-export-button" href="@paymentExportUrl" download title="Descargar los pagos de la semana seleccionada en Excel"><span aria-hidden="true">↓</span> Descargar pagos</a><button type="button" class="secondary-button" @onclick="ClearFilters">Limpiar filtros</button></div></div>
         <PlotlyChart Id="personal-recovery" Model="Queries.DailyRecoveryChart(scope, _week, true)" AccessibleLabel="Mi recuperación por día" OnPointSelected="SelectRecoveryDay" />
     </section>
 

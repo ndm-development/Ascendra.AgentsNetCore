@@ -12,6 +12,7 @@
     var visible = selectedPromiseRows.Take(250).ToArray();
     var summary = Queries.PersonalPromiseSummary(scope, _week);
     var selectedStatusLabel = _selectedPromise is null ? null : DashboardQueries.PromiseChartStatusLabel(_selectedPromise.Status);
+    var promiseExportUrl = BuildPromiseExportUrl(_week, ClientQuery, Status, _selectedPromise);
 }
 
 <section class="operations-filter-card glass-card agent-collections-filters" aria-label="Filtros de mis promesas">
@@ -55,7 +56,7 @@ else
     </section>
 
     <section class="table-card glass-card agent-promise-card" aria-live="polite">
-        <div class="result-heading"><div><p class="eyebrow">@(_selectedPromise is null ? "DETALLE" : "DETALLE DEL SEGMENTO")</p><h2>@(_selectedPromise is null ? "Promesas registradas" : $"Tus promesas {selectedStatusLabel} · {_selectedPromise.Day} · Semana {_week}")</h2></div><div class="collection-export-actions"><p>@selectedPromiseRows.Count registros visibles.</p>@if (_selectedPromise is not null) { <button type="button" class="secondary-button" @onclick="ClearSelectedPromise">Ver todas</button> }</div></div>
+        <div class="result-heading"><div><p class="eyebrow">@(_selectedPromise is null ? "DETALLE" : "DETALLE DEL SEGMENTO")</p><h2>@(_selectedPromise is null ? "Promesas registradas" : $"Tus promesas {selectedStatusLabel} · {_selectedPromise.Day} · Semana {_week}")</h2></div><div class="collection-export-actions"><p>@selectedPromiseRows.Count registros visibles.</p><a class="secondary-button collection-export-button" href="@promiseExportUrl" download title="Descargar las promesas de la selección actual en Excel"><span aria-hidden="true">↓</span> Descargar promesas</a>@if (_selectedPromise is not null) { <button type="button" class="secondary-button" @onclick="ClearSelectedPromise">Ver todas</button> }</div></div>
         <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Cliente único</th><th>Nombre</th><th>Teléfono</th><th>Fecha promesa</th><th>Monto inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
             @foreach (var row in visible)
             {
@@ -72,6 +73,13 @@ else
     private PromiseSelection? _selectedPromise;
     private void Clear() { ClientQuery = string.Empty; Status = string.Empty; _selectedPromise = null; }
     private void ClearSelectedPromise() => _selectedPromise = null;
+    private static string BuildPromiseExportUrl(int week, string client, string status, PromiseSelection? selection)
+    {
+        var query = $"week={week}&client={Uri.EscapeDataString(client)}&status={Uri.EscapeDataString(status)}";
+        return selection is null
+            ? $"/exports/promises?{query}"
+            : $"/exports/promises?{query}&day={Uri.EscapeDataString(selection.Day)}&segment={Uri.EscapeDataString(selection.Status)}";
+    }
     private Task SelectPromiseSegment(ChartPointSelection selection)
     {
         var status = DashboardQueries.PromiseChartStatusKey(selection.TraceName);

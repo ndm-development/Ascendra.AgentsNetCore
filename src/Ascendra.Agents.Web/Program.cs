@@ -62,6 +62,7 @@ builder.Services.AddSingleton<ExcelSnapshotStore>();
 builder.Services.AddHostedService<ExcelRefreshService>();
 builder.Services.AddSingleton<AgentAuthenticator>();
 builder.Services.AddSingleton<OperationalAssetUrls>();
+builder.Services.AddSingleton<ExcelExportService>();
 builder.Services.AddScoped<DashboardSession>();
 builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddSingleton<WhatsAppTemplateCatalog>();
@@ -163,6 +164,38 @@ app.MapPost("/account/logout", async (HttpContext context, IAntiforgery antiforg
 });
 
 app.MapGet("/health", (ExcelSnapshotStore store) => Results.Ok(store.Health));
+app.MapGet("/exports/payments", (
+    HttpContext context,
+    DashboardSession session,
+    DashboardQueries queries,
+    ExcelExportService exports,
+    int? week,
+    string? client) =>
+{
+    session.Apply(context.User);
+    var scope = queries.FilterByClient(queries.Scope(), client);
+    var selectedWeek = week is > 0 ? week.Value : queries.CurrentWeek(scope);
+    var content = exports.Payments(queries.WeeklyPaymentExport(scope, selectedWeek));
+    return Results.File(content, ExcelExportService.ExcelContentType, $"mis_pagos_semana_{selectedWeek}.xlsx");
+}).RequireAuthorization();
+
+app.MapGet("/exports/promises", (
+    HttpContext context,
+    DashboardSession session,
+    DashboardQueries queries,
+    ExcelExportService exports,
+    int? week,
+    string? client,
+    string? status,
+    string? day,
+    string? segment) =>
+{
+    session.Apply(context.User);
+    var scope = queries.FilterByClient(queries.Scope(), client);
+    var selectedWeek = week is > 0 ? week.Value : queries.CurrentWeek(scope);
+    var content = exports.Promises(queries.PromiseExport(scope, selectedWeek, status, day, segment));
+    return Results.File(content, ExcelExportService.ExcelContentType, $"mis_promesas_semana_{selectedWeek}.xlsx");
+}).RequireAuthorization();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();

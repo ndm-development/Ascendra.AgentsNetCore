@@ -39,6 +39,7 @@ public sealed record PromiseRecord(
     decimal InitialAmount,
     decimal WeeklyAmount,
     string Type,
+    int? NumberOfWeeks,
     DateOnly? CreatedOn,
     string Status);
 

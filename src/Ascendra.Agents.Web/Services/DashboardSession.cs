@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Globalization;
 using Ascendra.Agents.Web.Auth;
 using Ascendra.Agents.Web.Domain;
 using Ascendra.Agents.Web.Infrastructure;
@@ -26,10 +27,16 @@ public sealed class DashboardSession(ExcelSnapshotStore snapshots)
         get
         {
             if (User is null) return string.Empty;
-            var firstName = User.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? User.DisplayName;
+            var firstName = DisplayNameCase(User.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? User.DisplayName);
             var paternal = snapshots.Current.AgentDirectory.FirstOrDefault(x => x.Id == User.Id)?.PaternalSurname;
-            return string.IsNullOrWhiteSpace(paternal) ? firstName : $"{firstName} {paternal}";
+            return string.IsNullOrWhiteSpace(paternal) ? firstName : $"{firstName} {DisplayNameCase(paternal)}";
         }
+    }
+
+    private static string DisplayNameCase(string value)
+    {
+        var culture = CultureInfo.GetCultureInfo("es-MX");
+        return culture.TextInfo.ToTitleCase(value.Trim().ToLower(culture));
     }
 
     public void Apply(ClaimsPrincipal principal)
