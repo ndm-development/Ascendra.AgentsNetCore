@@ -163,6 +163,15 @@ app.MapPost("/account/logout", async (HttpContext context, IAntiforgery antiforg
     return Results.Redirect("/login");
 });
 
+// El navegador sólo solicita este endpoint tras una interacción real. Junto
+// con la expiración deslizante de la cookie, así la sesión se conserva para
+// quien trabaja activamente y vence a las dos horas sin actividad.
+app.MapPost("/account/keepalive", async (IAntiforgery antiforgery, HttpContext context) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    return Results.NoContent();
+}).RequireAuthorization();
+
 app.MapGet("/health", (ExcelSnapshotStore store) => Results.Ok(store.Health));
 app.MapGet("/exports/payments", (
     HttpContext context,

@@ -14,6 +14,7 @@
         <AntiforgeryToken />
         <input type="hidden" name="returnUrl" value="@ReturnUrl" />
         @if (HasError) { <div class="form-alert form-alert--error" role="alert">Usuario o contraseña no válidos.</div> }
+        @if (SessionExpired) { <div class="form-alert" role="status">Por seguridad, tu sesión se cerró después de dos horas sin actividad.</div> }
         @if (!SnapshotStore.Health.IsReady) { <div class="form-alert">@SnapshotStore.Health.Message</div> }
         <label class="sr-only" for="username">Usuario</label>
         <input id="username" name="username" placeholder="Usuario" autocomplete="username" required autofocus />
@@ -25,8 +26,10 @@
 
 @code {
     [SupplyParameterFromQuery(Name = "error")] public string? Error { get; set; }
+    [SupplyParameterFromQuery(Name = "timeout")] public string? Timeout { get; set; }
     [SupplyParameterFromQuery(Name = "returnUrl")] public string? RequestedReturnUrl { get; set; }
     private bool HasError => Error == "1";
+    private bool SessionExpired => Timeout == "1";
     private string ReturnUrl => !string.IsNullOrWhiteSpace(RequestedReturnUrl) && RequestedReturnUrl.StartsWith('/') && !RequestedReturnUrl.StartsWith("//")
         ? RequestedReturnUrl
         : "/";

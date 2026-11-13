@@ -2,12 +2,11 @@ using System.Security.Claims;
 using System.Globalization;
 using Ascendra.Agents.Web.Auth;
 using Ascendra.Agents.Web.Domain;
-using Ascendra.Agents.Web.Infrastructure;
 
 namespace Ascendra.Agents.Web.Services;
 
 /// <summary>Estado mínimo por circuito; los datos operativos nunca se guardan en el navegador.</summary>
-public sealed class DashboardSession(ExcelSnapshotStore snapshots)
+public sealed class DashboardSession
 {
     public AgentUser? User { get; private set; }
     public bool IsAgent => User?.IsAgent == true;
@@ -27,9 +26,8 @@ public sealed class DashboardSession(ExcelSnapshotStore snapshots)
         get
         {
             if (User is null) return string.Empty;
-            var firstName = DisplayNameCase(User.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? User.DisplayName);
-            var paternal = snapshots.Current.AgentDirectory.FirstOrDefault(x => x.Id == User.Id)?.PaternalSurname;
-            return string.IsNullOrWhiteSpace(paternal) ? firstName : $"{firstName} {DisplayNameCase(paternal)}";
+            var firstName = User.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? User.DisplayName;
+            return DisplayNameCase(firstName);
         }
     }
 
