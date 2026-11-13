@@ -2,23 +2,11 @@ window.ascendraCharts = {
   render: (id, data, layout, config, dotNetReference) => {
     const target = document.getElementById(id);
     if (!target || !window.Plotly) return;
-    const theme = window.ascendraCharts.themeFor(target);
     target.__ascendraBaseData = data;
+    target.__ascendraBaseLayout = layout;
+    target.__ascendraConfig = { responsive: true, displayModeBar: false, ...config };
     const themedData = window.ascendraCharts.dataForTheme(data, target);
-    const baseLayout = {
-      ...layout,
-      autosize: true,
-      font: { ...(layout.font || {}), color: theme.ink || layout.font?.color || '#111827' },
-      title: { ...(layout.title || {}), font: { ...(layout.title?.font || {}), color: theme.axis } },
-      xaxis: { ...(layout.xaxis || {}), gridcolor: theme.grid, linecolor: theme.grid, tickfont: { ...(layout.xaxis?.tickfont || {}), color: theme.axis } },
-      yaxis: { ...(layout.yaxis || {}), gridcolor: theme.grid, linecolor: theme.grid, tickfont: { ...(layout.yaxis?.tickfont || {}), color: theme.muted } },
-      legend: { ...(layout.legend || {}), font: { ...(layout.legend?.font || {}), color: theme.muted } },
-      hoverlabel: {
-        bgcolor: theme.hoverBackground,
-        bordercolor: theme.hoverBorder,
-        font: { color: theme.hoverInk, family: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' }
-      }
-    };
+    const themedLayout = window.ascendraCharts.layoutForTheme(layout, target);
     const detachClick = () => {
       if (target.__ascendraPlotlyClick && typeof target.removeListener === 'function') {
         target.removeListener('plotly_click', target.__ascendraPlotlyClick);
@@ -38,8 +26,51 @@ window.ascendraCharts = {
       };
       target.on('plotly_click', target.__ascendraPlotlyClick);
     };
-    return window.Plotly.react(target, themedData, baseLayout, { responsive: true, displayModeBar: false, ...config })
-      .then(attachClick);
+    const clearHover = () => {
+      try { window.Plotly?.Fx?.unhover?.(target); }
+      catch (_) { /* La gráfica pudo ser reemplazada durante el renderizado. */ }
+    };
+    const detachHover = () => {
+      if (target.__ascendraMouseLeave) {
+        target.removeEventListener('mouseleave', target.__ascendraMouseLeave);
+      }
+      target.__ascendraMouseLeave = null;
+    };
+    const attachHover = () => {
+      detachHover();
+      target.__ascendraMouseLeave = clearHover;
+      target.addEventListener('mouseleave', target.__ascendraMouseLeave);
+    };
+    const attachInteractions = () => {
+      attachClick();
+      attachHover();
+    };
+    target.__ascendraClearHover = clearHover;
+    target.__ascendraRebindInteractions = attachInteractions;
+    clearHover();
+    return window.Plotly.react(target, themedData, themedLayout, target.__ascendraConfig)
+      .then(attachInteractions);
+  },
+  layoutForTheme: (layout, target) => {
+    const theme = window.ascendraCharts.themeFor(target);
+    return {
+      ...(layout || {}),
+      autosize: true,
+      // Nunca dejamos que Plotly interpole un lienzo blanco entre cambios de tema:
+      // las gráficas se dibujan sobre el vidrio de la tarjeta.
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { ...((layout || {}).font || {}), color: theme.ink || layout?.font?.color || '#111827' },
+      title: { ...((layout || {}).title || {}), font: { ...((layout || {}).title?.font || {}), color: theme.axis } },
+      xaxis: { ...((layout || {}).xaxis || {}), gridcolor: theme.grid, linecolor: theme.grid, tickfont: { ...((layout || {}).xaxis?.tickfont || {}), color: theme.axis } },
+      yaxis: { ...((layout || {}).yaxis || {}), gridcolor: theme.grid, linecolor: theme.grid, tickfont: { ...((layout || {}).yaxis?.tickfont || {}), color: theme.muted } },
+      legend: { ...((layout || {}).legend || {}), font: { ...((layout || {}).legend?.font || {}), color: theme.muted } },
+      hoverlabel: {
+        bgcolor: theme.hoverBackground,
+        bordercolor: theme.hoverBorder,
+        font: { color: theme.hoverInk, family: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' }
+      }
+    };
   },
   themeFor: target => {
     const shell = target.closest('.app-shell');
@@ -82,39 +113,40 @@ window.ascendraCharts = {
     });
   },
   refreshTheme: () => {
-    if (!window.Plotly) return;
-    document.querySelectorAll('.plotly-chart').forEach(target => {
-      const theme = window.ascendraCharts.themeFor(target);
-      const themedData = window.ascendraCharts.dataForTheme(target.__ascendraBaseData || target.data, target);
-      const barIndices = themedData.map((trace, index) => trace?.type === 'bar' ? index : -1).filter(index => index >= 0);
-      if (barIndices.length) {
-        const bars = barIndices.map(index => themedData[index]);
-        window.Plotly.restyle(target, {
-          'marker.color': bars.map(trace => trace.marker?.color),
-          'marker.line.color': bars.map(trace => trace.marker?.line?.color),
-          'textfont.color': bars.map(trace => trace.textfont?.color)
-        }, barIndices);
-      }
-      window.Plotly.relayout(target, {
-        'font.color': theme.ink,
-        'title.font.color': theme.axis,
-        'xaxis.gridcolor': theme.grid,
-        'xaxis.linecolor': theme.grid,
-        'xaxis.tickfont.color': theme.axis,
-        'yaxis.gridcolor': theme.grid,
-        'yaxis.linecolor': theme.grid,
-        'yaxis.tickfont.color': theme.muted,
-        'legend.font.color': theme.muted,
-        'hoverlabel.bgcolor': theme.hoverBackground,
-        'hoverlabel.bordercolor': theme.hoverBorder,
-        'hoverlabel.font.color': theme.hoverInk
-      });
-    });
+    if (!window.Plotly) return Promise.resolve();
+    // Un único react evita que restyle y relayout compitan por las capas SVG.
+    // También devolvemos la promesa para que Blazor no continúe hasta terminar.
+    return Promise.all([...document.querySelectorAll('.plotly-chart')]
+      .filter(target => target.__ascendraBaseData && target.__ascendraBaseLayout)
+      .map(target => {
+        target.__ascendraClearHover?.();
+        const themedData = window.ascendraCharts.dataForTheme(target.__ascendraBaseData, target);
+        const themedLayout = window.ascendraCharts.layoutForTheme(target.__ascendraBaseLayout, target);
+        return window.Plotly.react(
+          target,
+          themedData,
+          themedLayout,
+          target.__ascendraConfig || { responsive: true, displayModeBar: false }
+        ).then(() => target.__ascendraRebindInteractions?.());
+      }));
   },
   dispose: id => {
     const target = document.getElementById(id);
+    target?.__ascendraClearHover?.();
     if (target?.__ascendraPlotlyClick && typeof target.removeListener === 'function') {
       target.removeListener('plotly_click', target.__ascendraPlotlyClick);
+    }
+    if (target?.__ascendraMouseLeave) {
+      target.removeEventListener('mouseleave', target.__ascendraMouseLeave);
+    }
+    if (target) {
+      target.__ascendraPlotlyClick = null;
+      target.__ascendraMouseLeave = null;
+      target.__ascendraClearHover = null;
+      target.__ascendraRebindInteractions = null;
+      target.__ascendraBaseData = null;
+      target.__ascendraBaseLayout = null;
+      target.__ascendraConfig = null;
     }
     if (target && window.Plotly) window.Plotly.purge(target);
   }
