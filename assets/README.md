@@ -9,6 +9,7 @@ tomará la nueva versión sin modificar código.
 | `leaves-day.jpg` | Fondo principal en modo claro. |
 | `galaxy.jpg` | Fondo principal en modo oscuro. |
 | `login.jpg` | Fondo de la pantalla de acceso. |
+| `pink.jpg` | Fondo de la apariencia Pink; mientras se agrega, usa el fondo claro como respaldo. |
 | `xolo-wolf.png` | Logotipo del encabezado. |
 
 Para ver el cambio localmente, sustituye el archivo y recarga el navegador. La

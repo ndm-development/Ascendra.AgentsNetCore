@@ -3,11 +3,12 @@
 @inject ExcelSnapshotStore SnapshotStore
 @inject NavigationManager Navigation
 @inject OperationalAssetUrls AssetUrls
+@inject IJSRuntime JS
 
 <AuthorizeView Context="auth">
     <Authorized>
         @{ Session.Apply(auth.User); }
-        <div class="app-shell @(IsDark ? "theme-dark" : "theme-light")" style="@BackgroundAssetVariables">
+        <div class="app-shell @ThemeClass" style="@BackgroundAssetVariables">
             <main class="page-content">
                 <header class="brand-card glass-card">
                     <div class="brand-block">
@@ -20,7 +21,33 @@
                     </div>
                     <div class="header-actions">
                         <span class="environment-pill"><span class="status-dot"></span>Xolo · Agentes</span>
-                        <button type="button" class="theme-button" @onclick="ToggleTheme">@(IsDark ? "Modo claro" : "Modo oscuro")</button>
+                        <div class="appearance-control">
+                            <button type="button" class="theme-button appearance-trigger" @onclick="ToggleAppearanceMenu" aria-haspopup="menu" aria-expanded="@IsAppearanceMenuOpen">
+                                <span class="appearance-trigger__glow" aria-hidden="true"></span>
+                                Apariencia
+                                <span class="appearance-trigger__chevron" aria-hidden="true">⌄</span>
+                            </button>
+                            @if (IsAppearanceMenuOpen)
+                            {
+                                <div class="appearance-menu glass-card" role="menu" aria-label="Selecciona una apariencia">
+                                    <button type="button" class="@AppearanceOptionClass(AppearanceMode.Light)" role="menuitemradio" aria-checked="@(Appearance == AppearanceMode.Light)" @onclick="() => SelectAppearance(AppearanceMode.Light)">
+                                        <span class="appearance-swatch appearance-swatch--light" aria-hidden="true"></span>
+                                        <span><strong>Claro</strong><small>Vidrio luminoso</small></span>
+                                        <span class="appearance-check" aria-hidden="true">✓</span>
+                                    </button>
+                                    <button type="button" class="@AppearanceOptionClass(AppearanceMode.Dark)" role="menuitemradio" aria-checked="@(Appearance == AppearanceMode.Dark)" @onclick="() => SelectAppearance(AppearanceMode.Dark)">
+                                        <span class="appearance-swatch appearance-swatch--dark" aria-hidden="true"></span>
+                                        <span><strong>Oscuro</strong><small>Vidrio nocturno</small></span>
+                                        <span class="appearance-check" aria-hidden="true">✓</span>
+                                    </button>
+                                    <button type="button" class="@AppearanceOptionClass(AppearanceMode.Pink)" role="menuitemradio" aria-checked="@(Appearance == AppearanceMode.Pink)" @onclick="() => SelectAppearance(AppearanceMode.Pink)">
+                                        <span class="appearance-swatch appearance-swatch--pink" aria-hidden="true"></span>
+                                        <span><strong>Pink</strong><small>Vidrio editorial</small></span>
+                                        <span class="appearance-check" aria-hidden="true">✓</span>
+                                    </button>
+                                </div>
+                            }
+                        </div>
                         <form method="post" action="/account/logout">
                             <AntiforgeryToken />
                             <button class="logout-button" type="submit">Cerrar sesión</button>
@@ -50,8 +77,33 @@
 </AuthorizeView>
 
 @code {
-    private bool IsDark { get; set; }
-    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}');";
+    private AppearanceMode Appearance { get; set; } = AppearanceMode.Light;
+    private bool IsAppearanceMenuOpen { get; set; }
+    private bool RefreshChartsAfterRender { get; set; }
+    private string ThemeClass => Appearance switch
+    {
+        AppearanceMode.Dark => "theme-dark",
+        AppearanceMode.Pink => "theme-pink",
+        _ => "theme-light",
+    };
+    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}');";
 
-    private void ToggleTheme() => IsDark = !IsDark;
+    private void ToggleAppearanceMenu() => IsAppearanceMenuOpen = !IsAppearanceMenuOpen;
+    private void SelectAppearance(AppearanceMode appearance)
+    {
+        Appearance = appearance;
+        IsAppearanceMenuOpen = false;
+        RefreshChartsAfterRender = true;
+    }
+    private string AppearanceOptionClass(AppearanceMode appearance) =>
+        Appearance == appearance ? "appearance-option appearance-option--selected" : "appearance-option";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!RefreshChartsAfterRender) return;
+        RefreshChartsAfterRender = false;
+        await JS.InvokeVoidAsync("ascendraCharts.refreshTheme");
+    }
+
+    private enum AppearanceMode { Light, Dark, Pink }
 }
