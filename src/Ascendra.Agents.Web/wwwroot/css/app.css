@@ -20,13 +20,13 @@ button { cursor: pointer; }
   --accent: #1c6ed3;
   --accent-strong: #0f58b4;
   --accent-soft: rgba(114, 174, 246, .24);
-  --glass-top: rgba(251, 254, 255, .54);
-  --glass-bottom: rgba(238, 246, 254, .25);
-  --glass-control: rgba(253, 254, 255, .88);
+  --glass-top: rgba(251, 254, 255, .45);
+  --glass-bottom: rgba(238, 246, 254, .18);
+  --glass-control: rgba(253, 254, 255, .81);
   --glass-border: rgba(255, 255, 255, .72);
   --line: rgba(51, 80, 111, .18);
   --shadow: 0 14px 34px rgba(24, 43, 69, .09), 0 2px 7px rgba(24, 43, 69, .035), inset 0 1px 0 rgba(255,255,255,.90);
-  --table-row: rgba(249, 253, 255, .25);
+  --table-row: rgba(249, 253, 255, .16);
 }
 
 .theme-dark {
@@ -37,13 +37,13 @@ button { cursor: pointer; }
   --accent: #b5c4ff;
   --accent-strong: #e0e6ff;
   --accent-soft: rgba(156, 174, 255, .22);
-  --glass-top: rgba(27, 35, 51, .80);
-  --glass-bottom: rgba(10, 16, 28, .69);
-  --glass-control: rgba(20, 28, 42, .91);
+  --glass-top: rgba(27, 35, 51, .72);
+  --glass-bottom: rgba(10, 16, 28, .60);
+  --glass-control: rgba(20, 28, 42, .84);
   --glass-border: rgba(209, 223, 255, .24);
   --line: rgba(207, 220, 250, .22);
   --shadow: 0 26px 58px rgba(0, 0, 0, .34), 0 3px 10px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(230, 237, 255, .1);
-  --table-row: rgba(27, 36, 51, .34);
+  --table-row: rgba(27, 36, 51, .24);
 }
 
 /* Pink conserva la transparencia del sistema, con matices suaves y modernos
@@ -56,13 +56,13 @@ button { cursor: pointer; }
   --accent: #cf4f9c;
   --accent-strong: #a53582;
   --accent-soft: rgba(229, 105, 178, .22);
-  --glass-top: rgba(255, 249, 254, .52);
-  --glass-bottom: rgba(235, 226, 255, .26);
-  --glass-control: rgba(255, 251, 255, .76);
+  --glass-top: rgba(255, 249, 254, .43);
+  --glass-bottom: rgba(235, 226, 255, .18);
+  --glass-control: rgba(255, 251, 255, .69);
   --glass-border: rgba(255, 255, 255, .78);
   --line: rgba(126, 68, 122, .20);
   --shadow: 0 18px 42px rgba(76, 58, 109, .10), 0 4px 12px rgba(68, 48, 113, .045), inset 0 1px 0 rgba(255,255,255,.92);
-  --table-row: rgba(255, 247, 253, .23);
+  --table-row: rgba(255, 247, 253, .15);
 }
 
 .app-shell, .login-shell {
@@ -172,8 +172,8 @@ button { cursor: pointer; }
 .reference-result, .table-card, .selection-card { padding: clamp(20px, 2vw, 28px); margin-bottom: 18px; overflow: hidden; }
 .result-heading { justify-content: space-between; gap: 15px; margin-bottom: 18px; }.result-heading h2 { margin-top: 5px; font-size: 22px; letter-spacing: -.037em; }.result-heading p:not(.eyebrow) { color: var(--ink-muted); font-size: 13px; max-width: 470px; line-height: 1.5; }
 .status-badge, .promise-status { display: inline-flex; align-items: center; min-height: 27px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 780; color: #4f6177; background: rgba(113,137,162,.17); border: 1px solid rgba(113,137,162,.22); }.status-active { color:#146f54; background: rgba(37,157,112,.16); border-color: rgba(37,157,112,.31); }
-.client-facts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 11px; padding: 0; margin: 0 0 18px; }.client-facts div { min-width:0; padding: 14px; background: rgba(255,255,255,.23); border: 1px solid var(--line); border-radius: 15px; }.client-facts dt { color: var(--ink-muted); font-size: 10px; font-weight: 800; letter-spacing: .1em; }.client-facts dd { margin:7px 0 0; font-weight: 700; font-size: 14px; overflow-wrap:anywhere; }
-.table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.11); }table { width:100%; border-collapse:collapse; min-width: 760px; } th, td { padding: 13px 14px; text-align:left; border-bottom: 1px solid var(--line); font-size:13px; } th { font-size: 10px; letter-spacing: .09em; color: var(--ink-muted); text-transform:uppercase; background: rgba(255,255,255,.18); } tbody tr:nth-child(even) { background: var(--table-row); } tbody tr:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }.phone-cell { color: var(--accent-strong); font-weight: 720; }
+.client-facts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 11px; padding: 0; margin: 0 0 18px; }.client-facts div { min-width:0; padding: 14px; background: rgba(255,255,255,.13); border: 1px solid var(--line); border-radius: 15px; }.client-facts dt { color: var(--ink-muted); font-size: 10px; font-weight: 800; letter-spacing: .1em; }.client-facts dd { margin:7px 0 0; font-weight: 700; font-size: 14px; overflow-wrap:anywhere; }
+.table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.05); }table { width:100%; border-collapse:collapse; min-width: 760px; } th, td { padding: 13px 14px; text-align:left; border-bottom: 1px solid var(--line); font-size:13px; } th { font-size: 10px; letter-spacing: .09em; color: var(--ink-muted); text-transform:uppercase; background: rgba(255,255,255,.11); } tbody tr:nth-child(even) { background: var(--table-row); } tbody tr:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }.phone-cell { color: var(--accent-strong); font-weight: 720; }
 .promise-status { text-transform: capitalize; }.promise-status--open { color:#216dcb; background:rgba(54,135,234,.17); }.promise-status--paid { color:#146f54; background:rgba(37,157,112,.16); }.promise-status--failed { color:#a33449; background:rgba(207,82,100,.17); }.promise-status--stolen { color:#a95f16; background:rgba(221,135,57,.19); }.promise-status--duplicate { color:#6944a7; background:rgba(124,87,194,.19); }
 
 .lookup-notice { color: var(--ink-muted); font-weight: 650; }.lookup-notice--error { color:#a33449 !important; }.lookup-notice--success { color:#146f54 !important; }.lookup-notice--attention { color:#a95f16 !important; }
@@ -221,6 +221,22 @@ button { cursor: pointer; }
 .theme-dark .field input::placeholder,
 .theme-dark .lookup-input-row input::placeholder,
 .theme-dark textarea::placeholder { color: #c5d2e4; opacity: 1; }
+
+/* Vidrio más abierto: la fotografía se percibe a través de tarjetas, tablas y
+   elementos secundarios, mientras que los textos conservan su tinta propia. */
+.weekly-pulse, .compliance-summary { background: linear-gradient(135deg, rgba(251,254,255,.45), rgba(226,242,255,.19)); }
+.compliance-score { background: linear-gradient(145deg, rgba(129,151,177,.12), rgba(255,255,255,.13)); }
+.compliance-metric { background: rgba(255,255,255,.14); }
+.segmented-control { background: rgba(255,255,255,.11); }
+.client-choice { background: rgba(255,255,255,.11); }
+.theme-dark .weekly-pulse,
+.theme-dark .compliance-summary { background: radial-gradient(circle at 100% 0, rgba(86,125,190,.07), transparent 34%), linear-gradient(135deg, rgba(27,35,51,.69), rgba(10,16,28,.56)); }
+.theme-dark .compliance-score { background: linear-gradient(145deg, rgba(89,106,138,.18), rgba(16,23,37,.33)); }
+.theme-dark .compliance-metric { background: rgba(18,26,41,.42); }
+.theme-dark .table-wrap { background: rgba(6,12,22,.16); }
+.theme-dark th { background: rgba(61,76,105,.16); }
+.theme-pink .table-wrap { background: rgba(255,249,254,.055); }
+.theme-pink th { background: rgba(255,252,255,.11); }
 
 /* Densidad operativa: replica el ritmo más compacto de la versión Dash sin
    reducir la talla de lectura. Se contraen superficies y espacios, no datos. */
