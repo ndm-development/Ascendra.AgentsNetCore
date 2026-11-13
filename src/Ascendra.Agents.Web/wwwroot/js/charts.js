@@ -3,6 +3,8 @@ window.ascendraCharts = {
     const target = document.getElementById(id);
     if (!target || !window.Plotly) return;
     const theme = window.ascendraCharts.themeFor(target);
+    target.__ascendraBaseData = data;
+    const themedData = window.ascendraCharts.dataForTheme(data, target);
     const baseLayout = {
       ...layout,
       autosize: true,
@@ -36,7 +38,7 @@ window.ascendraCharts = {
       };
       target.on('plotly_click', target.__ascendraPlotlyClick);
     };
-    return window.Plotly.react(target, data, baseLayout, { responsive: true, displayModeBar: false, ...config })
+    return window.Plotly.react(target, themedData, baseLayout, { responsive: true, displayModeBar: false, ...config })
       .then(attachClick);
   },
   themeFor: target => {
@@ -49,10 +51,50 @@ window.ascendraCharts = {
     }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
+  dataForTheme: (data, target) => {
+    if (!target.closest('.theme-pink')) return data;
+    const statusPalette = {
+      Vigentes: '#99bbed',
+      Activas: '#8ecba7',
+      Incumplidas: '#ae90dc',
+      Robadas: '#e2bd47',
+      Duplicadas: '#9c86cf'
+    };
+    const recoveryPalette = {
+      '#1f9b72': '#8ecba7',
+      '#c38d25': '#e2bd47',
+      '#c74857': '#ae90dc',
+      'rgba(124,145,169,.48)': 'rgba(161, 151, 180, .45)'
+    };
+    return data.map(trace => {
+      if (trace?.type !== 'bar' || !trace.marker) return trace;
+      const statusColor = statusPalette[trace.name];
+      const color = statusColor
+        ? statusColor
+        : Array.isArray(trace.marker.color)
+          ? trace.marker.color.map(value => recoveryPalette[value] ?? value)
+          : trace.marker.color;
+      return {
+        ...trace,
+        textfont: { ...(trace.textfont || {}), color: '#281735' },
+        marker: { ...trace.marker, color, line: { ...(trace.marker.line || {}), color: 'rgba(255,255,255,.72)' } }
+      };
+    });
+  },
   refreshTheme: () => {
     if (!window.Plotly) return;
     document.querySelectorAll('.plotly-chart').forEach(target => {
       const theme = window.ascendraCharts.themeFor(target);
+      const themedData = window.ascendraCharts.dataForTheme(target.__ascendraBaseData || target.data, target);
+      const barIndices = themedData.map((trace, index) => trace?.type === 'bar' ? index : -1).filter(index => index >= 0);
+      if (barIndices.length) {
+        const bars = barIndices.map(index => themedData[index]);
+        window.Plotly.restyle(target, {
+          'marker.color': bars.map(trace => trace.marker?.color),
+          'marker.line.color': bars.map(trace => trace.marker?.line?.color),
+          'textfont.color': bars.map(trace => trace.textfont?.color)
+        }, barIndices);
+      }
       window.Plotly.relayout(target, {
         'font.color': theme.ink,
         'title.font.color': theme.axis,
