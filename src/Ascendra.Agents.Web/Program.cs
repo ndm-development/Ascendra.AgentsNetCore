@@ -153,7 +153,7 @@ app.MapPost("/account/login", async (
         new ClaimsPrincipal(identity),
         new AuthenticationProperties { IsPersistent = false, AllowRefresh = true });
 
-    return Results.LocalRedirect(IsSafeReturnUrl(returnUrl) ? returnUrl : "/");
+    return Results.LocalRedirect(IsSafeReturnUrl(returnUrl) ? returnUrl : "/referencias");
 }).RequireRateLimiting("login");
 
 app.MapPost("/account/logout", async (HttpContext context, IAntiforgery antiforgery) =>
