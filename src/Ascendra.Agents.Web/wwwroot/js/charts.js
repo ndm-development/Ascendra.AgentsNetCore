@@ -91,7 +91,7 @@ window.ascendraCharts = {
       return { ink: '#281735', axis: '#281735', muted: '#765b79', grid: 'rgba(125, 73, 137, .17)', hoverBackground: 'rgba(54, 27, 61, .94)', hoverBorder: 'rgba(255, 213, 239, .55)', hoverInk: '#fff8fd' };
     }
     if (shell?.classList.contains('theme-sierra')) {
-      return { ink: '#23313c', axis: '#23313c', muted: '#55636e', grid: 'rgba(60, 79, 94, .18)', hoverBackground: 'rgba(37, 52, 66, .95)', hoverBorder: 'rgba(213, 224, 235, .58)', hoverInk: '#fbfcff' };
+      return { ink: '#20362f', axis: '#20362f', muted: '#5b7168', grid: 'rgba(47, 78, 67, .18)', hoverBackground: 'rgba(26, 53, 47, .95)', hoverBorder: 'rgba(233, 211, 157, .56)', hoverInk: '#fffdf7' };
     }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
@@ -100,11 +100,11 @@ window.ascendraCharts = {
     const isSierra = Boolean(target.closest('.theme-sierra'));
     if (!isPink && !isSierra) return data;
     const statusPalette = isSierra ? {
-      Vigentes: '#7798b9',
-      Activas: '#8398a3',
-      Incumplidas: '#ad7d89',
-      Robadas: '#caa166',
-      Duplicadas: '#9685b4'
+      Vigentes: '#6d9ed4',
+      Activas: '#67ad8d',
+      Incumplidas: '#b97878',
+      Robadas: '#d2a449',
+      Duplicadas: '#9981be'
     } : {
       Vigentes: '#99bbed',
       Activas: '#8ecba7',
@@ -113,10 +113,10 @@ window.ascendraCharts = {
       Duplicadas: '#9c86cf'
     };
     const recoveryPalette = isSierra ? {
-      '#1f9b72': '#849ba8',
-      '#c38d25': '#caa166',
-      '#c74857': '#ad7d89',
-      'rgba(124,145,169,.48)': 'rgba(131, 146, 163, .46)'
+      '#1f9b72': '#67ad8d',
+      '#c38d25': '#d2a449',
+      '#c74857': '#b97878',
+      'rgba(124,145,169,.48)': 'rgba(119, 143, 132, .46)'
     } : {
       '#1f9b72': '#8ecba7',
       '#c38d25': '#e2bd47',
