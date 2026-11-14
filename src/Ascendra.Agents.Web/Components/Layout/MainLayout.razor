@@ -90,9 +90,10 @@
     private void ToggleAppearanceMenu() => IsAppearanceMenuOpen = !IsAppearanceMenuOpen;
     private void SelectAppearance(AppearanceMode appearance)
     {
+        var changed = Appearance != appearance;
         Appearance = appearance;
         IsAppearanceMenuOpen = false;
-        RefreshChartsAfterRender = true;
+        if (changed) RefreshChartsAfterRender = true;
     }
     private string AppearanceOptionClass(AppearanceMode appearance) =>
         Appearance == appearance ? "appearance-option appearance-option--selected" : "appearance-option";

@@ -47,9 +47,19 @@ window.ascendraCharts = {
     };
     target.__ascendraClearHover = clearHover;
     target.__ascendraRebindInteractions = attachInteractions;
-    clearHover();
-    return window.Plotly.react(target, themedData, themedLayout, target.__ascendraConfig)
-      .then(attachInteractions);
+    return window.ascendraCharts.queueRender(target, () => {
+      clearHover();
+      return window.Plotly.react(target, themedData, themedLayout, target.__ascendraConfig)
+        .then(attachInteractions);
+    });
+  },
+  // Mantiene ordenados los renders que puede disparar Blazor al mismo tiempo
+  // que se cambia la apariencia. Plotly nunca pinta dos estados en paralelo.
+  queueRender: (target, render) => {
+    const prior = target.__ascendraRenderQueue || Promise.resolve();
+    const next = prior.catch(() => undefined).then(render);
+    target.__ascendraRenderQueue = next;
+    return next;
   },
   layoutForTheme: (layout, target) => {
     const theme = window.ascendraCharts.themeFor(target);
@@ -119,15 +129,17 @@ window.ascendraCharts = {
     return Promise.all([...document.querySelectorAll('.plotly-chart')]
       .filter(target => target.__ascendraBaseData && target.__ascendraBaseLayout)
       .map(target => {
-        target.__ascendraClearHover?.();
         const themedData = window.ascendraCharts.dataForTheme(target.__ascendraBaseData, target);
         const themedLayout = window.ascendraCharts.layoutForTheme(target.__ascendraBaseLayout, target);
-        return window.Plotly.react(
-          target,
-          themedData,
-          themedLayout,
-          target.__ascendraConfig || { responsive: true, displayModeBar: false }
-        ).then(() => target.__ascendraRebindInteractions?.());
+        return window.ascendraCharts.queueRender(target, () => {
+          target.__ascendraClearHover?.();
+          return window.Plotly.react(
+            target,
+            themedData,
+            themedLayout,
+            target.__ascendraConfig || { responsive: true, displayModeBar: false }
+          ).then(() => target.__ascendraRebindInteractions?.());
+        });
       }));
   },
   dispose: id => {
@@ -147,6 +159,7 @@ window.ascendraCharts = {
       target.__ascendraBaseData = null;
       target.__ascendraBaseLayout = null;
       target.__ascendraConfig = null;
+      target.__ascendraRenderQueue = null;
     }
     if (target && window.Plotly) window.Plotly.purge(target);
   }

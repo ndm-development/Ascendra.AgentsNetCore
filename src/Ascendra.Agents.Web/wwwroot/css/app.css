@@ -156,8 +156,12 @@ button { cursor: pointer; }
 .metric-card strong { display: block; font-size: clamp(21px, 1.65vw, 28px); letter-spacing: -.047em; margin-top: 9px; line-height: 1; }
 .metric-card span { display:block; margin-top: 6px; color: var(--ink-muted); font-size: 12px; line-height: 1.3; }
 .metric-card--positive::after { background: #249671; }.metric-card--accent::after { background: var(--accent); }.metric-card--warning::after { background: #c9902b; }.metric-card--danger::after { background: #cf5264; }.metric-card--stolen::after { background:#dd8739; }.metric-card--duplicate::after { background:#7c57c2; }
-.chart-card { padding: clamp(12px, 1.4vw, 20px); margin-bottom: 14px; overflow: hidden; }
-.plotly-chart { width: 100%; min-height: 280px; }
+.chart-card { padding: clamp(12px, 1.4vw, 20px); margin-bottom: 14px; overflow: hidden; isolation: isolate; contain: paint; }
+/* Plotly renderiza varias capas SVG durante un cambio de tema. Al aislarlas de
+   la tarjeta con blur, no pueden dejar una superficie clara sobre el vidrio. */
+.plotly-chart { position: relative; z-index: 1; width: 100%; min-height: 280px; background: transparent; }
+.plotly-chart :is(.plot-container, .svg-container, .main-svg) { background: transparent !important; }
+.plotly-chart .bglayer > .bg { fill: transparent !important; }
 
 .lookup-controls, .whatsapp-controls { display: grid; align-content: center; gap: 16px; }
 .segmented-control { padding: 4px; border-radius: 14px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; background: rgba(255,255,255,.18); border: 1px solid var(--line); }
