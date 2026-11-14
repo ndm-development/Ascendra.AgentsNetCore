@@ -84,6 +84,10 @@
     private AppearanceMode Appearance { get; set; } = AppearanceMode.Light;
     private bool IsAppearanceMenuOpen { get; set; }
     private bool RefreshChartsAfterRender { get; set; }
+    // Durante el prerenderizado todavía no existe un navegador conectado. Sólo
+    // intentamos detener el temporizador si realmente llegó a iniciarse en el
+    // cliente interactivo.
+    private bool SessionTrackingStarted { get; set; }
     private string ThemeClass => Appearance switch
     {
         AppearanceMode.Dark => "theme-dark",
@@ -109,6 +113,7 @@
         if (firstRender)
         {
             await JS.InvokeVoidAsync("ascendraSession.start");
+            SessionTrackingStarted = true;
         }
 
         if (!RefreshChartsAfterRender) return;
@@ -118,6 +123,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (!SessionTrackingStarted) return;
+
         try
         {
             await JS.InvokeVoidAsync("ascendraSession.stop");
