@@ -44,6 +44,11 @@
                                         <span><strong>Pink</strong><small>Vidrio editorial</small></span>
                                         <span class="appearance-check" aria-hidden="true">✓</span>
                                     </button>
+                                    <button type="button" class="@AppearanceOptionClass(AppearanceMode.Sierra)" role="menuitemradio" aria-checked="@(Appearance == AppearanceMode.Sierra)" @onclick="() => SelectAppearance(AppearanceMode.Sierra)">
+                                        <span class="appearance-swatch appearance-swatch--sierra" aria-hidden="true"></span>
+                                        <span><strong>Sierra</strong><small>Vidrio mineral</small></span>
+                                        <span class="appearance-check" aria-hidden="true">✓</span>
+                                    </button>
                                 </div>
                             }
                         </div>
@@ -83,9 +88,10 @@
     {
         AppearanceMode.Dark => "theme-dark",
         AppearanceMode.Pink => "theme-pink",
+        AppearanceMode.Sierra => "theme-sierra",
         _ => "theme-light",
     };
-    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}');";
+    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock.jpg")}');";
 
     private void ToggleAppearanceMenu() => IsAppearanceMenuOpen = !IsAppearanceMenuOpen;
     private void SelectAppearance(AppearanceMode appearance)
@@ -122,5 +128,5 @@
         }
     }
 
-    private enum AppearanceMode { Light, Dark, Pink }
+    private enum AppearanceMode { Light, Dark, Pink, Sierra }
 }

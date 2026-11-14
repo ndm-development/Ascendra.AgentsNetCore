@@ -90,18 +90,34 @@ window.ascendraCharts = {
     if (shell?.classList.contains('theme-pink')) {
       return { ink: '#281735', axis: '#281735', muted: '#765b79', grid: 'rgba(125, 73, 137, .17)', hoverBackground: 'rgba(54, 27, 61, .94)', hoverBorder: 'rgba(255, 213, 239, .55)', hoverInk: '#fff8fd' };
     }
+    if (shell?.classList.contains('theme-sierra')) {
+      return { ink: '#1d312d', axis: '#1d312d', muted: '#596d64', grid: 'rgba(47, 78, 67, .18)', hoverBackground: 'rgba(26, 53, 47, .95)', hoverBorder: 'rgba(233, 211, 157, .54)', hoverInk: '#fffdf7' };
+    }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
   dataForTheme: (data, target) => {
-    if (!target.closest('.theme-pink')) return data;
-    const statusPalette = {
+    const isPink = Boolean(target.closest('.theme-pink'));
+    const isSierra = Boolean(target.closest('.theme-sierra'));
+    if (!isPink && !isSierra) return data;
+    const statusPalette = isSierra ? {
+      Vigentes: '#6d9ed4',
+      Activas: '#70aa8d',
+      Incumplidas: '#ba8073',
+      Robadas: '#d1a449',
+      Duplicadas: '#9981be'
+    } : {
       Vigentes: '#99bbed',
       Activas: '#8ecba7',
       Incumplidas: '#ae90dc',
       Robadas: '#e2bd47',
       Duplicadas: '#9c86cf'
     };
-    const recoveryPalette = {
+    const recoveryPalette = isSierra ? {
+      '#1f9b72': '#70aa8d',
+      '#c38d25': '#d1a449',
+      '#c74857': '#ba8073',
+      'rgba(124,145,169,.48)': 'rgba(119, 143, 132, .46)'
+    } : {
       '#1f9b72': '#8ecba7',
       '#c38d25': '#e2bd47',
       '#c74857': '#ae90dc',
@@ -117,8 +133,8 @@ window.ascendraCharts = {
           : trace.marker.color;
       return {
         ...trace,
-        textfont: { ...(trace.textfont || {}), color: '#281735' },
-        marker: { ...trace.marker, color, line: { ...(trace.marker.line || {}), color: 'rgba(255,255,255,.72)' } }
+        ...(isPink ? { textfont: { ...(trace.textfont || {}), color: '#281735' } } : {}),
+        marker: { ...trace.marker, color, line: { ...(trace.marker.line || {}), color: isSierra ? 'rgba(255,250,239,.70)' : 'rgba(255,255,255,.72)' } }
       };
     });
   },
