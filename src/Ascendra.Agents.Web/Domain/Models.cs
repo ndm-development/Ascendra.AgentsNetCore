@@ -128,6 +128,16 @@ public sealed record WeeklyPulse(
     decimal? NextTierBonus,
     double Progress);
 
+/// <summary>
+/// Posición semanal expuesta a Agentes: sólo nombre corto e importe agregado.
+/// No contiene clientes, pagos individuales ni promesas de terceros.
+/// </summary>
+public sealed record WeeklyAgentRecoveryRank(
+    int Position,
+    string Agent,
+    decimal Recovery,
+    bool IsCurrentUser);
+
 public sealed record PromiseComplianceSummary(
     decimal? Rate,
     int Active,

@@ -6,6 +6,7 @@
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
     if (_week == 0) _week = Queries.CurrentWeek(scope);
     var pulse = Queries.WeeklyPulse(scope, _week);
+    var agentRanking = Queries.WeeklyAgentRecoveryRanking(_week);
     var weeklyPayments = scope.Payments.Where(x => x.Week == _week && x.Recovery > 0m).ToArray();
     var selectedDay = DashboardQueries.Days.Contains(_selectedDay ?? string.Empty, StringComparer.OrdinalIgnoreCase)
         ? _selectedDay : null;
@@ -62,6 +63,26 @@ else
             }
         </div>
     </section>
+
+    @if (agentRanking.Count > 1)
+    {
+        <section class="agent-ranking glass-card" aria-label="Ranking semanal de cobranza del equipo">
+            <div class="agent-ranking__heading">
+                <p class="eyebrow">RANKING SEMANAL</p>
+                <span>Importe cobrado</span>
+            </div>
+            <ol class="agent-ranking__list">
+                @foreach (var rank in agentRanking)
+                {
+                    <li class="agent-ranking__row @(rank.IsCurrentUser ? "agent-ranking__row--current" : null)" aria-label="Posición @rank.Position: @rank.Agent, @DashboardQueries.Currency(rank.Recovery)">
+                        <span class="agent-ranking__position">@rank.Position</span>
+                        <span class="agent-ranking__name">@rank.Agent @if (rank.IsCurrentUser) { <small>Tú</small> }</span>
+                        <strong>@DashboardQueries.Currency(rank.Recovery)</strong>
+                    </li>
+                }
+            </ol>
+        </section>
+    }
 
     <section class="chart-card glass-card personal-chart-card">
         <div class="result-heading collection-chart-heading"><div><h1>Mi recuperación</h1><p>Consulta tus pagos registrados durante la semana.</p></div><div class="collection-export-actions"><a class="secondary-button collection-export-button" href="@paymentExportUrl" download title="Descargar los pagos de la semana seleccionada en Excel"><span aria-hidden="true">↓</span> Descargar pagos</a><button type="button" class="secondary-button" @onclick="ClearFilters">Limpiar filtros</button></div></div>

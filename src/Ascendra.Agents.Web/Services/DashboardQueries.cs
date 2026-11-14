@@ -173,6 +173,128 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             progress);
     }
 
+    /// <summary>
+    /// Ranking compacto de cobranza del equipo activo. Se lee del corte completo
+    /// para comparar al equipo, pero entrega exclusivamente el total semanal
+    /// agregado por agente; nunca se reutiliza para abrir pagos ajenos.
+    /// </summary>
+    public IReadOnlyList<WeeklyAgentRecoveryRank> WeeklyAgentRecoveryRanking(int week, int topCount = 4)
+    {
+        if (week <= 0) return [];
+
+        var roster = ActiveRankingRoster();
+        if (roster.Count == 0) return [];
+
+        var payments = Snapshot.Payments
+            .Where(payment => payment.Week == week && payment.Recovery > 0m)
+            .ToArray();
+
+        var ranked = roster
+            .Select(agent => new
+            {
+                agent.DisplayName,
+                agent.IsCurrentUser,
+                Recovery = payments
+                    .Where(payment => PaymentBelongsTo(payment, agent))
+                    .Sum(payment => payment.Recovery),
+            })
+            // Los agentes sin cobranza no ocupan espacio, salvo la persona que
+            // abrió la pantalla: siempre debe poder reconocer su posición.
+            .Where(agent => agent.Recovery > 0m || agent.IsCurrentUser)
+            .OrderByDescending(agent => agent.Recovery)
+            .ThenBy(agent => agent.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Select((agent, index) => new WeeklyAgentRecoveryRank(
+                index + 1,
+                agent.DisplayName,
+                agent.Recovery,
+                agent.IsCurrentUser))
+            .ToArray();
+
+        if (ranked.Length == 0) return [];
+
+        var visible = ranked.Take(Math.Max(1, topCount)).ToList();
+        var current = ranked.FirstOrDefault(agent => agent.IsCurrentUser);
+        if (current is not null && !visible.Any(agent => agent.IsCurrentUser))
+        {
+            // Conserva el Top 4 y agrega la fila personal al final si quedó fuera.
+            visible.Add(current);
+        }
+        return visible;
+    }
+
+    private IReadOnlyList<RankingAgent> ActiveRankingRoster()
+    {
+        var currentUser = session.User;
+        var agents = new Dictionary<string, RankingAgent>(StringComparer.OrdinalIgnoreCase);
+
+        // agentes_activos.xlsx es el padrón operativo preferido para no incluir
+        // gestiones históricas de personas que ya no están activas.
+        foreach (var directory in Snapshot.AgentDirectory)
+        {
+            var id = TextNormalization.AgentId(directory.Id);
+            var fullName = $"{directory.FirstName} {directory.PaternalSurname}".Trim();
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(fullName)) continue;
+            agents.TryAdd(id, new RankingAgent(
+                id,
+                fullName,
+                CompactAgentName(fullName),
+                IsCurrentAgent(id, fullName, currentUser)));
+        }
+
+        // Si el archivo de agentes activos está pendiente, el padrón de acceso
+        // conserva el ranking funcional con los agentes habilitados.
+        if (agents.Count == 0)
+        {
+            foreach (var user in Snapshot.Users.Where(user => user.IsActive && user.IsAgent))
+            {
+                if (string.IsNullOrWhiteSpace(user.Id) || string.IsNullOrWhiteSpace(user.DisplayName)) continue;
+                agents.TryAdd(user.Id, new RankingAgent(
+                    user.Id,
+                    user.DisplayName,
+                    CompactAgentName(user.DisplayName),
+                    IsCurrentAgent(user.Id, user.DisplayName, currentUser)));
+            }
+        }
+
+        // Asegura el highlight incluso si el usuario recién se habilitó y aún no
+        // aparece en el archivo de agentes activos del corte.
+        if (currentUser?.IsAgent == true && !string.IsNullOrWhiteSpace(currentUser.Id) && !agents.ContainsKey(currentUser.Id))
+        {
+            agents[currentUser.Id] = new RankingAgent(
+                currentUser.Id,
+                currentUser.DisplayName,
+                CompactAgentName(currentUser.DisplayName),
+                true);
+        }
+
+        return agents.Values.ToArray();
+    }
+
+    private static bool PaymentBelongsTo(PaymentRecord payment, RankingAgent agent) =>
+        (!string.IsNullOrWhiteSpace(payment.AgentId) &&
+            string.Equals(payment.AgentId, agent.Id, StringComparison.OrdinalIgnoreCase)) ||
+        (string.IsNullOrWhiteSpace(payment.AgentId) &&
+            TextNormalization.AgentNameMatches(payment.Agent, agent.MatchName));
+
+    private static bool IsCurrentAgent(string agentId, string agentName, AgentUser? currentUser) =>
+        currentUser?.IsAgent == true &&
+        (string.Equals(agentId, currentUser.Id, StringComparison.OrdinalIgnoreCase) ||
+            TextNormalization.AgentNameMatches(agentName, currentUser.DisplayName));
+
+    private static string CompactAgentName(string value)
+    {
+        var tokens = value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0) return "Agente";
+
+        var culture = CultureInfo.GetCultureInfo("es-MX");
+        var firstName = culture.TextInfo.ToTitleCase(tokens[0].ToLower(culture));
+        return tokens.Length == 1
+            ? firstName
+            : $"{firstName} {char.ToUpper(tokens[1][0], culture)}.";
+    }
+
+    private sealed record RankingAgent(string Id, string MatchName, string DisplayName, bool IsCurrentUser);
+
     public PromiseComplianceSummary PersonalPromiseSummary(ScopedOperations scope, int week)
     {
         var records = scope.Promises.Where(x => PromiseWeek(x) == week).ToArray();
