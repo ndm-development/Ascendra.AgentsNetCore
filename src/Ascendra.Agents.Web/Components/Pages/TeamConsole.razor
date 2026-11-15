@@ -235,9 +235,12 @@
     private readonly HashSet<Guid> ReadMessages = [];
     private static readonly (string Value, string Label)[] ChatEmojis =
     [
-        ("👍", "Pulgar arriba"), ("✅", "Confirmado"), ("📌", "Importante"), ("⚠️", "Atención"),
-        ("👀", "Revisar"), ("🙏", "Gracias"), ("💬", "Mensaje"), ("⏱️", "Pendiente"),
-        ("🎯", "Objetivo"), ("🚨", "Urgente"), ("🙂", "Sonrisa"), ("📎", "Adjunto"),
+        ("👀", "Revisar"), ("✅", "Confirmado"), ("❤️", "Me gusta"), ("💵", "Pago"), ("🤑", "Cobrado"), ("💯", "Cien por ciento"),
+        ("😊", "Sonrisa"), ("🙂", "De acuerdo"), ("🙃", "Ironía"), ("😎", "Excelente"), ("🤓", "Detalle"), ("😍", "Me encanta"),
+        ("😤", "Esfuerzo"), ("😡", "Molesto"), ("🥶", "Urgente"), ("😶‍🌫️", "Sin palabras"), ("😱", "Sorpresa"), ("🫠", "Complicado"),
+        ("🫪", "Cara distorsionada"), ("💩", "Problema"), ("🙌🏻", "Celebración"), ("👏🏻", "Aplausos"), ("🫡", "Entendido"), ("😐", "Neutral"),
+        ("🎄", "Navidad"), ("🎁", "Regalo"), ("🎂", "Cumpleaños"), ("🥳", "Fiesta"), ("👍", "Pulgar arriba"), ("🙏", "Gracias"),
+        ("📌", "Importante"), ("⚠️", "Atención"), ("⏱️", "Pendiente"), ("🎯", "Objetivo"), ("🚨", "Alerta"), ("📎", "Adjunto"),
     ];
     private int _week;
     private string ClientQuery { get; set; } = string.Empty;
