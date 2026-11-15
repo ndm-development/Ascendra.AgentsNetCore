@@ -10,7 +10,7 @@
 <AuthorizeView Context="auth">
     <Authorized>
         @{ Session.Apply(auth.User); }
-        <div class="app-shell @ThemeClass" style="@BackgroundAssetVariables">
+        <div class="app-shell @ThemeClass" style="@BackgroundAssetVariables" @onclick="CloseFloatingPanels">
             <main class="page-content">
                 <header class="brand-card glass-card">
                     <div class="brand-block">
@@ -21,7 +21,7 @@
                         </div>
                     </div>
                     <div class="header-actions">
-                        <div class="chat-control">
+                        <div class="chat-control" @onclick:stopPropagation="true">
                             <button type="button" class="chat-button" @onclick="ToggleChatPanel" aria-expanded="@IsChatOpen" aria-controls="ascendra-chat-panel">
                                 <span class="chat-button__mark" aria-hidden="true">◌</span>
                                 Chat
@@ -110,7 +110,7 @@
                                 </aside>
                             }
                         </div>
-                        <div class="appearance-control">
+                        <div class="appearance-control" @onclick:stopPropagation="true">
                             <button type="button" class="theme-button appearance-trigger" @onclick="ToggleAppearanceMenu" aria-haspopup="menu" aria-expanded="@IsAppearanceMenuOpen">
                                 <span class="appearance-trigger__glow" aria-hidden="true"></span>
                                 Apariencia
@@ -271,6 +271,12 @@
         }
     }
 
+    private void CloseFloatingPanels()
+    {
+        IsChatOpen = false;
+        IsAppearanceMenuOpen = false;
+    }
+
     private void SelectChatMode(ChatMode mode)
     {
         CurrentChatMode = mode;
@@ -364,11 +370,17 @@
         var latest = UnreadIncomingMessages
             .Where(message => message.Recipient is not null)
             .OrderByDescending(message => message.SentAt)
-            .FirstOrDefault();
+            .FirstOrDefault()
+            ?? ChatState.Messages
+                .Where(message => message.Recipient is not null)
+                .OrderByDescending(message => message.SentAt)
+                .FirstOrDefault();
         if (latest is null) return;
 
         CurrentChatMode = ChatMode.Direct;
-        SelectedChatRecipient = latest.Sender.Username;
+        SelectedChatRecipient = IsOwnMessage(latest)
+            ? latest.Recipient!.Username
+            : latest.Sender.Username;
     }
 
     private bool IsOnline(ChatParticipant user) => OnlineChatUsers.Any(online =>
