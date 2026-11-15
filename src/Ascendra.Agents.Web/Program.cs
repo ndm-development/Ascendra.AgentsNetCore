@@ -66,6 +66,8 @@ builder.Services.AddSingleton<ExcelExportService>();
 builder.Services.AddScoped<DashboardSession>();
 builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddSingleton<WhatsAppTemplateCatalog>();
+builder.Services.AddSingleton<EphemeralChatService>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<EphemeralChatService>());
 
 var app = builder.Build();
 

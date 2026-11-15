@@ -5,6 +5,7 @@
 @inject NavigationManager Navigation
 @inject OperationalAssetUrls AssetUrls
 @inject IJSRuntime JS
+@inject EphemeralChatService Chat
 
 <AuthorizeView Context="auth">
     <Authorized>
@@ -20,6 +21,83 @@
                         </div>
                     </div>
                     <div class="header-actions">
+                        <div class="chat-control">
+                            <button type="button" class="chat-button" @onclick="ToggleChatPanel" aria-expanded="@IsChatOpen" aria-controls="ascendra-chat-panel">
+                                <span class="chat-button__mark" aria-hidden="true">◌</span>
+                                Chat
+                                @if (UnreadChatCount > 0)
+                                {
+                                    <span class="chat-button__badge" aria-label="@($"{UnreadChatCount} mensaje(s) nuevo(s)")">@UnreadChatCount</span>
+                                }
+                            </button>
+                            @if (IsChatOpen)
+                            {
+                                <aside id="ascendra-chat-panel" class="chat-panel glass-card" aria-label="Chat de Ascendra">
+                                    <header class="chat-panel__header">
+                                        <div>
+                                            <p class="eyebrow">EN LÍNEA</p>
+                                            <h2>Chat</h2>
+                                            <span>Los mensajes se eliminan en 24 h.</span>
+                                        </div>
+                                        <span class="chat-panel__presence">@OnlineChatUsers.Count conectados</span>
+                                    </header>
+
+                                    <div class="chat-mode" role="tablist" aria-label="Tipo de conversación">
+                                        <button type="button" class="@ChatModeClass(ChatMode.General)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.General)" @onclick="() => SelectChatMode(ChatMode.General)">General</button>
+                                        <button type="button" class="@ChatModeClass(ChatMode.Direct)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Direct)" @onclick="() => SelectChatMode(ChatMode.Direct)">Directo</button>
+                                    </div>
+
+                                    @if (CurrentChatMode == ChatMode.Direct)
+                                    {
+                                        <label class="chat-recipient">
+                                            <span>Enviar a</span>
+                                            <select @bind="SelectedChatRecipient" aria-label="Usuario conectado">
+                                                <option value="">Selecciona un usuario conectado</option>
+                                                @foreach (var user in AvailableDirectRecipients)
+                                                {
+                                                    <option value="@user.Username">@user.DisplayName</option>
+                                                }
+                                            </select>
+                                        </label>
+                                    }
+
+                                    <div class="chat-thread" aria-live="polite">
+                                        @if (VisibleChatMessages.Count == 0)
+                                        {
+                                            <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : "Selecciona un usuario para ver y enviar mensajes directos.")</p>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var message in VisibleChatMessages)
+                                            {
+                                                <article class="chat-message @(IsOwnMessage(message) ? "chat-message--own" : null)">
+                                                    <div class="chat-message__meta">
+                                                        <strong>@(IsOwnMessage(message) ? "Tú" : message.Sender.DisplayName)</strong>
+                                                        @if (message.Recipient is not null)
+                                                        {
+                                                            <span>para @(IsOwnMessage(message) ? message.Recipient.DisplayName : "ti")</span>
+                                                        }
+                                                        <time datetime="@message.SentAt.ToString("O")">@message.SentAt.ToLocalTime().ToString("HH:mm")</time>
+                                                    </div>
+                                                    <p>@message.Content</p>
+                                                </article>
+                                            }
+                                        }
+                                    </div>
+
+                                    <form class="chat-composer" @onsubmit="SendChatMessageAsync" @onsubmit:preventDefault="true">
+                                        <textarea @bind="ChatDraft" maxlength="500" rows="2" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
+                                        <div>
+                                            @if (!string.IsNullOrWhiteSpace(ChatError))
+                                            {
+                                                <span class="chat-composer__error" role="status">@ChatError</span>
+                                            }
+                                            <button type="submit" class="chat-send-button">Enviar</button>
+                                        </div>
+                                    </form>
+                                </aside>
+                            }
+                        </div>
                         <div class="appearance-control">
                             <button type="button" class="theme-button appearance-trigger" @onclick="ToggleAppearanceMenu" aria-haspopup="menu" aria-expanded="@IsAppearanceMenuOpen">
                                 <span class="appearance-trigger__glow" aria-hidden="true"></span>
@@ -94,6 +172,18 @@
     private AppearanceMode Appearance { get; set; } = AppearanceMode.Light;
     private bool IsAppearanceMenuOpen { get; set; }
     private bool RefreshChartsAfterRender { get; set; }
+    private readonly string ChatConnectionId = Guid.NewGuid().ToString("N");
+    private ChatParticipant? ChatParticipant { get; set; }
+    private ChatPanelState ChatState { get; set; } = ChatPanelState.Empty;
+    private bool IsChatOpen { get; set; }
+    private bool ChatRegistered { get; set; }
+    private bool IsDisposed { get; set; }
+    private DateTimeOffset ChatReadAt { get; set; } = DateTimeOffset.UtcNow;
+    private int UnreadChatCount { get; set; }
+    private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
+    private string SelectedChatRecipient { get; set; } = string.Empty;
+    private string ChatDraft { get; set; } = string.Empty;
+    private string? ChatError { get; set; }
     // Durante el prerenderizado todavía no existe un navegador conectado. Sólo
     // intentamos detener el temporizador si realmente llegó a iniciarse en el
     // cliente interactivo.
@@ -109,7 +199,11 @@
     };
     private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock.jpg")}'); --ascendra-aurora-background: url('{AssetUrls.Url("aurora.jpg")}'); --ascendra-oceano-background: url('{AssetUrls.Url("océano.jpg")}');";
 
-    private void ToggleAppearanceMenu() => IsAppearanceMenuOpen = !IsAppearanceMenuOpen;
+    private void ToggleAppearanceMenu()
+    {
+        IsAppearanceMenuOpen = !IsAppearanceMenuOpen;
+        if (IsAppearanceMenuOpen) IsChatOpen = false;
+    }
     private void SelectAppearance(AppearanceMode appearance)
     {
         var changed = Appearance != appearance;
@@ -120,12 +214,120 @@
     private string AppearanceOptionClass(AppearanceMode appearance) =>
         Appearance == appearance ? "appearance-option appearance-option--selected" : "appearance-option";
 
+    private IReadOnlyList<ChatParticipant> OnlineChatUsers => ChatState.ConnectedUsers;
+    private IReadOnlyList<ChatParticipant> AvailableDirectRecipients =>
+        ChatParticipant is null
+            ? Array.Empty<ChatParticipant>()
+            : ChatState.ConnectedUsers
+                .Where(user => !string.Equals(user.Username, ChatParticipant.Username, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+    private IReadOnlyList<ChatMessage> VisibleChatMessages => CurrentChatMode == ChatMode.General
+        ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
+        : string.IsNullOrWhiteSpace(SelectedChatRecipient)
+            ? Array.Empty<ChatMessage>()
+            : ChatState.Messages.Where(message => message.Recipient is not null
+                && (string.Equals(message.Sender.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(message.Recipient.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+
+    private void ToggleChatPanel()
+    {
+        IsChatOpen = !IsChatOpen;
+        IsAppearanceMenuOpen = false;
+        ChatError = null;
+        if (IsChatOpen) MarkChatRead();
+    }
+
+    private void SelectChatMode(ChatMode mode)
+    {
+        CurrentChatMode = mode;
+        ChatError = null;
+    }
+
+    private string ChatModeClass(ChatMode mode) =>
+        CurrentChatMode == mode ? "chat-mode__option chat-mode__option--selected" : "chat-mode__option";
+
+    private bool IsOwnMessage(ChatMessage message) => ChatParticipant is not null
+        && string.Equals(message.Sender.Username, ChatParticipant.Username, StringComparison.OrdinalIgnoreCase);
+
+    private Task SendChatMessageAsync()
+    {
+        if (ChatParticipant is null) return Task.CompletedTask;
+
+        try
+        {
+            if (CurrentChatMode == ChatMode.General)
+            {
+                Chat.SendToEveryone(ChatParticipant, ChatDraft);
+            }
+            else
+            {
+                Chat.SendDirect(ChatParticipant, SelectedChatRecipient, ChatDraft);
+            }
+
+            ChatDraft = string.Empty;
+            ChatError = null;
+            MarkChatRead();
+        }
+        catch (InvalidOperationException exception)
+        {
+            ChatError = exception.Message;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void StartChat()
+    {
+        if (ChatRegistered || Session.User is null) return;
+
+        ChatParticipant = EphemeralChatService.ParticipantFor(Session.User);
+        Chat.Changed += OnChatChanged;
+        ChatRegistered = true;
+        Chat.Register(ChatConnectionId, ChatParticipant);
+        ChatState = Chat.GetState(ChatParticipant);
+        MarkChatRead();
+    }
+
+    private void OnChatChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (IsDisposed || !ChatRegistered || ChatParticipant is null) return;
+
+            ChatState = Chat.GetState(ChatParticipant);
+            if (CurrentChatMode == ChatMode.Direct && !string.IsNullOrWhiteSpace(SelectedChatRecipient)
+                && !AvailableDirectRecipients.Any(user => string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
+            {
+                SelectedChatRecipient = string.Empty;
+            }
+
+            if (IsChatOpen)
+            {
+                MarkChatRead();
+            }
+            else
+            {
+                UnreadChatCount = ChatState.Messages.Count(message => !IsOwnMessage(message) && message.SentAt > ChatReadAt);
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    private void MarkChatRead()
+    {
+        ChatReadAt = DateTimeOffset.UtcNow;
+        UnreadChatCount = 0;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await JS.InvokeVoidAsync("ascendraSession.start");
             SessionTrackingStarted = true;
+            StartChat();
         }
 
         if (!RefreshChartsAfterRender) return;
@@ -135,6 +337,14 @@
 
     public async ValueTask DisposeAsync()
     {
+        IsDisposed = true;
+        if (ChatRegistered)
+        {
+            Chat.Changed -= OnChatChanged;
+            Chat.Unregister(ChatConnectionId);
+            ChatRegistered = false;
+        }
+
         if (!SessionTrackingStarted) return;
 
         try
@@ -148,4 +358,5 @@
     }
 
     private enum AppearanceMode { Light, Dark, Pink, Sierra, Aurora, Oceano }
+    private enum ChatMode { General, Direct }
 }
