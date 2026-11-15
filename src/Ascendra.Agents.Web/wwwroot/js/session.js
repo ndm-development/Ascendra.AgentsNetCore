@@ -131,3 +131,102 @@ window.ascendraChatRead = (() => {
 
     return { load, save };
 })();
+
+// Un despliegue sustituye el proceso que aloja el circuito interactivo. En vez
+// de mostrar el mensaje técnico de Blazor o recargar contra un 502, esperamos
+// a que la nueva instancia responda y recuperamos la vista automáticamente.
+window.ascendraReconnect = (() => {
+    let activeProcess = null;
+
+    const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+    const modal = () => document.getElementById("components-reconnect-modal");
+    const message = () => document.getElementById("components-reconnect-message");
+
+    function show(text) {
+        const reconnectModal = modal();
+        if (reconnectModal) reconnectModal.classList.add("ascendra-reconnect--visible");
+        const reconnectMessage = message();
+        if (reconnectMessage) reconnectMessage.textContent = text;
+    }
+
+    function hide() {
+        modal()?.classList.remove("ascendra-reconnect--visible");
+    }
+
+    async function serviceIsReady() {
+        try {
+            const response = await fetch("/health", {
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { "Cache-Control": "no-cache" },
+            });
+            return response.ok;
+        } catch {
+            return false;
+        }
+    }
+
+    function startReconnectionProcess() {
+        let cancelled = false;
+
+        (async () => {
+            let attempt = 0;
+            while (!cancelled) {
+                attempt += 1;
+                show(attempt <= 4
+                    ? `Reconectando de forma segura… intento ${attempt}`
+                    : "La actualización sigue en curso. Conservamos tu sesión.");
+
+                try {
+                    const rejoined = await window.Blazor.reconnect();
+                    if (cancelled) return;
+                    if (rejoined) {
+                        hide();
+                        return;
+                    }
+
+                    // La nueva instancia ya está disponible, pero el circuito
+                    // anterior pertenecía al proceso reemplazado. Una carga
+                    // completa restablece la vista con la misma cookie.
+                    if (await serviceIsReady()) {
+                        show("Actualización lista. Restaurando tu vista…");
+                        await wait(250);
+                        window.location.reload();
+                        return;
+                    }
+                } catch {
+                    // Render aún está iniciando la siguiente instancia.
+                }
+
+                await wait(Math.min(1500 + attempt * 500, 5000));
+            }
+        })();
+
+        return {
+            cancel: () => {
+                cancelled = true;
+                hide();
+            },
+        };
+    }
+
+    function start() {
+        if (!window.Blazor) {
+            window.setTimeout(start, 25);
+            return;
+        }
+
+        window.Blazor.start({
+            reconnectionHandler: {
+                onConnectionDown: () => activeProcess ??= startReconnectionProcess(),
+                onConnectionUp: () => {
+                    activeProcess?.cancel();
+                    activeProcess = null;
+                    hide();
+                },
+            },
+        });
+    }
+
+    return { start };
+})();

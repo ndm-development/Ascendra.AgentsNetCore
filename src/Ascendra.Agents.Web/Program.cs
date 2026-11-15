@@ -14,6 +14,13 @@ using Microsoft.Extensions.FileProviders;
 var builder = WebApplication.CreateBuilder(args);
 
 var dataProtectionPath = builder.Configuration["Security:DataProtectionPath"];
+// Render monta el disco persistente en /var/data. Al usarlo también para las
+// claves de protección, una actualización no invalida las cookies de sesión.
+// El valor explícito de configuración sigue teniendo prioridad.
+if (string.IsNullOrWhiteSpace(dataProtectionPath) && Directory.Exists("/var/data"))
+{
+    dataProtectionPath = "/var/data/ascendra-protection";
+}
 if (!string.IsNullOrWhiteSpace(dataProtectionPath))
 {
     Directory.CreateDirectory(dataProtectionPath);
