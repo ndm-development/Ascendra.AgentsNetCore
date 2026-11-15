@@ -1,7 +1,23 @@
 window.ascendraCharts = {
+  // Plotly pesa varios megabytes y sólo hace falta en las dos vistas analíticas
+  // de agentes. Cargarlo al pintar la primera gráfica deja que Referencias,
+  // WhatsApp y la consola de Equipo queden listos de inmediato.
+  ensurePlotly: () => {
+    if (window.Plotly) return Promise.resolve(window.Plotly);
+    if (window.__ascendraPlotlyPromise) return window.__ascendraPlotlyPromise;
+    window.__ascendraPlotlyPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.plot.ly/plotly-2.35.2.min.js';
+      script.async = true;
+      script.onload = () => window.Plotly ? resolve(window.Plotly) : reject(new Error('Plotly no se cargó.'));
+      script.onerror = () => reject(new Error('No se pudo cargar Plotly.'));
+      document.head.appendChild(script);
+    });
+    return window.__ascendraPlotlyPromise;
+  },
   render: (id, data, layout, config, dotNetReference) => {
     const target = document.getElementById(id);
-    if (!target || !window.Plotly) return;
+    if (!target) return Promise.resolve();
     target.__ascendraBaseData = data;
     target.__ascendraBaseLayout = layout;
     target.__ascendraConfig = { responsive: true, displayModeBar: false, ...config };
@@ -47,11 +63,13 @@ window.ascendraCharts = {
     };
     target.__ascendraClearHover = clearHover;
     target.__ascendraRebindInteractions = attachInteractions;
-    return window.ascendraCharts.queueRender(target, () => {
-      clearHover();
-      return window.Plotly.react(target, themedData, themedLayout, target.__ascendraConfig)
-        .then(attachInteractions);
-    });
+    return window.ascendraCharts.ensurePlotly()
+      .then(() => window.ascendraCharts.queueRender(target, () => {
+        clearHover();
+        return window.Plotly.react(target, themedData, themedLayout, target.__ascendraConfig)
+          .then(attachInteractions);
+      }))
+      .catch(() => { /* La pantalla mantiene sus tablas aun si la CDN falla. */ });
   },
   // Mantiene ordenados los renders que puede disparar Blazor al mismo tiempo
   // que se cambia la apariencia. Plotly nunca pinta dos estados en paralelo.
