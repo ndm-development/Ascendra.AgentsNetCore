@@ -93,7 +93,7 @@
                                                         {
                                                             <span>para @RecipientLabel(message)</span>
                                                         }
-                                                        <time datetime="@message.SentAt.ToString("O")">@message.SentAt.ToLocalTime().ToString("HH:mm")</time>
+                                                        <time datetime="@message.SentAt.ToString("O")">@OperationalClock.Format(message.SentAt, "HH:mm")</time>
                                                     </div>
                                                     @if (!string.IsNullOrWhiteSpace(message.Content))
                                                     {

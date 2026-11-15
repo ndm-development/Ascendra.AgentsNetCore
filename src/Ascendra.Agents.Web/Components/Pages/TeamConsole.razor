@@ -91,7 +91,7 @@
                                         {
                                             <span>para @message.Recipient.DisplayName</span>
                                         }
-                                        <time datetime="@message.SentAt.ToString("O")">@message.SentAt.ToLocalTime().ToString("dd MMM · HH:mm", CultureInfo.GetCultureInfo("es-MX"))</time>
+                                        <time datetime="@message.SentAt.ToString("O")">@OperationalClock.Format(message.SentAt, "dd MMM · HH:mm")</time>
                                     </div>
                                     @if (!string.IsNullOrWhiteSpace(message.Content))
                                     {
