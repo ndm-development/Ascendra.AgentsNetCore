@@ -41,7 +41,6 @@ else
         <div class="weekly-pulse__recovery">
             <p class="eyebrow">MI AVANCE SEMANAL</p>
             <div class="weekly-pulse__amount">@DashboardQueries.Currency(pulse.Recovery)<span>recuperados</span></div>
-            <p>@pulse.PaymentCount pagos registrados · @pulse.ClientCount cuentas con recuperación</p>
         </div>
         <div class="weekly-pulse__bonus">
         <div class="weekly-pulse__bonus-heading">
@@ -59,7 +58,7 @@ else
                 {
                     <p class="weekly-pulse__note">Tu primer nivel comienza en $20,000 de recuperación.</p>
                 }
-                <p class="weekly-pulse__note">Te faltan @DashboardQueries.Currency(pulse.RemainingToNextTier.Value) para @pulse.NextTierLabel y llevarte @DashboardQueries.Currency(pulse.NextTierBonus ?? 0m).</p>
+                <p class="weekly-pulse__note weekly-pulse__note--remaining"><span>Te faltan</span> <strong>@DashboardQueries.Currency(pulse.RemainingToNextTier.Value)</strong> <span>para @pulse.NextTierLabel y llevarte @DashboardQueries.Currency(pulse.NextTierBonus ?? 0m).</span></p>
             }
         </div>
     </section>
@@ -70,8 +69,6 @@ else
         <section class="agent-ranking glass-card" aria-label="Ranking semanal de cobranza del equipo">
             <div class="agent-ranking__heading">
                 <p class="eyebrow">RANKING SEMANAL</p>
-                <span>Importe cobrado</span>
-                <span class="agent-ranking__layer-title" title="Pulso de cobro: intensidad relativa frente al mayor cobro semanal">Pulso de cobro</span>
             </div>
             <ol class="agent-ranking__list">
                 @foreach (var rank in agentRanking)

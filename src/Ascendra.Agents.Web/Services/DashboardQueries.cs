@@ -237,7 +237,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             agents.TryAdd(id, new RankingAgent(
                 id,
                 fullName,
-                CompactAgentName(fullName),
+                CompactAgentName(directory.FirstName, directory.PaternalSurname),
                 IsCurrentAgent(id, fullName, currentUser)));
         }
 
@@ -290,7 +290,20 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         var firstName = culture.TextInfo.ToTitleCase(tokens[0].ToLower(culture));
         return tokens.Length == 1
             ? firstName
-            : $"{firstName} {char.ToUpper(tokens[1][0], culture)}.";
+            : $"{firstName} {char.ToUpper(tokens[^1][0], culture)}.";
+    }
+
+    private static string CompactAgentName(string firstName, string paternalSurname)
+    {
+        var nameTokens = firstName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var surname = paternalSurname.Trim().FirstOrDefault(char.IsLetter);
+        if (nameTokens.Length == 0) return "Agente";
+
+        var culture = CultureInfo.GetCultureInfo("es-MX");
+        var displayName = culture.TextInfo.ToTitleCase(nameTokens[0].ToLower(culture));
+        return surname == default
+            ? displayName
+            : $"{displayName} {char.ToUpper(surname, culture)}.";
     }
 
     private sealed record RankingAgent(string Id, string MatchName, string DisplayName, bool IsCurrentUser);

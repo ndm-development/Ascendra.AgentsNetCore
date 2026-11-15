@@ -9,7 +9,6 @@
     <div class="whatsapp-heading">
         <p class="eyebrow">WHATSAPP</p>
         <h1>Mensajes de WhatsApp</h1>
-        <p>Selecciona una nomenclatura y confirma el cliente antes de copiar.</p>
         @if (!string.IsNullOrWhiteSpace(Notice)) { <p class="lookup-notice @NoticeTone">@Notice</p> }
     </div>
     <div class="whatsapp-controls">
@@ -73,7 +72,7 @@
     private string TemplateValue { get; set; } = string.Empty;
     private string? SelectedClientId { get; set; }
     private IReadOnlyList<ContactRecord> Candidates { get; set; } = [];
-    private string Notice { get; set; } = "Escribe un número telefónico para localizar al cliente.";
+    private string Notice { get; set; } = string.Empty;
     private string NoticeTone { get; set; } = string.Empty;
     private ContactRecord? Selected => Candidates.FirstOrDefault(x => x.ClientId == SelectedClientId);
     private string Message => Selected is null || string.IsNullOrWhiteSpace(TemplateValue) ? string.Empty : Templates.Build(TemplateValue, Selected, Session.ShortName);
