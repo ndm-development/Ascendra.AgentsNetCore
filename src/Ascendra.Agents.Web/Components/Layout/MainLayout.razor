@@ -43,19 +43,31 @@
                                     </header>
 
                                     <div class="chat-mode" role="tablist" aria-label="Tipo de conversación">
-                                        <button type="button" class="@ChatModeClass(ChatMode.General)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.General)" @onclick="() => SelectChatMode(ChatMode.General)">General</button>
-                                        <button type="button" class="@ChatModeClass(ChatMode.Direct)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Direct)" @onclick="() => SelectChatMode(ChatMode.Direct)">Directo</button>
+                                        <button type="button" class="@ChatModeClass(ChatMode.General)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.General)" @onclick="() => SelectChatMode(ChatMode.General)">
+                                            General
+                                            @if (UnreadGeneralCount > 0)
+                                            {
+                                                <span class="chat-mode__badge">@UnreadGeneralCount</span>
+                                            }
+                                        </button>
+                                        <button type="button" class="@ChatModeClass(ChatMode.Direct)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Direct)" @onclick="() => SelectChatMode(ChatMode.Direct)">
+                                            Directo
+                                            @if (UnreadDirectCount > 0)
+                                            {
+                                                <span class="chat-mode__badge">@UnreadDirectCount</span>
+                                            }
+                                        </button>
                                     </div>
 
                                     @if (CurrentChatMode == ChatMode.Direct)
                                     {
                                         <label class="chat-recipient">
-                                            <span>Enviar a</span>
-                                            <select @bind="SelectedChatRecipient" aria-label="Usuario conectado">
+                                            <span>Conversación con</span>
+                                            <select @bind="SelectedChatRecipient" @bind:after="MarkVisibleChatMessagesRead" aria-label="Usuario conectado">
                                                 <option value="">Selecciona un usuario conectado</option>
-                                                @foreach (var user in AvailableDirectRecipients)
+                                                @foreach (var user in DirectConversationRecipients)
                                                 {
-                                                    <option value="@user.Username">@user.DisplayName</option>
+                                                    <option value="@user.Username">@user.DisplayName@(IsOnline(user) ? string.Empty : " · desconectado")</option>
                                                 }
                                             </select>
                                         </label>
@@ -92,7 +104,7 @@
                                             {
                                                 <span class="chat-composer__error" role="status">@ChatError</span>
                                             }
-                                            <button type="submit" class="chat-send-button">Enviar</button>
+                                            <button type="submit" class="chat-send-button" disabled="@(CurrentChatMode == ChatMode.Direct && !CanSendDirectMessage)">Enviar</button>
                                         </div>
                                     </form>
                                 </aside>
@@ -178,8 +190,7 @@
     private bool IsChatOpen { get; set; }
     private bool ChatRegistered { get; set; }
     private bool IsDisposed { get; set; }
-    private DateTimeOffset ChatReadAt { get; set; } = DateTimeOffset.UtcNow;
-    private int UnreadChatCount { get; set; }
+    private readonly HashSet<Guid> ReadChatMessageIds = [];
     private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
     private string SelectedChatRecipient { get; set; } = string.Empty;
     private string ChatDraft { get; set; } = string.Empty;
@@ -221,6 +232,16 @@
             : ChatState.ConnectedUsers
                 .Where(user => !string.Equals(user.Username, ChatParticipant.Username, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
+    private IReadOnlyList<ChatParticipant> DirectConversationRecipients =>
+        AvailableDirectRecipients
+            .Concat(ChatState.Messages
+                .Where(message => message.Recipient is not null && (IsOwnMessage(message)
+                    || string.Equals(message.Recipient.Username, ChatParticipant?.Username, StringComparison.OrdinalIgnoreCase)))
+                .Select(message => IsOwnMessage(message) ? message.Recipient! : message.Sender))
+            .GroupBy(user => user.Username, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(user => user.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
     private IReadOnlyList<ChatMessage> VisibleChatMessages => CurrentChatMode == ChatMode.General
         ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
         : string.IsNullOrWhiteSpace(SelectedChatRecipient)
@@ -229,19 +250,40 @@
                 && (string.Equals(message.Sender.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(message.Recipient.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
                 .ToArray();
+    private IReadOnlyList<ChatMessage> UnreadIncomingMessages => ChatState.Messages
+        .Where(message => !IsOwnMessage(message) && !ReadChatMessageIds.Contains(message.Id))
+        .ToArray();
+    private int UnreadChatCount => UnreadIncomingMessages.Count;
+    private int UnreadGeneralCount => UnreadIncomingMessages.Count(message => message.Recipient is null);
+    private int UnreadDirectCount => UnreadIncomingMessages.Count(message => message.Recipient is not null);
+    private bool CanSendDirectMessage => AvailableDirectRecipients.Any(user =>
+        string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase));
 
     private void ToggleChatPanel()
     {
         IsChatOpen = !IsChatOpen;
         IsAppearanceMenuOpen = false;
         ChatError = null;
-        if (IsChatOpen) MarkChatRead();
+        if (IsChatOpen)
+        {
+            FocusLatestDirectMessage();
+            MarkVisibleChatMessagesRead();
+        }
     }
 
     private void SelectChatMode(ChatMode mode)
     {
         CurrentChatMode = mode;
         ChatError = null;
+        if (mode == ChatMode.Direct && string.IsNullOrWhiteSpace(SelectedChatRecipient))
+        {
+            FocusLatestDirectMessage();
+            if (string.IsNullOrWhiteSpace(SelectedChatRecipient))
+            {
+                SelectedChatRecipient = AvailableDirectRecipients.FirstOrDefault()?.Username ?? string.Empty;
+            }
+        }
+        MarkVisibleChatMessagesRead();
     }
 
     private string ChatModeClass(ChatMode mode) =>
@@ -267,7 +309,7 @@
 
             ChatDraft = string.Empty;
             ChatError = null;
-            MarkChatRead();
+            MarkVisibleChatMessagesRead();
         }
         catch (InvalidOperationException exception)
         {
@@ -286,7 +328,7 @@
         ChatRegistered = true;
         Chat.Register(ChatConnectionId, ChatParticipant);
         ChatState = Chat.GetState(ChatParticipant);
-        MarkChatRead();
+        ReadChatMessageIds.UnionWith(ChatState.Messages.Select(message => message.Id));
     }
 
     private void OnChatChanged()
@@ -297,29 +339,40 @@
 
             ChatState = Chat.GetState(ChatParticipant);
             if (CurrentChatMode == ChatMode.Direct && !string.IsNullOrWhiteSpace(SelectedChatRecipient)
-                && !AvailableDirectRecipients.Any(user => string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
+                && !DirectConversationRecipients.Any(user => string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
             {
                 SelectedChatRecipient = string.Empty;
             }
 
             if (IsChatOpen)
             {
-                MarkChatRead();
-            }
-            else
-            {
-                UnreadChatCount = ChatState.Messages.Count(message => !IsOwnMessage(message) && message.SentAt > ChatReadAt);
+                MarkVisibleChatMessagesRead();
             }
 
             StateHasChanged();
         });
     }
 
-    private void MarkChatRead()
+    private void MarkVisibleChatMessagesRead()
     {
-        ChatReadAt = DateTimeOffset.UtcNow;
-        UnreadChatCount = 0;
+        if (!IsChatOpen) return;
+        ReadChatMessageIds.UnionWith(VisibleChatMessages.Select(message => message.Id));
     }
+
+    private void FocusLatestDirectMessage()
+    {
+        var latest = UnreadIncomingMessages
+            .Where(message => message.Recipient is not null)
+            .OrderByDescending(message => message.SentAt)
+            .FirstOrDefault();
+        if (latest is null) return;
+
+        CurrentChatMode = ChatMode.Direct;
+        SelectedChatRecipient = latest.Sender.Username;
+    }
+
+    private bool IsOnline(ChatParticipant user) => OnlineChatUsers.Any(online =>
+        string.Equals(online.Username, user.Username, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
