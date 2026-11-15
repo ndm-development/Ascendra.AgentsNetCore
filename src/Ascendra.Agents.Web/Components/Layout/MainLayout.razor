@@ -47,45 +47,40 @@
                                         <span class="chat-panel__presence">@OnlineChatUsers.Count conectados</span>
                                     </header>
 
-                                    <div class="chat-mode" role="tablist" aria-label="Tipo de conversación">
-                                        <button type="button" class="@ChatModeClass(ChatMode.General)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.General)" @onclick="() => SelectChatMode(ChatMode.General)">
-                                            General
-                                            @if (UnreadGeneralCount > 0)
-                                            {
-                                                <span class="chat-mode__badge">@UnreadGeneralCount</span>
-                                            }
-                                        </button>
-                                        <button type="button" class="@ChatModeClass(ChatMode.Private)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Private)" @onclick="() => SelectChatMode(ChatMode.Private)">
-                                            Privado
-                                            @if (UnreadPrivateCount > 0)
-                                            {
-                                                <span class="chat-mode__badge">@UnreadPrivateCount</span>
-                                            }
-                                        </button>
-                                    </div>
-
-                                    @if (CurrentChatMode == ChatMode.Private)
-                                    {
-                                        @if (CanReviewPrivateMessages)
-                                        {
-                                            <p class="chat-review-note">@ChatReviewNote</p>
-                                        }
-                                        <label class="chat-recipient">
-                                            <span>@(CanReviewPrivateMessages ? "Enviar privado a" : "Conversación con")</span>
-                                            <select @bind="SelectedChatRecipient" @bind:after="MarkVisibleChatMessagesRead" aria-label="Usuario conectado">
-                                                <option value="">Selecciona un usuario conectado</option>
-                                                @foreach (var user in PrivateConversationRecipients)
+                                    <section class="chat-recipient-picker" aria-label="Elige a quién escribir">
+                                        <div class="chat-recipient-picker__heading">
+                                            <span>Escribe a</span>
+                                            <small>Elige una persona para mensaje privado</small>
+                                        </div>
+                                        <div class="chat-recipient-rail" role="list">
+                                            <button type="button" class="@ChatRecipientClass(null)" aria-pressed="@(CurrentChatMode == ChatMode.General)" @onclick="SelectGeneralChat">
+                                                <span class="chat-recipient-choice__avatar chat-recipient-choice__avatar--general" aria-hidden="true">✦</span>
+                                                <span>
+                                                    <strong>Equipo</strong>
+                                                    <small>Canal general</small>
+                                                </span>
+                                                @if (UnreadGeneralCount > 0)
                                                 {
-                                                    <option value="@user.Username">@user.DisplayName@(IsOnline(user) ? string.Empty : " · desconectado")</option>
+                                                    <span class="chat-recipient-choice__badge" aria-label="@($"{UnreadGeneralCount} mensaje(s) nuevo(s)")">@UnreadGeneralCount</span>
                                                 }
-                                            </select>
-                                        </label>
-                                    }
+                                            </button>
+                                            @foreach (var user in PrivateConversationRecipients)
+                                            {
+                                                <button type="button" class="@ChatRecipientClass(user.Username)" aria-pressed="@(CurrentChatMode == ChatMode.Private && string.Equals(SelectedChatRecipient, user.Username, StringComparison.OrdinalIgnoreCase))" title="Mensaje privado a @user.DisplayName" @onclick="() => SelectChatRecipient(user.Username)">
+                                                    <span class="chat-recipient-choice__avatar" aria-hidden="true">@ChatParticipantInitials(user)</span>
+                                                    <span>
+                                                        <strong>@ChatRecipientLabel(user)</strong>
+                                                        <small>@(IsOnline(user) ? "En línea" : "Sin conexión")</small>
+                                                    </span>
+                                                </button>
+                                            }
+                                        </div>
+                                    </section>
 
                                     <div class="chat-thread" aria-live="polite">
                                         @if (VisibleChatMessages.Count == 0)
                                         {
-                                            <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : CanReviewPrivateMessages ? "Aún no hay mensajes privados internos." : "Selecciona un usuario para ver y enviar mensajes privados.")</p>
+                                            <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : CanReviewPrivateMessages ? "Aún no hay mensajes privados internos." : "Escribe tu primer mensaje a esta persona.")</p>
                                         }
                                         else
                                         {
@@ -360,24 +355,44 @@
         IsChatEmojiPickerOpen = false;
     }
 
-    private void SelectChatMode(ChatMode mode)
+    private void SelectGeneralChat()
     {
-        CurrentChatMode = mode;
+        CurrentChatMode = ChatMode.General;
+        SelectedChatRecipient = string.Empty;
         ChatError = null;
         IsChatEmojiPickerOpen = false;
-        if (mode == ChatMode.Private && string.IsNullOrWhiteSpace(SelectedChatRecipient))
-        {
-            FocusLatestPrivateMessage();
-            if (string.IsNullOrWhiteSpace(SelectedChatRecipient))
-            {
-                SelectedChatRecipient = AvailableDirectRecipients.FirstOrDefault()?.Username ?? string.Empty;
-            }
-        }
         MarkVisibleChatMessagesRead();
     }
 
-    private string ChatModeClass(ChatMode mode) =>
-        CurrentChatMode == mode ? "chat-mode__option chat-mode__option--selected" : "chat-mode__option";
+    private void SelectChatRecipient(string username)
+    {
+        CurrentChatMode = ChatMode.Private;
+        SelectedChatRecipient = username;
+        ChatError = null;
+        IsChatEmojiPickerOpen = false;
+        MarkVisibleChatMessagesRead();
+    }
+
+    private string ChatRecipientClass(string? username) =>
+        username is null
+            ? CurrentChatMode == ChatMode.General
+                ? "chat-recipient-choice chat-recipient-choice--selected chat-recipient-choice--general"
+                : "chat-recipient-choice chat-recipient-choice--general"
+            : CurrentChatMode == ChatMode.Private && string.Equals(SelectedChatRecipient, username, StringComparison.OrdinalIgnoreCase)
+                ? "chat-recipient-choice chat-recipient-choice--selected"
+                : "chat-recipient-choice";
+
+    private static string ChatParticipantInitials(ChatParticipant user)
+    {
+        var parts = user.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
+    }
+
+    private static string ChatRecipientLabel(ChatParticipant user)
+    {
+        var parts = user.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length < 2 ? user.DisplayName : $"{parts[0]} {char.ToUpperInvariant(parts[^1][0])}.";
+    }
 
     private bool IsOwnMessage(ChatMessage message) => ChatParticipant is not null
         && string.Equals(message.Sender.Username, ChatParticipant.Username, StringComparison.OrdinalIgnoreCase);
@@ -488,6 +503,7 @@
                 && !PrivateConversationRecipients.Any(user => string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
             {
                 SelectedChatRecipient = string.Empty;
+                CurrentChatMode = ChatMode.General;
             }
 
             if (IsChatOpen)
