@@ -186,7 +186,10 @@
 
                 <nav class="main-tabs glass-card" aria-label="Módulos principales">
                     <NavLink href="/referencias" class="nav-tab">Referencias</NavLink>
-                    <NavLink href="/whatsapp" class="nav-tab">WhatsApp</NavLink>
+                    @if (!Session.HasFullAccess)
+                    {
+                        <NavLink href="/whatsapp" class="nav-tab">WhatsApp</NavLink>
+                    }
                     @if (Session.HasFullAccess)
                     {
                         <NavLink href="/equipo" class="nav-tab">Equipo</NavLink>

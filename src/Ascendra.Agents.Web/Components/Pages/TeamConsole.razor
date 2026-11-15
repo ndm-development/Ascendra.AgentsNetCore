@@ -13,7 +13,7 @@
     var totalRecovery = teamPayments.Sum(payment => payment.Recovery);
     var promisesExportUrl = TeamExportUrl("promises");
     var paymentsExportUrl = TeamExportUrl("payments");
-    var activeAgents = scope.Payments.Select(payment => payment.Agent)
+    var activeAgents = scope.Payments.Where(payment => !IsOrganicPayment(payment)).Select(payment => payment.Agent)
         .Concat(scope.Promises.Select(promise => promise.Agent))
         .Where(agent => !string.IsNullOrWhiteSpace(agent))
         .Distinct(StringComparer.OrdinalIgnoreCase)

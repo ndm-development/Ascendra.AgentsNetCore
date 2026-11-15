@@ -5,6 +5,17 @@
 @inject WhatsAppTemplateCatalog Templates
 @inject IJSRuntime JS
 
+@if (Session.HasFullAccess)
+{
+    <section class="empty-state glass-card">
+        <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
+        <h1>WhatsApp está disponible sólo para agentes</h1>
+        <p>Tu espacio de trabajo es la consola de equipo, donde puedes revisar los comunicados, pagos y promesas.</p>
+        <a class="primary-button" href="/equipo">Abrir consola de equipo</a>
+    </section>
+}
+else
+{
 <section class="whatsapp-hero glass-card">
     <div class="whatsapp-heading">
         <h1>Mensajes de WhatsApp</h1>
@@ -64,6 +75,7 @@
             <textarea readonly aria-label="Mensaje listo para copiar">@Message</textarea>
         </article>
     </section>
+}
 }
 
 @code {
