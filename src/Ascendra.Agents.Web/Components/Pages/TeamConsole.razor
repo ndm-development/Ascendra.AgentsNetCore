@@ -11,6 +11,8 @@
     var teamPayments = FilterPayments(scope).ToArray();
     var teamPromises = FilterPromises(scope).ToArray();
     var totalRecovery = teamPayments.Sum(payment => payment.Recovery);
+    var promisesExportUrl = TeamExportUrl("promises");
+    var paymentsExportUrl = TeamExportUrl("payments");
     var activeAgents = scope.Payments.Select(payment => payment.Agent)
         .Concat(scope.Promises.Select(promise => promise.Agent))
         .Where(agent => !string.IsNullOrWhiteSpace(agent))
@@ -23,7 +25,6 @@
         <div>
             <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
             <h1>Centro de coordinación</h1>
-            <p>Comunicación interna, promesas y pagos del equipo en una sola vista.</p>
         </div>
         <div class="team-console__summary" aria-label="Resumen de la semana">
             <span><strong>@activeAgents</strong> agentes</span>
@@ -107,7 +108,7 @@
 
                 <form class="team-chat__composer" @onsubmit="SendMessageAsync" @onsubmit:preventDefault="true">
                     <label for="team-chat-message">Nuevo mensaje</label>
-                    <textarea id="team-chat-message" @bind="Draft" maxlength="500" rows="8" placeholder="Escribe un comunicado o mensaje privado…"></textarea>
+                    <textarea id="team-chat-message" @bind="Draft" maxlength="500" rows="5" placeholder="Escribe un comunicado o mensaje privado…"></textarea>
                     @if (PendingAttachment is not null)
                     {
                         <div class="team-chat__attachment">
@@ -151,6 +152,14 @@
                 <label for="team-client">Cliente único</label>
                 <input id="team-client" @bind="ClientQuery" @bind:event="oninput" placeholder="Buscar cliente" />
             </div>
+            <div class="field">
+                <label for="team-start">Fecha inicial</label>
+                <input id="team-start" type="date" @bind="StartDate" />
+            </div>
+            <div class="field">
+                <label for="team-end">Fecha final</label>
+                <input id="team-end" type="date" @bind="EndDate" />
+            </div>
             @if (ActiveSection == TeamSection.Promises)
             {
                 <div class="field">
@@ -161,13 +170,24 @@
                     </select>
                 </div>
             }
+            else
+            {
+                <div class="field">
+                    <label for="team-payment-origin">Clasificación</label>
+                    <select id="team-payment-origin" @bind="SelectedPaymentOrigin">
+                        <option value="">Equipo y orgánico</option>
+                        <option value="equipo">Equipo</option>
+                        <option value="organico">Orgánico</option>
+                    </select>
+                </div>
+            }
             <button type="button" class="secondary-button filter-reset" @onclick="ClearFilters">Limpiar filtros</button>
         </section>
 
         @if (ActiveSection == TeamSection.Promises)
         {
             <section class="table-card glass-card team-console__table">
-                <div class="result-heading"><div><p class="eyebrow">SEGUIMIENTO DEL EQUIPO</p><h2>Promesas · Semana @_week</h2></div><p>@teamPromises.Length registros visibles</p></div>
+                <div class="result-heading"><div><p class="eyebrow">SEGUIMIENTO DEL EQUIPO</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros visibles</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
                 <div class="table-wrap"><table class="promise-table"><thead><tr><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Estatus</th></tr></thead><tbody>
                     @foreach (var row in teamPromises.Take(400))
                     { <tr><td>@row.Agent</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td><span class="promise-status @StatusClass(row.Status)">@row.Status</span></td></tr> }
@@ -177,10 +197,10 @@
         else
         {
             <section class="table-card glass-card team-console__table">
-                <div class="result-heading"><div><p class="eyebrow">COBRANZA DEL EQUIPO</p><h2>Pagos · Semana @_week</h2></div><p>@teamPayments.Length pagos · @DashboardQueries.Currency(totalRecovery)</p></div>
-                <div class="table-wrap"><table><thead><tr><th>Agente</th><th>Fecha</th><th>Cliente único</th><th>Cliente</th><th>Producto</th><th>Pago recibido</th></tr></thead><tbody>
+                <div class="result-heading"><div><p class="eyebrow">COBRANZA DEL EQUIPO</p><h2>Pagos · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPayments.Length pagos · @DashboardQueries.Currency(totalRecovery)</p><a class="secondary-button collection-export-button" href="@paymentsExportUrl" download><span aria-hidden="true">↓</span> Descargar pagos</a></div></div>
+                <div class="table-wrap"><table><thead><tr><th>Agente</th><th>Fecha</th><th>Cliente único</th><th>Cliente</th><th>Producto</th><th>Clasificación</th><th>Pago recibido</th></tr></thead><tbody>
                     @foreach (var row in teamPayments.OrderByDescending(payment => payment.ReceivedOn).Take(400))
-                    { <tr><td>@row.Agent</td><td>@(row.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.Product</td><td>@DashboardQueries.Currency(row.Recovery)</td></tr> }
+                    { <tr><td>@row.Agent</td><td>@(row.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.Product</td><td><span class="promise-status @(IsOrganicPayment(row) ? "promise-status--open" : "promise-status--neutral")">@(IsOrganicPayment(row) ? "Orgánico" : "Equipo")</span></td><td>@DashboardQueries.Currency(row.Recovery)</td></tr> }
                 </tbody></table></div>
             </section>
         }
@@ -205,6 +225,9 @@
     private string ClientQuery { get; set; } = string.Empty;
     private string SelectedAgent { get; set; } = string.Empty;
     private string SelectedStatus { get; set; } = string.Empty;
+    private string SelectedPaymentOrigin { get; set; } = string.Empty;
+    private DateOnly? StartDate { get; set; }
+    private DateOnly? EndDate { get; set; }
 
     private IReadOnlyList<ChatParticipant> OnlineUsers => ChatState.ConnectedUsers;
     private IReadOnlyList<ChatParticipant> AvailableRecipients => Participant is null ? [] : OnlineUsers
@@ -221,11 +244,22 @@
         _ => "",
     };
 
+    private bool HasDateRange => StartDate is not null || EndDate is not null;
+    private string PeriodLabel => HasDateRange
+        ? $"{StartDate?.ToString("dd/MM/yyyy") ?? "Inicio"} — {EndDate?.ToString("dd/MM/yyyy") ?? "Hoy"}"
+        : $"Semana {_week}";
     private IEnumerable<PaymentRecord> FilterPayments(ScopedOperations scope) => scope.Payments.Where(payment =>
-        payment.Week == _week
-        && (string.IsNullOrWhiteSpace(SelectedAgent) || payment.Agent.Equals(SelectedAgent, StringComparison.OrdinalIgnoreCase)));
+        (!HasDateRange || payment.ReceivedOn is not null)
+        && (!HasDateRange || StartDate is null || payment.ReceivedOn >= StartDate)
+        && (!HasDateRange || EndDate is null || payment.ReceivedOn <= EndDate)
+        && (HasDateRange || payment.Week == _week)
+        && (string.IsNullOrWhiteSpace(SelectedAgent) || payment.Agent.Equals(SelectedAgent, StringComparison.OrdinalIgnoreCase))
+        && (string.IsNullOrWhiteSpace(SelectedPaymentOrigin)
+            || SelectedPaymentOrigin == "organico" && IsOrganicPayment(payment)
+            || SelectedPaymentOrigin == "equipo" && !IsOrganicPayment(payment)));
     private IEnumerable<PromiseRecord> FilterPromises(ScopedOperations scope) => Queries.FilterPromises(
-        scope, null, null, SelectedAgent, null, SelectedStatus, null, null, null, null, _week);
+        scope, null, null, SelectedAgent, null, SelectedStatus, StartDate, EndDate, null, null,
+        HasDateRange ? null : _week);
     private string TabClass(TeamSection section) => ActiveSection == section ? "is-selected" : string.Empty;
     private string MessageModeClass(ChatMode mode) => CurrentChatMode == mode ? "is-selected" : string.Empty;
     private bool IsOwnMessage(ChatMessage message) => Participant is not null && string.Equals(message.Sender.Username, Participant.Username, StringComparison.OrdinalIgnoreCase);
@@ -307,7 +341,28 @@
         ClientQuery = string.Empty;
         SelectedAgent = string.Empty;
         SelectedStatus = string.Empty;
+        SelectedPaymentOrigin = string.Empty;
+        StartDate = null;
+        EndDate = null;
     }
+
+    private string TeamExportUrl(string kind)
+    {
+        var query = new List<string>
+        {
+            $"week={_week}",
+            $"client={Uri.EscapeDataString(ClientQuery)}",
+            $"agent={Uri.EscapeDataString(SelectedAgent)}",
+        };
+        if (StartDate is not null) query.Add($"start={StartDate:yyyy-MM-dd}");
+        if (EndDate is not null) query.Add($"end={EndDate:yyyy-MM-dd}");
+        if (kind == "promises") query.Add($"status={Uri.EscapeDataString(SelectedStatus)}");
+        else query.Add($"origin={Uri.EscapeDataString(SelectedPaymentOrigin)}");
+        return $"/exports/team/{kind}?{string.Join('&', query)}";
+    }
+
+    private static bool IsOrganicPayment(PaymentRecord payment) =>
+        TextNormalization.IsOrganic(payment.Agent) || TextNormalization.IsOrganic(payment.AssignmentType);
 
     protected override void OnAfterRender(bool firstRender)
     {

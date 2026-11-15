@@ -12,15 +12,16 @@ public sealed class ExcelExportService
     {
         var headers = new[]
         {
-            "ID de agente", "Fecha de pago", "Cliente único", "Nombre del cliente",
-            "Producto", "Pago recibido", "Semana", "Día de la semana",
+            "Agente", "ID de agente", "Fecha de pago", "Cliente único", "Nombre del cliente",
+            "Producto", "Pago recibido", "Semana", "Día de la semana", "Tipo de asignación", "Clasificación",
         };
         var rows = payments.Select(payment => new object?[]
         {
-            payment.AgentId, payment.ReceivedOn, payment.ClientId, payment.ClientName,
-            payment.Product, payment.Recovery, payment.Week, payment.Day,
+            payment.Agent, payment.AgentId, payment.ReceivedOn, payment.ClientId, payment.ClientName,
+            payment.Product, payment.Recovery, payment.Week, payment.Day, payment.AssignmentType,
+            TextNormalization.IsOrganic(payment.Agent) || TextNormalization.IsOrganic(payment.AssignmentType) ? "Orgánico" : "Equipo",
         });
-        return Create("Pagos", headers, rows, moneyColumns: new HashSet<int> { 6 });
+        return Create("Pagos", headers, rows, moneyColumns: new HashSet<int> { 7 });
     }
 
     public byte[] Promises(IReadOnlyList<PromiseRecord> promises)

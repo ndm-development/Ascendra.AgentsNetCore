@@ -49,7 +49,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     /// este alcance aunque intente abrir la ruta de forma directa.
     /// </summary>
     public ScopedOperations TeamScope() => session.HasFullAccess
-        ? BuildScope(Snapshot.Payments, Snapshot.Promises, Snapshot.Portfolio)
+        ? BuildScope(Snapshot.Payments.Concat(Snapshot.OrganicPayments).ToArray(), Snapshot.Promises, Snapshot.Portfolio)
         : new ScopedOperations([], [], [], []);
 
     /// <summary>Aplica el buscador de cliente que comparten Mi recuperación y Mis promesas.</summary>

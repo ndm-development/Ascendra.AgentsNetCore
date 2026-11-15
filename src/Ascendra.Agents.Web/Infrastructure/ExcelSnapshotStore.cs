@@ -66,8 +66,11 @@ public sealed class ExcelSnapshotStore(
         var warnings = new List<string>();
         var users = ReadOptional(paths.Input("usuarios_ascendra.xlsx"), ReadUsers, warnings);
         var directory = ReadOptional(paths.Input("agentes_activos.xlsx"), ReadAgentDirectory, warnings);
-        var payments = ReadOptional(paths.Input("agents_collections.xlsx"), ReadPayments, warnings)
-            .Where(x => !TextNormalization.IsOrganic(x.Agent)).ToArray();
+        var loadedPayments = ReadOptional(paths.Input("agents_collections.xlsx"), ReadPayments, warnings);
+        // Se separa la cobranza orgánica para que sólo la consola de equipo
+        // pueda consultarla: nunca se mezcla con la vista personal del agente.
+        var payments = loadedPayments.Where(x => !IsOrganicPayment(x)).ToArray();
+        var organicPayments = loadedPayments.Where(IsOrganicPayment).ToArray();
         var promises = ReadOptional(paths.Input("promesas_estatus.xlsx"), ReadPromises, warnings)
             .Where(x => !TextNormalization.IsOrganic(x.Agent)).ToArray();
         var portfolio = ReadOptional(paths.Input("Descarga_cartera.xlsx"), ReadPortfolio, warnings);
@@ -77,12 +80,17 @@ public sealed class ExcelSnapshotStore(
             DateTimeOffset.Now,
             users,
             payments,
+            organicPayments,
             promises,
             portfolio,
             contacts,
             directory,
             warnings);
     }
+
+    private static bool IsOrganicPayment(PaymentRecord payment) =>
+        TextNormalization.IsOrganic(payment.Agent)
+        || TextNormalization.IsOrganic(payment.AssignmentType);
 
     private static IReadOnlyList<T> ReadOptional<T>(string path, Func<string, IReadOnlyList<T>> read, ICollection<string> warnings)
     {

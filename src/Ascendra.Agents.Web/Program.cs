@@ -230,6 +230,72 @@ app.MapGet("/exports/promises", (
     var content = exports.Promises(queries.PromiseExport(scope, selectedWeek, status, metric, day, segment));
     return Results.File(content, ExcelExportService.ExcelContentType, $"mis_promesas_semana_{selectedWeek}.xlsx");
 }).RequireAuthorization();
+
+// Exportaciones de equipo: el alcance se vuelve a validar en el servidor para
+// que un agente no pueda obtener datos de terceros mediante una URL directa.
+app.MapGet("/exports/team/payments", (
+    HttpContext context,
+    DashboardSession session,
+    DashboardQueries queries,
+    ExcelExportService exports,
+    int? week,
+    string? client,
+    string? agent,
+    DateOnly? start,
+    DateOnly? end,
+    string? origin) =>
+{
+    session.Apply(context.User);
+    if (!session.HasFullAccess) return Results.Forbid();
+    if (start is not null && end is not null && start > end)
+        return Results.BadRequest("La fecha inicial no puede ser posterior a la fecha final.");
+
+    var scope = queries.FilterByClient(queries.TeamScope(), client);
+    var useDateRange = start is not null || end is not null;
+    var selectedWeek = week is > 0 ? week.Value : queries.CurrentWeek(scope);
+    var classification = TextNormalization.Normalize(origin);
+    var payments = scope.Payments
+        .Where(payment => (!useDateRange || payment.ReceivedOn is not null)
+            && (!useDateRange || start is null || payment.ReceivedOn >= start)
+            && (!useDateRange || end is null || payment.ReceivedOn <= end)
+            && (useDateRange || payment.Week == selectedWeek)
+            && (string.IsNullOrWhiteSpace(agent) || payment.Agent.Equals(agent, StringComparison.OrdinalIgnoreCase))
+            && (classification.Length == 0
+                || classification == "organico" && (TextNormalization.IsOrganic(payment.Agent) || TextNormalization.IsOrganic(payment.AssignmentType))
+                || classification == "equipo" && !TextNormalization.IsOrganic(payment.Agent) && !TextNormalization.IsOrganic(payment.AssignmentType)))
+        .OrderByDescending(payment => payment.ReceivedOn)
+        .ThenBy(payment => payment.ClientId, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    var content = exports.Payments(payments);
+    return Results.File(content, ExcelExportService.ExcelContentType, "pagos_equipo.xlsx");
+}).RequireAuthorization();
+
+app.MapGet("/exports/team/promises", (
+    HttpContext context,
+    DashboardSession session,
+    DashboardQueries queries,
+    ExcelExportService exports,
+    int? week,
+    string? client,
+    string? agent,
+    string? status,
+    DateOnly? start,
+    DateOnly? end) =>
+{
+    session.Apply(context.User);
+    if (!session.HasFullAccess) return Results.Forbid();
+    if (start is not null && end is not null && start > end)
+        return Results.BadRequest("La fecha inicial no puede ser posterior a la fecha final.");
+
+    var scope = queries.FilterByClient(queries.TeamScope(), client);
+    var useDateRange = start is not null || end is not null;
+    var selectedWeek = week is > 0 ? week.Value : queries.CurrentWeek(scope);
+    var promises = queries.FilterPromises(
+        scope, null, null, agent, null, status, start, end, null, null,
+        useDateRange ? null : selectedWeek);
+    var content = exports.Promises(promises);
+    return Results.File(content, ExcelExportService.ExcelContentType, "promesas_equipo.xlsx");
+}).RequireAuthorization();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();
