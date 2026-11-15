@@ -93,48 +93,53 @@ window.ascendraCharts = {
     if (shell?.classList.contains('theme-sierra')) {
       return { ink: '#20362f', axis: '#20362f', muted: '#5b7168', grid: 'rgba(47, 78, 67, .18)', hoverBackground: 'rgba(26, 53, 47, .95)', hoverBorder: 'rgba(233, 211, 157, .56)', hoverInk: '#fffdf7' };
     }
+    if (shell?.classList.contains('theme-aurora')) {
+      return { ink: '#eefbff', axis: '#effdff', muted: '#c4ddea', grid: 'rgba(158, 218, 238, .19)', hoverBackground: 'rgba(6, 22, 43, .96)', hoverBorder: 'rgba(153, 238, 222, .45)', hoverInk: '#f6ffff' };
+    }
+    if (shell?.classList.contains('theme-oceano')) {
+      return { ink: '#effbff', axis: '#f0fdff', muted: '#c1dde8', grid: 'rgba(151, 219, 230, .19)', hoverBackground: 'rgba(4, 30, 52, .96)', hoverBorder: 'rgba(129, 230, 233, .42)', hoverInk: '#f5ffff' };
+    }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
   dataForTheme: (data, target) => {
     const isPink = Boolean(target.closest('.theme-pink'));
     const isSierra = Boolean(target.closest('.theme-sierra'));
-    if (!isPink && !isSierra) return data;
-    const statusPalette = isSierra ? {
-      Vigentes: '#6d9ed4',
-      Activas: '#67ad8d',
-      Incumplidas: '#b97878',
-      Robadas: '#d2a449',
-      Duplicadas: '#9981be'
-    } : {
-      Vigentes: '#99bbed',
-      Activas: '#8ecba7',
-      Incumplidas: '#ae90dc',
-      Robadas: '#e2bd47',
-      Duplicadas: '#9c86cf'
-    };
-    const recoveryPalette = isSierra ? {
-      '#1f9b72': '#67ad8d',
-      '#c38d25': '#d2a449',
-      '#c74857': '#b97878',
-      'rgba(124,145,169,.48)': 'rgba(119, 143, 132, .46)'
-    } : {
-      '#1f9b72': '#8ecba7',
-      '#c38d25': '#e2bd47',
-      '#c74857': '#ae90dc',
-      'rgba(124,145,169,.48)': 'rgba(161, 151, 180, .45)'
-    };
+    const isAurora = Boolean(target.closest('.theme-aurora'));
+    const isOceano = Boolean(target.closest('.theme-oceano'));
+    const palette = isSierra ? {
+      status: { Vigentes: '#6d9ed4', Activas: '#67ad8d', Incumplidas: '#b97878', Robadas: '#d2a449', Duplicadas: '#9981be' },
+      recovery: { '#1f9b72': '#67ad8d', '#c38d25': '#d2a449', '#c74857': '#b97878', 'rgba(124,145,169,.48)': 'rgba(119, 143, 132, .46)' },
+      line: 'rgba(255,250,239,.70)',
+      externalText: '#20362f'
+    } : isPink ? {
+      status: { Vigentes: '#99bbed', Activas: '#8ecba7', Incumplidas: '#ae90dc', Robadas: '#e2bd47', Duplicadas: '#9c86cf' },
+      recovery: { '#1f9b72': '#8ecba7', '#c38d25': '#e2bd47', '#c74857': '#ae90dc', 'rgba(124,145,169,.48)': 'rgba(161, 151, 180, .45)' },
+      line: 'rgba(255,255,255,.72)',
+      externalText: '#281735'
+    } : isAurora ? {
+      status: { Vigentes: '#7bbdf4', Activas: '#65d9c1', Incumplidas: '#bf8bd7', Robadas: '#9e97e5', Duplicadas: '#89a5e2' },
+      recovery: { '#1f9b72': '#65d9c1', '#c38d25': '#8da8f5', '#c74857': '#bf8bd7', 'rgba(124,145,169,.48)': 'rgba(130, 160, 198, .42)' },
+      line: 'rgba(218,253,252,.64)',
+      externalText: '#effdff'
+    } : isOceano ? {
+      status: { Vigentes: '#62bddd', Activas: '#55c9b7', Incumplidas: '#6b93c5', Robadas: '#78a8d1', Duplicadas: '#789dd4' },
+      recovery: { '#1f9b72': '#55c9b7', '#c38d25': '#4fa6cf', '#c74857': '#678bc3', 'rgba(124,145,169,.48)': 'rgba(120, 176, 195, .38)' },
+      line: 'rgba(220,253,255,.62)',
+      externalText: '#f0fdff'
+    } : null;
+    if (!palette) return data;
     return data.map(trace => {
       if (trace?.type !== 'bar' || !trace.marker) return trace;
-      const statusColor = statusPalette[trace.name];
+      const statusColor = palette.status[trace.name];
       const color = statusColor
         ? statusColor
         : Array.isArray(trace.marker.color)
-          ? trace.marker.color.map(value => recoveryPalette[value] ?? value)
+          ? trace.marker.color.map(value => palette.recovery[value] ?? value)
           : trace.marker.color;
       return {
         ...trace,
-        ...(isPink ? { textfont: { ...(trace.textfont || {}), color: '#281735' } } : {}),
-        marker: { ...trace.marker, color, line: { ...(trace.marker.line || {}), color: isSierra ? 'rgba(255,250,239,.70)' : 'rgba(255,255,255,.72)' } }
+        ...(trace.textposition === 'outside' ? { textfont: { ...(trace.textfont || {}), color: palette.externalText } } : {}),
+        marker: { ...trace.marker, color, line: { ...(trace.marker.line || {}), color: palette.line } }
       };
     });
   },

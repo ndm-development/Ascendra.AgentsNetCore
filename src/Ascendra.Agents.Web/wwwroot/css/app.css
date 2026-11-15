@@ -343,6 +343,45 @@ button { cursor: pointer; }
 .theme-sierra .table-wrap { background: rgba(252,249,240,.055); }
 .theme-sierra th { background: rgba(255,252,244,.11); }
 
+/* Aurora y Océano comparten una base oscura, pero cada uno conserva un matiz
+   propio. Así los módulos con fondos heredados no interrumpen la composición. */
+.theme-aurora .weekly-pulse,
+.theme-aurora .compliance-summary {
+  background: radial-gradient(circle at 92% 0, rgba(102, 223, 202, .11), transparent 33%), linear-gradient(135deg, rgba(18, 44, 77, .76), rgba(7, 24, 48, .64));
+}
+.theme-oceano .weekly-pulse,
+.theme-oceano .compliance-summary {
+  background: radial-gradient(circle at 92% 0, rgba(98, 208, 213, .11), transparent 33%), linear-gradient(135deg, rgba(11, 60, 87, .77), rgba(4, 33, 59, .65));
+}
+.theme-aurora .weekly-pulse__bonus { border-left-color: rgba(189, 235, 247, .22); }
+.theme-oceano .weekly-pulse__bonus { border-left-color: rgba(183, 231, 240, .22); }
+.theme-aurora .progress-track { background: rgba(145, 211, 233, .14); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .24); }
+.theme-oceano .progress-track { background: rgba(145, 219, 229, .15); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .25); }
+.theme-aurora .progress-track span { background: linear-gradient(90deg, #7d93ef, #64d8bf); }
+.theme-oceano .progress-track span { background: linear-gradient(90deg, #4f9fc9, #56cfbc); }
+.theme-aurora .agent-ranking__row { background: rgba(11, 36, 64, .40); box-shadow: inset 0 1px rgba(225, 252, 255, .12); }
+.theme-oceano .agent-ranking__row { background: rgba(7, 46, 70, .42); box-shadow: inset 0 1px rgba(224, 253, 255, .11); }
+.theme-aurora .agent-ranking__row--current { background: linear-gradient(135deg, rgba(105, 180, 187, .22), rgba(14, 43, 71, .46)); }
+.theme-oceano .agent-ranking__row--current { background: linear-gradient(135deg, rgba(83, 182, 190, .23), rgba(7, 47, 72, .48)); }
+.theme-aurora .compliance-score { --compliance-track: rgba(191, 222, 242, .14); background: radial-gradient(circle at 32% 24%, rgba(173, 238, 237, .13), transparent 48%), rgba(9, 30, 55, .35); border-color: rgba(204, 241, 252, .24); }
+.theme-oceano .compliance-score { --compliance-track: rgba(185, 231, 238, .14); background: radial-gradient(circle at 32% 24%, rgba(121, 221, 224, .13), transparent 48%), rgba(5, 38, 63, .36); border-color: rgba(198, 239, 245, .24); }
+.theme-aurora .compliance-score::after { border-color: rgba(205, 240, 251, .16); background: linear-gradient(145deg, rgba(18, 49, 78, .80), rgba(7, 22, 44, .58)); box-shadow: inset 0 1px rgba(255, 255, 255, .08); }
+.theme-oceano .compliance-score::after { border-color: rgba(197, 239, 244, .16); background: linear-gradient(145deg, rgba(11, 62, 87, .80), rgba(4, 31, 56, .58)); box-shadow: inset 0 1px rgba(255, 255, 255, .08); }
+.theme-aurora .compliance-metric { background: rgba(12, 42, 69, .39); border-color: rgba(183, 231, 244, .20); }
+.theme-oceano .compliance-metric { background: rgba(8, 56, 81, .40); border-color: rgba(178, 229, 238, .20); }
+.theme-aurora .table-wrap { background: rgba(5, 17, 39, .18); }
+.theme-oceano .table-wrap { background: rgba(4, 28, 49, .20); }
+.theme-aurora th { background: rgba(70, 124, 154, .14); }
+.theme-oceano th { background: rgba(74, 145, 165, .13); }
+.theme-aurora .client-choice,
+.theme-oceano .client-choice { background: color-mix(in srgb, var(--glass-control) 32%, transparent); }
+.theme-aurora .client-choice:hover,
+.theme-aurora .client-choice--selected,
+.theme-oceano .client-choice:hover,
+.theme-oceano .client-choice--selected { background: color-mix(in srgb, var(--glass-control) 58%, transparent); }
+.theme-aurora .primary-button { border-color: rgba(190, 248, 242, .45); background: linear-gradient(135deg, #6989e6, #4c72bd 57%, #55c9b5); box-shadow: 0 11px 23px rgba(5, 22, 55, .30), inset 0 1px rgba(255, 255, 255, .30); }
+.theme-oceano .primary-button { border-color: rgba(184, 239, 243, .44); background: linear-gradient(135deg, #3c91c5, #276b99 57%, #4fbea9); box-shadow: 0 11px 23px rgba(2, 23, 45, .31), inset 0 1px rgba(255, 255, 255, .28); }
+
 /* Densidad operativa: replica el ritmo más compacto de la versión Dash sin
    reducir la talla de lectura. Se contraen superficies y espacios, no datos. */
 .page-content { padding-bottom: 32px; }
