@@ -17,7 +17,7 @@ public sealed class ExcelSnapshotStore(
 {
     private readonly object _refreshLock = new();
     private AgentDataSnapshot _current = AgentDataSnapshot.Empty;
-    private DataHealth _health = new(false, "Deposita los Excel de entrada para iniciar el dashboard.", null, "pending");
+    private DataHealth _health = new(false, "Estamos preparando el corte de trabajo…", null, "pending");
     private string? _lastFingerprint;
 
     public AgentDataSnapshot Current => Volatile.Read(ref _current);

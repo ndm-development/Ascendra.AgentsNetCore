@@ -24,6 +24,7 @@ if (!string.IsNullOrWhiteSpace(dataProtectionPath))
 
 builder.Services.Configure<AgentDataOptions>(builder.Configuration.GetSection("Data"));
 builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection("Security"));
+builder.Services.Configure<ChatOptions>(builder.Configuration.GetSection(ChatOptions.SectionName));
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
@@ -127,7 +128,8 @@ app.UseRateLimiter();
 app.MapPost("/account/login", async (
     HttpContext context,
     IAntiforgery antiforgery,
-    AgentAuthenticator authenticator) =>
+    AgentAuthenticator authenticator,
+    ExcelSnapshotStore snapshots) =>
 {
     await antiforgery.ValidateRequestAsync(context);
     var form = await context.Request.ReadFormAsync();
@@ -135,10 +137,18 @@ app.MapPost("/account/login", async (
     var password = form["password"].ToString();
     var returnUrl = form["returnUrl"].ToString();
 
+    // Tras un despliegue, el corte se vuelve a cargar en memoria. Si un agente
+    // intenta ingresar en esa breve ventana, lo cargamos aquí mismo en vez de
+    // rechazar sus credenciales y obligarlo a recargar la página.
+    if (!snapshots.Health.IsReady)
+    {
+        await snapshots.RefreshAsync(context.RequestAborted);
+    }
+
     var user = authenticator.Authenticate(username, password);
     if (user is null)
     {
-        return Results.Redirect("/login?error=1");
+        return Results.Redirect(snapshots.Health.IsReady ? "/login?error=1" : "/login?starting=1");
     }
 
     var claims = new List<Claim>

@@ -37,7 +37,7 @@
                                         <div>
                                             <p class="eyebrow">EN LÍNEA</p>
                                             <h2>Chat</h2>
-                                            <span>Los mensajes se eliminan en 24 h.</span>
+                                            <span>Los mensajes se eliminan en 7 días.</span>
                                         </div>
                                         <span class="chat-panel__presence">@OnlineChatUsers.Count conectados</span>
                                     </header>
@@ -50,22 +50,26 @@
                                                 <span class="chat-mode__badge">@UnreadGeneralCount</span>
                                             }
                                         </button>
-                                        <button type="button" class="@ChatModeClass(ChatMode.Direct)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Direct)" @onclick="() => SelectChatMode(ChatMode.Direct)">
-                                            Directo
-                                            @if (UnreadDirectCount > 0)
+                                        <button type="button" class="@ChatModeClass(ChatMode.Private)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Private)" @onclick="() => SelectChatMode(ChatMode.Private)">
+                                            Privado
+                                            @if (UnreadPrivateCount > 0)
                                             {
-                                                <span class="chat-mode__badge">@UnreadDirectCount</span>
+                                                <span class="chat-mode__badge">@UnreadPrivateCount</span>
                                             }
                                         </button>
                                     </div>
 
-                                    @if (CurrentChatMode == ChatMode.Direct)
+                                    @if (CurrentChatMode == ChatMode.Private)
                                     {
+                                        @if (CanReviewPrivateMessages)
+                                        {
+                                            <p class="chat-review-note">@ChatReviewNote</p>
+                                        }
                                         <label class="chat-recipient">
-                                            <span>Conversación con</span>
+                                            <span>@(CanReviewPrivateMessages ? "Enviar privado a" : "Conversación con")</span>
                                             <select @bind="SelectedChatRecipient" @bind:after="MarkVisibleChatMessagesRead" aria-label="Usuario conectado">
                                                 <option value="">Selecciona un usuario conectado</option>
-                                                @foreach (var user in DirectConversationRecipients)
+                                                @foreach (var user in PrivateConversationRecipients)
                                                 {
                                                     <option value="@user.Username">@user.DisplayName@(IsOnline(user) ? string.Empty : " · desconectado")</option>
                                                 }
@@ -76,7 +80,7 @@
                                     <div class="chat-thread" aria-live="polite">
                                         @if (VisibleChatMessages.Count == 0)
                                         {
-                                            <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : "Selecciona un usuario para ver y enviar mensajes directos.")</p>
+                                            <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : CanReviewPrivateMessages ? "Aún no hay mensajes privados internos." : "Selecciona un usuario para ver y enviar mensajes privados.")</p>
                                         }
                                         else
                                         {
@@ -87,7 +91,7 @@
                                                         <strong>@(IsOwnMessage(message) ? "Tú" : message.Sender.DisplayName)</strong>
                                                         @if (message.Recipient is not null)
                                                         {
-                                                            <span>para @(IsOwnMessage(message) ? message.Recipient.DisplayName : "ti")</span>
+                                                            <span>para @RecipientLabel(message)</span>
                                                         }
                                                         <time datetime="@message.SentAt.ToString("O")">@message.SentAt.ToLocalTime().ToString("HH:mm")</time>
                                                     </div>
@@ -104,7 +108,7 @@
                                             {
                                                 <span class="chat-composer__error" role="status">@ChatError</span>
                                             }
-                                            <button type="submit" class="chat-send-button" disabled="@(CurrentChatMode == ChatMode.Direct && !CanSendDirectMessage)">Enviar</button>
+                                            <button type="submit" class="chat-send-button" disabled="@(CurrentChatMode == ChatMode.Private && !CanSendPrivateMessage)">Enviar</button>
                                         </div>
                                     </form>
                                 </aside>
@@ -232,8 +236,17 @@
             : ChatState.ConnectedUsers
                 .Where(user => !string.Equals(user.Username, ChatParticipant.Username, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-    private IReadOnlyList<ChatParticipant> DirectConversationRecipients =>
-        AvailableDirectRecipients
+    private bool CanReviewPrivateMessages => ChatParticipant?.CanReviewPrivateMessages == true;
+    private string ChatReviewNote => ChatParticipant?.Role switch
+    {
+        ChatUserRole.Manager => "Vista gerencial: puedes consultar la comunicación interna, excepto los mensajes enviados por otros gerentes.",
+        ChatUserRole.Supervisor => "Vista de supervisión: puedes consultar las conversaciones internas entre agentes de los últimos 7 días.",
+        _ => string.Empty,
+    };
+    private IReadOnlyList<ChatParticipant> PrivateConversationRecipients =>
+        CanReviewPrivateMessages
+            ? AvailableDirectRecipients
+            : AvailableDirectRecipients
             .Concat(ChatState.Messages
                 .Where(message => message.Recipient is not null && (IsOwnMessage(message)
                     || string.Equals(message.Recipient.Username, ChatParticipant?.Username, StringComparison.OrdinalIgnoreCase)))
@@ -244,19 +257,23 @@
             .ToArray();
     private IReadOnlyList<ChatMessage> VisibleChatMessages => CurrentChatMode == ChatMode.General
         ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
+        : CanReviewPrivateMessages
+            ? ChatState.Messages.Where(message => message.Recipient is not null).ToArray()
         : string.IsNullOrWhiteSpace(SelectedChatRecipient)
             ? Array.Empty<ChatMessage>()
             : ChatState.Messages.Where(message => message.Recipient is not null
-                && (string.Equals(message.Sender.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(message.Recipient.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
+                && ((string.Equals(message.Sender.Username, ChatParticipant?.Username, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(message.Recipient.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase))
+                    || (string.Equals(message.Sender.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(message.Recipient.Username, ChatParticipant?.Username, StringComparison.OrdinalIgnoreCase))))
                 .ToArray();
     private IReadOnlyList<ChatMessage> UnreadIncomingMessages => ChatState.Messages
         .Where(message => !IsOwnMessage(message) && !ReadChatMessageIds.Contains(message.Id))
         .ToArray();
     private int UnreadChatCount => UnreadIncomingMessages.Count;
     private int UnreadGeneralCount => UnreadIncomingMessages.Count(message => message.Recipient is null);
-    private int UnreadDirectCount => UnreadIncomingMessages.Count(message => message.Recipient is not null);
-    private bool CanSendDirectMessage => AvailableDirectRecipients.Any(user =>
+    private int UnreadPrivateCount => UnreadIncomingMessages.Count(message => message.Recipient is not null);
+    private bool CanSendPrivateMessage => AvailableDirectRecipients.Any(user =>
         string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase));
 
     private void ToggleChatPanel()
@@ -266,7 +283,7 @@
         ChatError = null;
         if (IsChatOpen)
         {
-            FocusLatestDirectMessage();
+            FocusLatestPrivateMessage();
             MarkVisibleChatMessagesRead();
         }
     }
@@ -281,9 +298,9 @@
     {
         CurrentChatMode = mode;
         ChatError = null;
-        if (mode == ChatMode.Direct && string.IsNullOrWhiteSpace(SelectedChatRecipient))
+        if (mode == ChatMode.Private && string.IsNullOrWhiteSpace(SelectedChatRecipient))
         {
-            FocusLatestDirectMessage();
+            FocusLatestPrivateMessage();
             if (string.IsNullOrWhiteSpace(SelectedChatRecipient))
             {
                 SelectedChatRecipient = AvailableDirectRecipients.FirstOrDefault()?.Username ?? string.Empty;
@@ -298,6 +315,13 @@
     private bool IsOwnMessage(ChatMessage message) => ChatParticipant is not null
         && string.Equals(message.Sender.Username, ChatParticipant.Username, StringComparison.OrdinalIgnoreCase);
 
+    private string RecipientLabel(ChatMessage message) =>
+        message.Recipient is null
+            ? string.Empty
+            : IsOwnMessage(message) || CanReviewPrivateMessages
+                ? message.Recipient.DisplayName
+                : "ti";
+
     private Task SendChatMessageAsync()
     {
         if (ChatParticipant is null) return Task.CompletedTask;
@@ -310,7 +334,7 @@
             }
             else
             {
-                Chat.SendDirect(ChatParticipant, SelectedChatRecipient, ChatDraft);
+                Chat.SendPrivate(ChatParticipant, SelectedChatRecipient, ChatDraft);
             }
 
             ChatDraft = string.Empty;
@@ -344,8 +368,8 @@
             if (IsDisposed || !ChatRegistered || ChatParticipant is null) return;
 
             ChatState = Chat.GetState(ChatParticipant);
-            if (CurrentChatMode == ChatMode.Direct && !string.IsNullOrWhiteSpace(SelectedChatRecipient)
-                && !DirectConversationRecipients.Any(user => string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
+            if (CurrentChatMode == ChatMode.Private && !string.IsNullOrWhiteSpace(SelectedChatRecipient)
+                && !PrivateConversationRecipients.Any(user => string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
             {
                 SelectedChatRecipient = string.Empty;
             }
@@ -365,7 +389,7 @@
         ReadChatMessageIds.UnionWith(VisibleChatMessages.Select(message => message.Id));
     }
 
-    private void FocusLatestDirectMessage()
+    private void FocusLatestPrivateMessage()
     {
         var latest = UnreadIncomingMessages
             .Where(message => message.Recipient is not null)
@@ -377,7 +401,7 @@
                 .FirstOrDefault();
         if (latest is null) return;
 
-        CurrentChatMode = ChatMode.Direct;
+        CurrentChatMode = ChatMode.Private;
         SelectedChatRecipient = IsOwnMessage(latest)
             ? latest.Recipient!.Username
             : latest.Sender.Username;
@@ -423,5 +447,5 @@
     }
 
     private enum AppearanceMode { Light, Dark, Pink, Sierra, Aurora, Oceano }
-    private enum ChatMode { General, Direct }
+    private enum ChatMode { General, Private }
 }

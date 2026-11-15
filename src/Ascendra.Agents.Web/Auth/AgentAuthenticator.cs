@@ -23,15 +23,28 @@ public sealed class AgentAuthenticator(
 
     public bool IsSessionCurrent(ClaimsPrincipal? principal)
     {
-        var username = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
-        var version = principal?.FindFirstValue(AgentClaimTypes.RegistryVersion);
-        if (string.IsNullOrWhiteSpace(username) || !string.Equals(version, RegistryVersion, StringComparison.Ordinal))
+        if (principal is null) return false;
+
+        var username = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(username))
         {
             return false;
         }
 
         if (CanUseLocalPreview() && username == "preview") return true;
-        return snapshots.Current.Users.Any(user => user.IsActive && string.Equals(user.Username, username, StringComparison.Ordinal));
+
+        // Durante el arranque posterior a un despliegue aún no existe el corte
+        // en memoria. Conservar la cookie ya validada evita expulsar a todo el
+        // equipo por esa ventana transitoria; en cuanto termina la carga se
+        // vuelve a comprobar su estado y su rol actuales.
+        if (!snapshots.Health.IsReady) return true;
+
+        var currentUser = snapshots.Current.Users.FirstOrDefault(user =>
+            user.IsActive && string.Equals(user.Username, username, StringComparison.Ordinal));
+        if (currentUser is null) return false;
+
+        var claimedRole = principal.FindFirstValue(ClaimTypes.Role);
+        return string.Equals(currentUser.Role, claimedRole, StringComparison.OrdinalIgnoreCase);
     }
 
     public AgentUser? Authenticate(string username, string password)
