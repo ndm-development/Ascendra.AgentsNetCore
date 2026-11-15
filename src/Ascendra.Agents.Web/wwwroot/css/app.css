@@ -296,6 +296,7 @@ button { cursor: pointer; }
 .nav-tab { min-height: 34px; }
 .page-heading, .lookup-shell, .whatsapp-hero { gap: 18px; padding: 18px 20px; margin-bottom: 11px; }
 .page-heading h1, .lookup-heading h1, .whatsapp-heading h1 { font-size: clamp(25px, 2.2vw, 32px); }
+.lookup-heading h1, .whatsapp-heading h1 { margin-top:0; font-size:clamp(22px,1.8vw,27px); letter-spacing:-.045em; }
 .field label { margin-bottom: 6px; }
 .field input, .field select, .lookup-input-row input, .lookup-search-input, textarea { min-height: 44px; }
 .primary-button, .secondary-button { min-height: 43px; padding: 0 15px; }
@@ -313,6 +314,7 @@ button { cursor: pointer; }
 th, td { padding: 10px 12px; }
 .whatsapp-client-card, .message-card { padding: 18px; }
 .message-card textarea { min-height: 158px; padding: 15px; }
+.theme-light .message-card textarea { background:linear-gradient(135deg,rgba(234,243,251,.64),rgba(220,233,246,.42)); border-color:rgba(86,120,153,.23); box-shadow:inset 0 1px rgba(255,255,255,.54),0 3px 8px rgba(28,56,85,.045); }
 .weekly-pulse { gap: 20px; margin-bottom: 11px; padding: 14px 18px; }
 .weekly-pulse__amount { margin-top: 6px; font-size: clamp(27px, 2.35vw, 35px); }
 .weekly-pulse__recovery > p:last-child, .weekly-pulse__note { margin-top: 8px; }
