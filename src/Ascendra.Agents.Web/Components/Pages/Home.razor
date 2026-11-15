@@ -1,6 +1,7 @@
 @page "/"
 @attribute [Authorize]
 @inject DashboardQueries Queries
+@inject DashboardSession Session
 
 @{
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
@@ -18,6 +19,17 @@
     var paymentExportUrl = $"/exports/payments?week={_week}&client={Uri.EscapeDataString(ClientQuery)}";
 }
 
+@if (Session.HasFullAccess)
+{
+    <section class="empty-state glass-card">
+        <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
+        <h1>Tu vista está en Equipo</h1>
+        <p>Desde ahí puedes revisar la comunicación, las promesas y los pagos de todo el equipo.</p>
+        <a class="primary-button" href="/equipo">Abrir consola de equipo</a>
+    </section>
+}
+else
+{
 <section class="operations-filter-card glass-card agent-collections-filters recovery-filter-card" aria-label="Filtros de mi recuperación">
     <div class="field compact-field">
         <label for="week">Semana</label>
@@ -101,6 +113,7 @@ else
             { <tr><td>@(payment.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@payment.ClientId</td><td>@payment.ClientName</td><td>@payment.Product</td><td>@DashboardQueries.Currency(payment.Recovery)</td><td>@payment.Week</td></tr> }
         </tbody></table></div>
     </section>
+}
 }
 
 @code

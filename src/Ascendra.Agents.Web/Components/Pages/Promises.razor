@@ -1,6 +1,7 @@
 @page "/promesas"
 @attribute [Authorize]
 @inject DashboardQueries Queries
+@inject DashboardSession Session
 
 @{
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
@@ -19,6 +20,17 @@
     var promiseExportUrl = BuildPromiseExportUrl(_week, ClientQuery, _metricStatus, _selectedPromise);
 }
 
+@if (Session.HasFullAccess)
+{
+    <section class="empty-state glass-card">
+        <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
+        <h1>Las promesas están en tu consola de equipo</h1>
+        <p>Ahí puedes revisar el seguimiento de cada agente junto con los pagos y la comunicación interna.</p>
+        <a class="primary-button" href="/equipo">Abrir promesas del equipo</a>
+    </section>
+}
+else
+{
 <section class="operations-filter-card glass-card agent-collections-filters" aria-label="Filtros de mis promesas">
     <div class="field compact-field">
         <label for="promise-week">Semana</label>
@@ -64,6 +76,7 @@ else
             }
         </tbody></table></div>
     </section>
+}
 }
 
 @code {

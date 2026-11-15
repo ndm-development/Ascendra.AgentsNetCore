@@ -10,7 +10,7 @@
 <AuthorizeView Context="auth">
     <Authorized>
         @{ Session.Apply(auth.User); }
-        <div class="app-shell @ThemeClass" style="@BackgroundAssetVariables" @onclick="CloseFloatingPanels">
+        <div class="app-shell @ThemeClass @(Session.HasFullAccess ? "app-shell--team" : string.Empty)" style="@BackgroundAssetVariables" @onclick="CloseFloatingPanels">
             <main class="page-content">
                 <header class="brand-card glass-card">
                     <div class="brand-block">
@@ -95,20 +95,41 @@
                                                         }
                                                         <time datetime="@message.SentAt.ToString("O")">@message.SentAt.ToLocalTime().ToString("HH:mm")</time>
                                                     </div>
-                                                    <p>@message.Content</p>
+                                                    @if (!string.IsNullOrWhiteSpace(message.Content))
+                                                    {
+                                                        <p>@message.Content</p>
+                                                    }
+                                                    @if (message.Attachment is not null)
+                                                    {
+                                                        <a class="chat-message__image" href="@($"/chat/attachments/{message.Attachment.Id}")" target="_blank" rel="noopener"><img src="@($"/chat/attachments/{message.Attachment.Id}")" alt="Imagen adjunta por @message.Sender.DisplayName" /></a>
+                                                    }
                                                 </article>
                                             }
                                         }
                                     </div>
 
                                     <form class="chat-composer" @onsubmit="SendChatMessageAsync" @onsubmit:preventDefault="true">
-                                        <textarea @bind="ChatDraft" maxlength="500" rows="2" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
+                                        <textarea @bind="ChatDraft" maxlength="500" rows="3" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
+                                        @if (PendingChatAttachment is not null)
+                                        {
+                                            <div class="chat-composer__attachment">
+                                                <img src="@ChatAttachmentUrl(PendingChatAttachment)" alt="Imagen lista para enviar" />
+                                                <span>@PendingChatAttachment.FileName</span>
+                                                <button type="button" @onclick="RemoveChatAttachment">Quitar</button>
+                                            </div>
+                                        }
                                         <div>
                                             @if (!string.IsNullOrWhiteSpace(ChatError))
                                             {
                                                 <span class="chat-composer__error" role="status">@ChatError</span>
                                             }
-                                            <button type="submit" class="chat-send-button" disabled="@(CurrentChatMode == ChatMode.Private && !CanSendPrivateMessage)">Enviar</button>
+                                            <div class="chat-composer__actions">
+                                                <label class="chat-attach-button" title="Adjuntar imagen (máximo 4 MB)">
+                                                    <span aria-hidden="true">▧</span> Imagen
+                                                    <InputFile @key="ChatAttachmentInputKey" OnChange="SelectChatImageAsync" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Adjuntar imagen" />
+                                                </label>
+                                                <button type="submit" class="chat-send-button" disabled="@(CurrentChatMode == ChatMode.Private && !CanSendPrivateMessage)">Enviar</button>
+                                            </div>
                                         </div>
                                     </form>
                                 </aside>
@@ -166,8 +187,15 @@
                 <nav class="main-tabs glass-card" aria-label="Módulos principales">
                     <NavLink href="/referencias" class="nav-tab">Referencias</NavLink>
                     <NavLink href="/whatsapp" class="nav-tab">WhatsApp</NavLink>
-                    <NavLink href="/" Match="NavLinkMatch.All" class="nav-tab">Mi recuperación</NavLink>
-                    <NavLink href="/promesas" class="nav-tab">Mis promesas</NavLink>
+                    @if (Session.HasFullAccess)
+                    {
+                        <NavLink href="/equipo" class="nav-tab">Equipo</NavLink>
+                    }
+                    else
+                    {
+                        <NavLink href="/" Match="NavLinkMatch.All" class="nav-tab">Mi recuperación</NavLink>
+                        <NavLink href="/promesas" class="nav-tab">Mis promesas</NavLink>
+                    }
                 </nav>
 
                 @if (!SnapshotStore.Health.IsReady)
@@ -198,6 +226,8 @@
     private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
     private string SelectedChatRecipient { get; set; } = string.Empty;
     private string ChatDraft { get; set; } = string.Empty;
+    private ChatAttachment? PendingChatAttachment { get; set; }
+    private Guid ChatAttachmentInputKey { get; set; } = Guid.NewGuid();
     private string? ChatError { get; set; }
     // Durante el prerenderizado todavía no existe un navegador conectado. Sólo
     // intentamos detener el temporizador si realmente llegó a iniciarse en el
@@ -212,7 +242,7 @@
         AppearanceMode.Oceano => "theme-oceano",
         _ => "theme-light",
     };
-    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock.jpg")}'); --ascendra-aurora-background: url('{AssetUrls.Url("aurora.jpg")}'); --ascendra-oceano-background: url('{AssetUrls.Url("océano.jpg")}');";
+    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock.jpg")}'); --ascendra-aurora-background: url('{AssetUrls.Url("aurora.jpg")}'); --ascendra-oceano-background: url('{AssetUrls.Url("oce\u0301ano.jpg")}');";
 
     private void ToggleAppearanceMenu()
     {
@@ -322,32 +352,67 @@
                 ? message.Recipient.DisplayName
                 : "ti";
 
-    private Task SendChatMessageAsync()
+    private async Task SendChatMessageAsync()
     {
-        if (ChatParticipant is null) return Task.CompletedTask;
+        if (ChatParticipant is null) return;
 
         try
         {
             if (CurrentChatMode == ChatMode.General)
             {
-                Chat.SendToEveryone(ChatParticipant, ChatDraft);
+                Chat.SendToEveryone(ChatParticipant, ChatDraft, PendingChatAttachment);
             }
             else
             {
-                Chat.SendPrivate(ChatParticipant, SelectedChatRecipient, ChatDraft);
+                Chat.SendPrivate(ChatParticipant, SelectedChatRecipient, ChatDraft, PendingChatAttachment);
             }
 
             ChatDraft = string.Empty;
+            PendingChatAttachment = null;
+            ChatAttachmentInputKey = Guid.NewGuid();
             ChatError = null;
             MarkVisibleChatMessagesRead();
         }
         catch (InvalidOperationException exception)
         {
             ChatError = exception.Message;
+            if (exception.Message.Contains("imagen", StringComparison.OrdinalIgnoreCase))
+            {
+                PendingChatAttachment = null;
+                ChatAttachmentInputKey = Guid.NewGuid();
+            }
         }
-
-        return Task.CompletedTask;
     }
+
+    private async Task SelectChatImageAsync(InputFileChangeEventArgs arguments)
+    {
+        if (ChatParticipant is null) return;
+        try
+        {
+            if (PendingChatAttachment is not null) Chat.DiscardStagedAttachment(ChatParticipant, PendingChatAttachment);
+            var file = arguments.File;
+            await using var stream = file.OpenReadStream(EphemeralChatService.MaximumImageBytes);
+            PendingChatAttachment = await Chat.StoreImageAsync(ChatParticipant, stream, file.Name);
+            ChatError = null;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        {
+            PendingChatAttachment = null;
+            ChatAttachmentInputKey = Guid.NewGuid();
+            ChatError = exception is InvalidOperationException
+                ? exception.Message
+                : "No se pudo adjuntar la imagen. Usa un archivo de hasta 4 MB.";
+        }
+    }
+
+    private void RemoveChatAttachment()
+    {
+        if (ChatParticipant is not null) Chat.DiscardStagedAttachment(ChatParticipant, PendingChatAttachment);
+        PendingChatAttachment = null;
+        ChatAttachmentInputKey = Guid.NewGuid();
+    }
+
+    private static string ChatAttachmentUrl(ChatAttachment attachment) => $"/chat/attachments/{attachment.Id}";
 
     private void StartChat()
     {
@@ -416,7 +481,7 @@
         {
             await JS.InvokeVoidAsync("ascendraSession.start");
             SessionTrackingStarted = true;
-            StartChat();
+            if (!Session.HasFullAccess) StartChat();
         }
 
         if (!RefreshChartsAfterRender) return;
@@ -427,6 +492,7 @@
     public async ValueTask DisposeAsync()
     {
         IsDisposed = true;
+        RemoveChatAttachment();
         if (ChatRegistered)
         {
             Chat.Changed -= OnChatChanged;

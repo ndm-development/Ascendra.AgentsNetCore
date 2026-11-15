@@ -1,0 +1,342 @@
+@page "/equipo"
+@attribute [Authorize(Roles = "Gerente,Supervisor")]
+@implements IAsyncDisposable
+@inject DashboardSession Session
+@inject DashboardQueries Queries
+@inject EphemeralChatService Chat
+
+@{
+    var scope = Queries.FilterByClient(Queries.TeamScope(), ClientQuery);
+    if (_week == 0) _week = Queries.CurrentWeek(scope);
+    var teamPayments = FilterPayments(scope).ToArray();
+    var teamPromises = FilterPromises(scope).ToArray();
+    var totalRecovery = teamPayments.Sum(payment => payment.Recovery);
+    var activeAgents = scope.Payments.Select(payment => payment.Agent)
+        .Concat(scope.Promises.Select(promise => promise.Agent))
+        .Where(agent => !string.IsNullOrWhiteSpace(agent))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Count();
+}
+
+<section class="team-console" aria-label="Consola de equipo">
+    <header class="team-console__hero glass-card">
+        <div>
+            <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
+            <h1>Centro de coordinación</h1>
+            <p>Comunicación interna, promesas y pagos del equipo en una sola vista.</p>
+        </div>
+        <div class="team-console__summary" aria-label="Resumen de la semana">
+            <span><strong>@activeAgents</strong> agentes</span>
+            <span><strong>@teamPayments.Length</strong> pagos</span>
+            <span><strong>@DashboardQueries.Currency(totalRecovery)</strong> recuperados</span>
+        </div>
+    </header>
+
+    <nav class="team-console__tabs glass-card" role="tablist" aria-label="Secciones de la consola">
+        <button type="button" class="@TabClass(TeamSection.Messages)" role="tab" aria-selected="@(ActiveSection == TeamSection.Messages)" @onclick="() => ActiveSection = TeamSection.Messages">
+            Mensajes @if (UnreadMessageCount > 0) { <span>@UnreadMessageCount</span> }
+        </button>
+        <button type="button" class="@TabClass(TeamSection.Promises)" role="tab" aria-selected="@(ActiveSection == TeamSection.Promises)" @onclick="() => ActiveSection = TeamSection.Promises">Promesas <span>@teamPromises.Length</span></button>
+        <button type="button" class="@TabClass(TeamSection.Payments)" role="tab" aria-selected="@(ActiveSection == TeamSection.Payments)" @onclick="() => ActiveSection = TeamSection.Payments">Pagos <span>@teamPayments.Length</span></button>
+    </nav>
+
+    @if (ActiveSection == TeamSection.Messages)
+    {
+        <section class="team-chat glass-card" aria-label="Mensajes internos del equipo">
+            <div class="team-chat__heading">
+                <div>
+                    <p class="eyebrow">CANAL DE EQUIPO</p>
+                    <h2>Mensajes</h2>
+                    <p>@ChatReviewNote</p>
+                </div>
+                <span class="team-chat__presence">@OnlineUsers.Count conectados</span>
+            </div>
+
+            <div class="team-chat__body">
+                <div class="team-chat__feed">
+                    <div class="team-chat__mode" role="tablist" aria-label="Canal de mensajes">
+                        <button type="button" class="@MessageModeClass(ChatMode.General)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.General)" @onclick="() => SelectChatMode(ChatMode.General)">General</button>
+                        <button type="button" class="@MessageModeClass(ChatMode.Private)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Private)" @onclick="() => SelectChatMode(ChatMode.Private)">Privado</button>
+                    </div>
+
+                    @if (CurrentChatMode == ChatMode.Private)
+                    {
+                        <label class="team-chat__recipient">
+                            <span>Enviar privado a</span>
+                            <select @bind="SelectedRecipient" aria-label="Destinatario del mensaje privado">
+                                <option value="">Selecciona un usuario conectado</option>
+                                @foreach (var user in AvailableRecipients)
+                                {
+                                    <option value="@user.Username">@user.DisplayName</option>
+                                }
+                            </select>
+                        </label>
+                    }
+
+                    <div class="team-chat__messages" aria-live="polite">
+                        @if (VisibleMessages.Count == 0)
+                        {
+                            <p class="team-chat__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay comunicados generales." : "Aún no hay mensajes privados visibles para esta vista.")</p>
+                        }
+                        else
+                        {
+                            @foreach (var message in VisibleMessages)
+                            {
+                                <article class="team-chat__message @(IsOwnMessage(message) ? "team-chat__message--own" : null)">
+                                    <div>
+                                        <strong>@(IsOwnMessage(message) ? "Tú" : message.Sender.DisplayName)</strong>
+                                        @if (message.Recipient is not null)
+                                        {
+                                            <span>para @message.Recipient.DisplayName</span>
+                                        }
+                                        <time datetime="@message.SentAt.ToString("O")">@message.SentAt.ToLocalTime().ToString("dd MMM · HH:mm", CultureInfo.GetCultureInfo("es-MX"))</time>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(message.Content))
+                                    {
+                                        <p>@message.Content</p>
+                                    }
+                                    @if (message.Attachment is not null)
+                                    {
+                                        <a class="team-chat__image" href="@AttachmentUrl(message.Attachment)" target="_blank" rel="noopener"><img src="@AttachmentUrl(message.Attachment)" alt="Imagen compartida por @message.Sender.DisplayName" /></a>
+                                    }
+                                </article>
+                            }
+                        }
+                    </div>
+                </div>
+
+                <form class="team-chat__composer" @onsubmit="SendMessageAsync" @onsubmit:preventDefault="true">
+                    <label for="team-chat-message">Nuevo mensaje</label>
+                    <textarea id="team-chat-message" @bind="Draft" maxlength="500" rows="8" placeholder="Escribe un comunicado o mensaje privado…"></textarea>
+                    @if (PendingAttachment is not null)
+                    {
+                        <div class="team-chat__attachment">
+                            <img src="@AttachmentUrl(PendingAttachment)" alt="Imagen lista para enviar" />
+                            <span>@PendingAttachment.FileName</span>
+                            <button type="button" @onclick="RemoveAttachment">Quitar</button>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(ChatError))
+                    {
+                        <p class="team-chat__error" role="status">@ChatError</p>
+                    }
+                    <div class="team-chat__actions">
+                        <label class="chat-attach-button" title="Adjuntar imagen o captura (máximo 4 MB)">
+                            <span aria-hidden="true">▧</span> Adjuntar imagen
+                            <InputFile @key="AttachmentInputKey" OnChange="SelectImageAsync" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Adjuntar una imagen" />
+                        </label>
+                        <button type="submit" class="primary-button" disabled="@(CurrentChatMode == ChatMode.Private && !CanSendPrivate)">Enviar</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="team-console__filters glass-card" aria-label="Filtros del equipo">
+            <div class="field compact-field">
+                <label for="team-week">Semana</label>
+                <select id="team-week" @bind="_week">
+                    @foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }
+                </select>
+            </div>
+            <div class="field">
+                <label for="team-agent">Agente</label>
+                <select id="team-agent" @bind="SelectedAgent">
+                    <option value="">Todo el equipo</option>
+                    @foreach (var agent in Queries.AgentNames(scope)) { <option value="@agent">@agent</option> }
+                </select>
+            </div>
+            <div class="field client-query-field">
+                <label for="team-client">Cliente único</label>
+                <input id="team-client" @bind="ClientQuery" @bind:event="oninput" placeholder="Buscar cliente" />
+            </div>
+            @if (ActiveSection == TeamSection.Promises)
+            {
+                <div class="field">
+                    <label for="team-status">Estatus</label>
+                    <select id="team-status" @bind="SelectedStatus">
+                        <option value="">Todos los estatus</option>
+                        @foreach (var status in Queries.PromiseStatuses(scope)) { <option value="@status">@status</option> }
+                    </select>
+                </div>
+            }
+            <button type="button" class="secondary-button filter-reset" @onclick="ClearFilters">Limpiar filtros</button>
+        </section>
+
+        @if (ActiveSection == TeamSection.Promises)
+        {
+            <section class="table-card glass-card team-console__table">
+                <div class="result-heading"><div><p class="eyebrow">SEGUIMIENTO DEL EQUIPO</p><h2>Promesas · Semana @_week</h2></div><p>@teamPromises.Length registros visibles</p></div>
+                <div class="table-wrap"><table class="promise-table"><thead><tr><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Estatus</th></tr></thead><tbody>
+                    @foreach (var row in teamPromises.Take(400))
+                    { <tr><td>@row.Agent</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td><span class="promise-status @StatusClass(row.Status)">@row.Status</span></td></tr> }
+                </tbody></table></div>
+            </section>
+        }
+        else
+        {
+            <section class="table-card glass-card team-console__table">
+                <div class="result-heading"><div><p class="eyebrow">COBRANZA DEL EQUIPO</p><h2>Pagos · Semana @_week</h2></div><p>@teamPayments.Length pagos · @DashboardQueries.Currency(totalRecovery)</p></div>
+                <div class="table-wrap"><table><thead><tr><th>Agente</th><th>Fecha</th><th>Cliente único</th><th>Cliente</th><th>Producto</th><th>Pago recibido</th></tr></thead><tbody>
+                    @foreach (var row in teamPayments.OrderByDescending(payment => payment.ReceivedOn).Take(400))
+                    { <tr><td>@row.Agent</td><td>@(row.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.Product</td><td>@DashboardQueries.Currency(row.Recovery)</td></tr> }
+                </tbody></table></div>
+            </section>
+        }
+    }
+</section>
+
+@code {
+    private readonly string ConnectionId = Guid.NewGuid().ToString("N");
+    private ChatParticipant? Participant { get; set; }
+    private ChatPanelState ChatState { get; set; } = ChatPanelState.Empty;
+    private bool ChatRegistered { get; set; }
+    private bool IsDisposed { get; set; }
+    private TeamSection ActiveSection { get; set; } = TeamSection.Messages;
+    private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
+    private string SelectedRecipient { get; set; } = string.Empty;
+    private string Draft { get; set; } = string.Empty;
+    private string? ChatError { get; set; }
+    private ChatAttachment? PendingAttachment { get; set; }
+    private Guid AttachmentInputKey { get; set; } = Guid.NewGuid();
+    private readonly HashSet<Guid> ReadMessages = [];
+    private int _week;
+    private string ClientQuery { get; set; } = string.Empty;
+    private string SelectedAgent { get; set; } = string.Empty;
+    private string SelectedStatus { get; set; } = string.Empty;
+
+    private IReadOnlyList<ChatParticipant> OnlineUsers => ChatState.ConnectedUsers;
+    private IReadOnlyList<ChatParticipant> AvailableRecipients => Participant is null ? [] : OnlineUsers
+        .Where(user => !string.Equals(user.Username, Participant.Username, StringComparison.OrdinalIgnoreCase)).ToArray();
+    private IReadOnlyList<ChatMessage> VisibleMessages => CurrentChatMode == ChatMode.General
+        ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
+        : ChatState.Messages.Where(message => message.Recipient is not null).ToArray();
+    private int UnreadMessageCount => ChatState.Messages.Count(message => !IsOwnMessage(message) && !ReadMessages.Contains(message.Id));
+    private bool CanSendPrivate => AvailableRecipients.Any(user => string.Equals(user.Username, SelectedRecipient, StringComparison.OrdinalIgnoreCase));
+    private string ChatReviewNote => Participant?.Role switch
+    {
+        ChatUserRole.Manager => "Gerencia consulta los mensajes del equipo; los enviados por otros gerentes permanecen privados.",
+        ChatUserRole.Supervisor => "Supervisión puede consultar las conversaciones internas entre agentes durante los últimos 7 días.",
+        _ => "",
+    };
+
+    private IEnumerable<PaymentRecord> FilterPayments(ScopedOperations scope) => scope.Payments.Where(payment =>
+        payment.Week == _week
+        && (string.IsNullOrWhiteSpace(SelectedAgent) || payment.Agent.Equals(SelectedAgent, StringComparison.OrdinalIgnoreCase)));
+    private IEnumerable<PromiseRecord> FilterPromises(ScopedOperations scope) => Queries.FilterPromises(
+        scope, null, null, SelectedAgent, null, SelectedStatus, null, null, null, null, _week);
+    private string TabClass(TeamSection section) => ActiveSection == section ? "is-selected" : string.Empty;
+    private string MessageModeClass(ChatMode mode) => CurrentChatMode == mode ? "is-selected" : string.Empty;
+    private bool IsOwnMessage(ChatMessage message) => Participant is not null && string.Equals(message.Sender.Username, Participant.Username, StringComparison.OrdinalIgnoreCase);
+    private static string AttachmentUrl(ChatAttachment attachment) => $"/chat/attachments/{attachment.Id}";
+
+    private void SelectChatMode(ChatMode mode)
+    {
+        CurrentChatMode = mode;
+        ChatError = null;
+        ReadMessages.UnionWith(VisibleMessages.Select(message => message.Id));
+    }
+
+    private async Task SendMessageAsync()
+    {
+        if (Participant is null) return;
+        try
+        {
+            if (CurrentChatMode == ChatMode.General) Chat.SendToEveryone(Participant, Draft, PendingAttachment);
+            else Chat.SendPrivate(Participant, SelectedRecipient, Draft, PendingAttachment);
+            Draft = string.Empty;
+            PendingAttachment = null;
+            AttachmentInputKey = Guid.NewGuid();
+            ChatError = null;
+            ReadMessages.UnionWith(VisibleMessages.Select(message => message.Id));
+        }
+        catch (InvalidOperationException exception)
+        {
+            ChatError = exception.Message;
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task SelectImageAsync(InputFileChangeEventArgs arguments)
+    {
+        if (Participant is null) return;
+        try
+        {
+            if (PendingAttachment is not null) Chat.DiscardStagedAttachment(Participant, PendingAttachment);
+            var file = arguments.File;
+            await using var stream = file.OpenReadStream(EphemeralChatService.MaximumImageBytes);
+            PendingAttachment = await Chat.StoreImageAsync(Participant, stream, file.Name);
+            ChatError = null;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        {
+            PendingAttachment = null;
+            AttachmentInputKey = Guid.NewGuid();
+            ChatError = exception is InvalidOperationException ? exception.Message : "No se pudo adjuntar la imagen. Usa un archivo de hasta 4 MB.";
+        }
+    }
+
+    private void RemoveAttachment()
+    {
+        if (Participant is not null) Chat.DiscardStagedAttachment(Participant, PendingAttachment);
+        PendingAttachment = null;
+        AttachmentInputKey = Guid.NewGuid();
+    }
+
+    private void StartChat()
+    {
+        if (ChatRegistered || Session.User is null) return;
+        Participant = EphemeralChatService.ParticipantFor(Session.User);
+        Chat.Changed += OnChatChanged;
+        ChatRegistered = true;
+        Chat.Register(ConnectionId, Participant);
+        ChatState = Chat.GetState(Participant);
+        ReadMessages.UnionWith(ChatState.Messages.Select(message => message.Id));
+    }
+
+    private void OnChatChanged() => _ = InvokeAsync(() =>
+    {
+        if (IsDisposed || Participant is null) return;
+        ChatState = Chat.GetState(Participant);
+        StateHasChanged();
+    });
+
+    private void ClearFilters()
+    {
+        ClientQuery = string.Empty;
+        SelectedAgent = string.Empty;
+        SelectedStatus = string.Empty;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        StartChat();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        IsDisposed = true;
+        RemoveAttachment();
+        if (ChatRegistered)
+        {
+            Chat.Changed -= OnChatChanged;
+            Chat.Unregister(ConnectionId);
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    private static string StatusClass(string status) => TextNormalization.Normalize(status) switch
+    {
+        "robada" => "promise-status--stolen",
+        "duplicada" => "promise-status--duplicate",
+        "incumplida" => "promise-status--failed",
+        "activa" or "cumplida" or "cumplido" => "promise-status--paid",
+        "vigente" => "promise-status--open",
+        _ => "promise-status--neutral",
+    };
+
+    private enum TeamSection { Messages, Promises, Payments }
+    private enum ChatMode { General, Private }
+}

@@ -184,6 +184,18 @@ app.MapPost("/account/keepalive", async (IAntiforgery antiforgery, HttpContext c
     return Results.NoContent();
 }).RequireAuthorization();
 
+app.MapGet("/chat/attachments/{attachmentId:guid}", (Guid attachmentId, HttpContext context, EphemeralChatService chat) =>
+{
+    var viewer = EphemeralChatService.ParticipantFor(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+        context.User.FindFirstValue(ClaimTypes.Name) ?? string.Empty,
+        context.User.FindFirstValue(ClaimTypes.Role) ?? "Agente");
+    var attachment = chat.GetAttachment(viewer, attachmentId);
+    return attachment is null
+        ? Results.NotFound()
+        : Results.File(attachment.Path, attachment.ContentType, enableRangeProcessing: true);
+}).RequireAuthorization();
+
 app.MapGet("/health", (ExcelSnapshotStore store) => Results.Ok(store.Health));
 app.MapGet("/exports/payments", (
     HttpContext context,

@@ -43,6 +43,15 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         return BuildScope(payments, promises, Snapshot.Portfolio.Where(x => allowedClients.Contains(x.ClientId)).ToArray());
     }
 
+    /// <summary>
+    /// Alcance completo del equipo para la consola de Gerencia y Supervisión.
+    /// La página que lo consume exige uno de esos roles; un agente nunca recibe
+    /// este alcance aunque intente abrir la ruta de forma directa.
+    /// </summary>
+    public ScopedOperations TeamScope() => session.HasFullAccess
+        ? BuildScope(Snapshot.Payments, Snapshot.Promises, Snapshot.Portfolio)
+        : new ScopedOperations([], [], [], []);
+
     /// <summary>Aplica el buscador de cliente que comparten Mi recuperación y Mis promesas.</summary>
     public ScopedOperations FilterByClient(ScopedOperations scope, string? clientQuery)
     {
