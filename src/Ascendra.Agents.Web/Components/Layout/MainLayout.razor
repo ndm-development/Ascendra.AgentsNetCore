@@ -184,6 +184,11 @@
                                         <span><strong>Océano</strong><small>Vidrio abisal</small></span>
                                         <span class="appearance-check" aria-hidden="true">✓</span>
                                     </button>
+                                    <button type="button" class="@AppearanceOptionClass(AppearanceMode.Ambar)" role="menuitemradio" aria-checked="@(Appearance == AppearanceMode.Ambar)" @onclick="() => SelectAppearance(AppearanceMode.Ambar)">
+                                        <span class="appearance-swatch appearance-swatch--ambar" aria-hidden="true"></span>
+                                        <span><strong>Ámbar</strong><small>Vidrio ejecutivo</small></span>
+                                        <span class="appearance-check" aria-hidden="true">✓</span>
+                                    </button>
                                 </div>
                             }
                         </div>
@@ -263,9 +268,10 @@
         AppearanceMode.Sierra => "theme-sierra",
         AppearanceMode.Aurora => "theme-aurora",
         AppearanceMode.Oceano => "theme-oceano",
+        AppearanceMode.Ambar => "theme-ambar",
         _ => "theme-light",
     };
-    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day-bg.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy-bg.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink-bg.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock-bg.jpg")}'); --ascendra-aurora-background: url('{AssetUrls.Url("aurora-bg.jpg")}'); --ascendra-oceano-background: url('{AssetUrls.Url("oceano-bg.jpg")}');";
+    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day-bg.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy-bg.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink-bg.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock-bg.jpg")}'); --ascendra-aurora-background: url('{AssetUrls.Url("aurora-bg.jpg")}'); --ascendra-oceano-background: url('{AssetUrls.Url("oceano-bg.jpg")}'); --ascendra-ambar-background: url('{AssetUrls.Url("ambar.jpg")}');";
 
     private void ToggleAppearanceMenu()
     {
@@ -601,6 +607,6 @@
 
     private sealed record PersistedChatReadState(bool HasState, string[] Ids);
 
-    private enum AppearanceMode { Light, Dark, Pink, Sierra, Aurora, Oceano }
+    private enum AppearanceMode { Light, Dark, Pink, Sierra, Aurora, Oceano, Ambar }
     private enum ChatMode { General, Private }
 }

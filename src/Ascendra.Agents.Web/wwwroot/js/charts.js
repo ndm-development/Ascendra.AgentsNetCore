@@ -117,6 +117,9 @@ window.ascendraCharts = {
     if (shell?.classList.contains('theme-oceano')) {
       return { ink: '#effbff', axis: '#f0fdff', muted: '#c1dde8', grid: 'rgba(151, 219, 230, .19)', hoverBackground: 'rgba(4, 30, 52, .96)', hoverBorder: 'rgba(129, 230, 233, .42)', hoverInk: '#f5ffff' };
     }
+    if (shell?.classList.contains('theme-ambar')) {
+      return { ink: '#fff4e5', axis: '#fff4e5', muted: '#e3c7a6', grid: 'rgba(234, 189, 132, .18)', hoverBackground: 'rgba(38, 28, 23, .96)', hoverBorder: 'rgba(255, 206, 144, .45)', hoverInk: '#fff9f0' };
+    }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
   dataForTheme: (data, target) => {
@@ -124,7 +127,13 @@ window.ascendraCharts = {
     const isSierra = Boolean(target.closest('.theme-sierra'));
     const isAurora = Boolean(target.closest('.theme-aurora'));
     const isOceano = Boolean(target.closest('.theme-oceano'));
-    const palette = isSierra ? {
+    const isAmbar = Boolean(target.closest('.theme-ambar'));
+    const palette = isAmbar ? {
+      status: { Vigentes: '#dca45d', Activas: '#d1a264', Incumplidas: '#c8776b', Robadas: '#e1b360', Duplicadas: '#b796c8' },
+      recovery: { '#1f9b72': '#d1a264', '#c38d25': '#e1b360', '#c74857': '#c8776b', 'rgba(124,145,169,.48)': 'rgba(185, 139, 105, .43)' },
+      line: 'rgba(255, 239, 214, .68)',
+      externalText: '#fff3e2'
+    } : isSierra ? {
       status: { Vigentes: '#6d9ed4', Activas: '#67ad8d', Incumplidas: '#b97878', Robadas: '#d2a449', Duplicadas: '#9981be' },
       recovery: { '#1f9b72': '#67ad8d', '#c38d25': '#d2a449', '#c74857': '#b97878', 'rgba(124,145,169,.48)': 'rgba(119, 143, 132, .46)' },
       line: 'rgba(255,250,239,.70)',
