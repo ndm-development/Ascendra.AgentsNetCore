@@ -358,6 +358,23 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         return query.OrderByDescending(x => x.PromiseDate).ThenByDescending(x => x.CreatedOn).Take(600).ToArray();
     }
 
+    /// <summary>Filtra los grupos de estatus que se muestran en el resumen personal de promesas.</summary>
+    public static IEnumerable<PromiseRecord> FilterPromiseStatusGroup(IEnumerable<PromiseRecord> records, string? group)
+    {
+        return TextNormalization.Normalize(group) switch
+        {
+            "activa" => records.Where(record => IsChartStatus(record.Status, "activa")),
+            "vigente" => records.Where(record => IsChartStatus(record.Status, "vigente")),
+            "incumplida" => records.Where(record => IsChartStatus(record.Status, "incumplida")),
+            "robada" => records.Where(record => IsChartStatus(record.Status, "robada")),
+            "duplicada" => records.Where(record => IsChartStatus(record.Status, "duplicada")),
+            "elegible" => records.Where(record => IsChartStatus(record.Status, "activa")
+                || IsChartStatus(record.Status, "vigente")
+                || IsChartStatus(record.Status, "incumplida")),
+            _ => records,
+        };
+    }
+
     public ChartModel DailyRecoveryChart(ScopedOperations scope, int week, bool personal)
     {
         var payments = scope.Payments.Where(x => x.Week == week && x.Recovery > 0m).ToArray();
@@ -430,11 +447,12 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     /// personal, así que nunca incorpora promesas de otros gestores.
     /// </summary>
     public IReadOnlyList<PromiseRecord> PromiseExport(
-        ScopedOperations scope, int week, string? status, string? day, string? chartStatus)
+        ScopedOperations scope, int week, string? status, string? metric, string? day, string? chartStatus)
     {
         IEnumerable<PromiseRecord> records = scope.Promises.Where(x => PromiseWeek(x) == week);
         if (!string.IsNullOrWhiteSpace(status))
             records = records.Where(x => x.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
+        records = FilterPromiseStatusGroup(records, metric);
         if (Days.Contains(day ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(chartStatus))
         {
@@ -466,6 +484,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         "incumplida" => "incumplidas",
         "robada" => "robadas",
         "duplicada" => "duplicadas",
+        "elegible" => "elegibles",
         _ => "seleccionadas",
     };
 

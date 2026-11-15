@@ -196,13 +196,14 @@ app.MapGet("/exports/promises", (
     int? week,
     string? client,
     string? status,
+    string? metric,
     string? day,
     string? segment) =>
 {
     session.Apply(context.User);
     var scope = queries.FilterByClient(queries.Scope(), client);
     var selectedWeek = week is > 0 ? week.Value : queries.CurrentWeek(scope);
-    var content = exports.Promises(queries.PromiseExport(scope, selectedWeek, status, day, segment));
+    var content = exports.Promises(queries.PromiseExport(scope, selectedWeek, status, metric, day, segment));
     return Results.File(content, ExcelExportService.ExcelContentType, $"mis_promesas_semana_{selectedWeek}.xlsx");
 }).RequireAuthorization();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
