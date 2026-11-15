@@ -49,6 +49,16 @@
                                         <span><strong>Sierra</strong><small>Vidrio mineral</small></span>
                                         <span class="appearance-check" aria-hidden="true">✓</span>
                                     </button>
+                                    <button type="button" class="@AppearanceOptionClass(AppearanceMode.Aurora)" role="menuitemradio" aria-checked="@(Appearance == AppearanceMode.Aurora)" @onclick="() => SelectAppearance(AppearanceMode.Aurora)">
+                                        <span class="appearance-swatch appearance-swatch--aurora" aria-hidden="true"></span>
+                                        <span><strong>Aurora</strong><small>Vidrio polar</small></span>
+                                        <span class="appearance-check" aria-hidden="true">✓</span>
+                                    </button>
+                                    <button type="button" class="@AppearanceOptionClass(AppearanceMode.Oceano)" role="menuitemradio" aria-checked="@(Appearance == AppearanceMode.Oceano)" @onclick="() => SelectAppearance(AppearanceMode.Oceano)">
+                                        <span class="appearance-swatch appearance-swatch--oceano" aria-hidden="true"></span>
+                                        <span><strong>Océano</strong><small>Vidrio abisal</small></span>
+                                        <span class="appearance-check" aria-hidden="true">✓</span>
+                                    </button>
                                 </div>
                             }
                         </div>
@@ -93,9 +103,11 @@
         AppearanceMode.Dark => "theme-dark",
         AppearanceMode.Pink => "theme-pink",
         AppearanceMode.Sierra => "theme-sierra",
+        AppearanceMode.Aurora => "theme-aurora",
+        AppearanceMode.Oceano => "theme-oceano",
         _ => "theme-light",
     };
-    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock.jpg")}');";
+    private string BackgroundAssetVariables => $"--ascendra-day-background: url('{AssetUrls.Url("leaves-day.jpg")}'); --ascendra-night-background: url('{AssetUrls.Url("galaxy.jpg")}'); --ascendra-pink-background: url('{AssetUrls.Url("pink.jpg")}'); --ascendra-rock-background: url('{AssetUrls.Url("rock.jpg")}'); --ascendra-aurora-background: url('{AssetUrls.Url("aurora.jpg")}'); --ascendra-oceano-background: url('{AssetUrls.Url("océano.jpg")}');";
 
     private void ToggleAppearanceMenu() => IsAppearanceMenuOpen = !IsAppearanceMenuOpen;
     private void SelectAppearance(AppearanceMode appearance)
@@ -135,5 +147,5 @@
         }
     }
 
-    private enum AppearanceMode { Light, Dark, Pink, Sierra }
+    private enum AppearanceMode { Light, Dark, Pink, Sierra, Aurora, Oceano }
 }
