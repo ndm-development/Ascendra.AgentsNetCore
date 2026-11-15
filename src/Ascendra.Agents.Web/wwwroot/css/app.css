@@ -244,6 +244,33 @@ button { cursor: pointer; }
 .theme-dark .appearance-menu { background: linear-gradient(145deg, rgba(40,48,65,.87), rgba(14,20,31,.79)); box-shadow: 0 19px 40px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.10); }.theme-pink .appearance-menu { background: linear-gradient(145deg, rgba(246,234,250,.72), rgba(228,215,247,.48)); box-shadow: 0 19px 42px rgba(139,59,124,.20), inset 0 1px rgba(255,255,255,.70); }.theme-sierra .appearance-menu { background: linear-gradient(145deg, rgba(239,240,225,.74), rgba(210,226,211,.48)); box-shadow: 0 19px 42px rgba(47,78,67,.19), inset 0 1px rgba(255,255,255,.70); }
 .appearance-option { display: grid; width: 100%; grid-template-columns: 32px minmax(0,1fr) 20px; align-items: center; gap: 10px; min-height: 57px; padding: 8px 9px; border: 1px solid transparent; border-radius: 13px; color: var(--ink); background: transparent; text-align: left; transition: background .16s ease, border-color .16s ease, transform .16s ease; }.appearance-option:hover { border-color: color-mix(in srgb, var(--accent) 36%, var(--line)); background: rgba(255,255,255,.27); transform: translateY(-1px); }.appearance-option--selected { border-color: color-mix(in srgb, var(--accent) 47%, var(--line)); background: linear-gradient(125deg, color-mix(in srgb, var(--accent) 13%, rgba(255,255,255,.38)), rgba(255,255,255,.19)); }.appearance-option strong,.appearance-option small { display:block; }.appearance-option strong { font-size:13px; font-weight:760; }.appearance-option small { margin-top:2px; color:var(--ink-muted); font-size:11px; font-weight:560; }.appearance-check { color:var(--accent-strong); font-size:14px; font-weight:850; opacity:0; }.appearance-option--selected .appearance-check { opacity:1; }
 .appearance-swatch { position:relative; display:block; width:30px; height:30px; overflow:hidden; border:1px solid rgba(255,255,255,.70); border-radius:10px; box-shadow: inset 0 1px rgba(255,255,255,.72), 0 3px 8px rgba(39,45,77,.09); }.appearance-swatch::after { content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,.38),transparent 58%); }.appearance-swatch--light { background: linear-gradient(135deg, #eaf4ff, #c8d5ea 48%, #bacfae); }.appearance-swatch--dark { background: linear-gradient(135deg, #202c46, #101722 56%, #594a7d); }.appearance-swatch--pink { background: linear-gradient(135deg, #ffb4d8, #bc91ff 48%, #8fc1ff 74%, #ffe69b); }.appearance-swatch--sierra { background: linear-gradient(135deg, #e5d3a9, #8fa68c 49%, #35675f); }.appearance-swatch--aurora { background:linear-gradient(135deg,#112b58,#605cbe 47%,#55d7bd 76%,#b5ffdc); }.appearance-swatch--oceano { background:linear-gradient(135deg,#092f53,#0f6a8a 49%,#51cbd0 78%,#b9f2e7); }.appearance-swatch--ambar { background:linear-gradient(135deg,#2d2623,#885132 46%,#d59846 74%,#ffe0a0); }
+
+/* El selector crece a dos columnas antes de crecer en altura: conserva las
+   descripciones de cada apariencia sin convertir el menú en una lista larga. */
+.appearance-menu {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(360px, calc(100vw - 28px));
+  gap: 4px;
+  padding: 5px;
+  border-radius: 16px;
+}
+.appearance-option {
+  position: relative;
+  grid-template-columns: 27px minmax(0, 1fr);
+  gap: 7px;
+  min-height: 48px;
+  padding: 6px 7px;
+  border-radius: 11px;
+}
+.appearance-option strong { font-size: 12px; }
+.appearance-option small { margin-top: 1px; font-size: 10px; line-height: 1.18; }
+.appearance-swatch { width: 27px; height: 27px; border-radius: 9px; }
+.appearance-check { position: absolute; top: 7px; right: 8px; font-size: 12px; }
+
+@media (max-width: 290px) {
+  .appearance-menu { grid-template-columns: 1fr; }
+}
+
 @keyframes appearance-menu-in { from { opacity:0; transform:translateY(-5px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
 
 /* Chat efímero: una conversación ligera que reutiliza el mismo vidrio de la
