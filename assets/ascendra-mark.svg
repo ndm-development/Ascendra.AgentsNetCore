@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ascendra">
+  <defs>
+    <linearGradient id="base" x1="7" y1="4" x2="57" y2="61" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#34435c"/>
+      <stop offset="1" stop-color="#131b2a"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="19" y1="16" x2="47" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff6e8"/>
+      <stop offset="1" stop-color="#bfd9ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="19" fill="url(#base)"/>
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="18.25" fill="none" stroke="#d9e8ff" stroke-opacity=".42" stroke-width="1.5"/>
+  <path d="M19.5 47 31.7 17l12.8 30M24.4 36.1h14.5" fill="none" stroke="url(#stroke)" stroke-linecap="round" stroke-linejoin="round" stroke-width="4.4"/>
+  <circle cx="47.5" cy="16.5" r="3.2" fill="#dba05c"/>
+</svg>

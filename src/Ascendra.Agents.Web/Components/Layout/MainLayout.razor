@@ -23,7 +23,12 @@
                     <div class="header-actions">
                         <div class="chat-control" @onclick:stopPropagation="true">
                             <button type="button" class="chat-button" @onclick="ToggleChatPanel" aria-expanded="@IsChatOpen" aria-controls="ascendra-chat-panel">
-                                <span class="chat-button__mark" aria-hidden="true">◌</span>
+                                <span class="chat-button__mark" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" focusable="false">
+                                        <path d="M6.6 5.75h10.8a2.85 2.85 0 0 1 2.85 2.85v5.25a2.85 2.85 0 0 1-2.85 2.85h-5.2l-4.45 2.85.78-2.85H6.6a2.85 2.85 0 0 1-2.85-2.85V8.6A2.85 2.85 0 0 1 6.6 5.75Z" />
+                                        <path d="M8.25 11.2h.01M12 11.2h.01M15.75 11.2h.01" />
+                                    </svg>
+                                </span>
                                 Chat
                                 @if (UnreadChatCount > 0)
                                 {
