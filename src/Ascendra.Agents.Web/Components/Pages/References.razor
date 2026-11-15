@@ -11,11 +11,9 @@
             <button class="@(!ByPhone ? "" : "selected")" @onclick="() => ByPhone = true">Teléfono</button>
             <button class="@(ByPhone ? "" : "selected")" @onclick="() => ByPhone = false">CLIENTE_UNICO</button>
         </div>
-        <div class="lookup-input-row">
-            <input @bind="Query" @bind:event="oninput" inputmode="@(ByPhone ? "numeric" : "text")" placeholder="@(ByPhone ? "Escribe un número telefónico" : "Escribe un CLIENTE_UNICO")" aria-label="Consulta" />
-            <button type="button" class="primary-button" @onclick="Search">Consultar</button>
-            <button type="button" class="secondary-button" @onclick="Clear">Limpiar</button>
-        </div>
+        <input class="lookup-search-input" @bind="Query" @bind:event="oninput" inputmode="@(ByPhone ? "numeric" : "text")" placeholder="@(ByPhone ? "Escribe un número telefónico" : "Escribe un CLIENTE_UNICO")" aria-label="Consulta" />
+        <button type="button" class="primary-button" @onclick="Search">Consultar</button>
+        <button type="button" class="secondary-button" @onclick="Clear">Limpiar</button>
     </div>
 </section>
 
