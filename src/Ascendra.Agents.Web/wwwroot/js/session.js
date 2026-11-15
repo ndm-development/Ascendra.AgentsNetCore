@@ -94,3 +94,40 @@ window.ascendraSession = (() => {
 
     return { start, stop };
 })();
+
+// El estado de lectura es una preferencia local por usuario, no contiene el
+// texto de los mensajes. Conserva los avisos ya atendidos entre reconexiones
+// del circuito interactivo y actualizaciones visuales de la aplicación.
+window.ascendraChatRead = (() => {
+    const keyFor = (username) => `ascendra.chat-read.v1.${String(username ?? "").trim().toLowerCase()}`;
+
+    function load(username) {
+        try {
+            const stored = window.localStorage.getItem(keyFor(username));
+            if (!stored) return { hasState: false, ids: [] };
+
+            const parsed = JSON.parse(stored);
+            return {
+                hasState: true,
+                ids: Array.isArray(parsed?.ids)
+                    ? parsed.ids.filter((id) => typeof id === "string").slice(-8000)
+                    : [],
+            };
+        } catch {
+            return { hasState: false, ids: [] };
+        }
+    }
+
+    function save(username, ids) {
+        try {
+            const normalizedIds = Array.isArray(ids)
+                ? ids.filter((id) => typeof id === "string").slice(-8000)
+                : [];
+            window.localStorage.setItem(keyFor(username), JSON.stringify({ ids: normalizedIds }));
+        } catch {
+            // No interrumpimos el chat si el navegador tiene el almacenamiento restringido.
+        }
+    }
+
+    return { load, save };
+})();

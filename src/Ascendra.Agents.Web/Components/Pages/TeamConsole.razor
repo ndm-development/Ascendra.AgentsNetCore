@@ -4,6 +4,7 @@
 @inject DashboardSession Session
 @inject DashboardQueries Queries
 @inject EphemeralChatService Chat
+@inject IJSRuntime JS
 
 @{
     var scope = Queries.FilterByClient(Queries.TeamScope(), ClientQuery);
@@ -34,11 +35,11 @@
     </header>
 
     <nav class="team-console__tabs glass-card" role="tablist" aria-label="Secciones de la consola">
-        <button type="button" class="@TabClass(TeamSection.Messages)" role="tab" aria-selected="@(ActiveSection == TeamSection.Messages)" @onclick="() => ActiveSection = TeamSection.Messages">
+        <button type="button" class="@TabClass(TeamSection.Messages)" role="tab" aria-selected="@(ActiveSection == TeamSection.Messages)" @onclick="() => SelectSection(TeamSection.Messages)">
             Mensajes @if (UnreadMessageCount > 0) { <span>@UnreadMessageCount</span> }
         </button>
-        <button type="button" class="@TabClass(TeamSection.Promises)" role="tab" aria-selected="@(ActiveSection == TeamSection.Promises)" @onclick="() => ActiveSection = TeamSection.Promises">Promesas <span>@teamPromises.Length</span></button>
-        <button type="button" class="@TabClass(TeamSection.Payments)" role="tab" aria-selected="@(ActiveSection == TeamSection.Payments)" @onclick="() => ActiveSection = TeamSection.Payments">Pagos <span>@teamPayments.Length</span></button>
+        <button type="button" class="@TabClass(TeamSection.Promises)" role="tab" aria-selected="@(ActiveSection == TeamSection.Promises)" @onclick="() => SelectSection(TeamSection.Promises)">Promesas <span>@teamPromises.Length</span></button>
+        <button type="button" class="@TabClass(TeamSection.Payments)" role="tab" aria-selected="@(ActiveSection == TeamSection.Payments)" @onclick="() => SelectSection(TeamSection.Payments)">Pagos <span>@teamPayments.Length</span></button>
     </nav>
 
     @if (ActiveSection == TeamSection.Messages)
@@ -64,7 +65,7 @@
                     {
                         <label class="team-chat__recipient">
                             <span>Enviar privado a</span>
-                            <select @bind="SelectedRecipient" aria-label="Destinatario del mensaje privado">
+                            <select @bind="SelectedRecipient" @bind:after="MarkVisibleMessagesRead" aria-label="Destinatario del mensaje privado">
                                 <option value="">Selecciona un usuario conectado</option>
                                 @foreach (var user in AvailableRecipients)
                                 {
@@ -122,6 +123,16 @@
                         <p class="team-chat__error" role="status">@ChatError</p>
                     }
                     <div class="team-chat__actions">
+                        <button type="button" class="chat-emoji-button" @onclick="ToggleEmojiPicker" aria-label="Insertar emoji" aria-expanded="@IsEmojiPickerOpen">☺</button>
+                        @if (IsEmojiPickerOpen)
+                        {
+                            <div class="chat-emoji-picker" role="group" aria-label="Emojis para insertar">
+                                @foreach (var emoji in ChatEmojis)
+                                {
+                                    <button type="button" title="@emoji.Label" aria-label="@emoji.Label" @onclick="() => AddEmoji(emoji.Value)">@emoji.Value</button>
+                                }
+                            </div>
+                        }
                         <label class="chat-attach-button" title="Adjuntar imagen o captura (máximo 4 MB)">
                             <span aria-hidden="true">▧</span> Adjuntar imagen
                             <InputFile @key="AttachmentInputKey" OnChange="SelectImageAsync" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Adjuntar una imagen" />
@@ -217,10 +228,17 @@
     private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
     private string SelectedRecipient { get; set; } = string.Empty;
     private string Draft { get; set; } = string.Empty;
+    private bool IsEmojiPickerOpen { get; set; }
     private string? ChatError { get; set; }
     private ChatAttachment? PendingAttachment { get; set; }
     private Guid AttachmentInputKey { get; set; } = Guid.NewGuid();
     private readonly HashSet<Guid> ReadMessages = [];
+    private static readonly (string Value, string Label)[] ChatEmojis =
+    [
+        ("👍", "Pulgar arriba"), ("✅", "Confirmado"), ("📌", "Importante"), ("⚠️", "Atención"),
+        ("👀", "Revisar"), ("🙏", "Gracias"), ("💬", "Mensaje"), ("⏱️", "Pendiente"),
+        ("🎯", "Objetivo"), ("🚨", "Urgente"), ("🙂", "Sonrisa"), ("📎", "Adjunto"),
+    ];
     private int _week;
     private string ClientQuery { get; set; } = string.Empty;
     private string SelectedAgent { get; set; } = string.Empty;
@@ -269,7 +287,23 @@
     {
         CurrentChatMode = mode;
         ChatError = null;
-        ReadMessages.UnionWith(VisibleMessages.Select(message => message.Id));
+        IsEmojiPickerOpen = false;
+        MarkVisibleMessagesRead();
+    }
+
+    private void SelectSection(TeamSection section)
+    {
+        ActiveSection = section;
+        IsEmojiPickerOpen = false;
+        if (section == TeamSection.Messages) MarkVisibleMessagesRead();
+    }
+
+    private void ToggleEmojiPicker() => IsEmojiPickerOpen = !IsEmojiPickerOpen;
+
+    private void AddEmoji(string emoji)
+    {
+        if (Draft.Length + emoji.Length <= 500) Draft += emoji;
+        IsEmojiPickerOpen = false;
     }
 
     private async Task SendMessageAsync()
@@ -280,10 +314,11 @@
             if (CurrentChatMode == ChatMode.General) Chat.SendToEveryone(Participant, Draft, PendingAttachment);
             else Chat.SendPrivate(Participant, SelectedRecipient, Draft, PendingAttachment);
             Draft = string.Empty;
+            IsEmojiPickerOpen = false;
             PendingAttachment = null;
             AttachmentInputKey = Guid.NewGuid();
             ChatError = null;
-            ReadMessages.UnionWith(VisibleMessages.Select(message => message.Id));
+            MarkVisibleMessagesRead();
         }
         catch (InvalidOperationException exception)
         {
@@ -318,23 +353,82 @@
         AttachmentInputKey = Guid.NewGuid();
     }
 
-    private void StartChat()
+    private async Task StartChatAsync()
     {
         if (ChatRegistered || Session.User is null) return;
         Participant = EphemeralChatService.ParticipantFor(Session.User);
+        var hasPersistedReadState = await RestoreReadMessagesAsync();
         Chat.Changed += OnChatChanged;
         ChatRegistered = true;
         Chat.Register(ConnectionId, Participant);
         ChatState = Chat.GetState(Participant);
-        ReadMessages.UnionWith(ChatState.Messages.Select(message => message.Id));
+        if (!hasPersistedReadState)
+        {
+            ReadMessages.UnionWith(ChatState.Messages.Select(message => message.Id));
+        }
+        await PersistReadMessagesAsync();
     }
 
     private void OnChatChanged() => _ = InvokeAsync(() =>
     {
         if (IsDisposed || Participant is null) return;
         ChatState = Chat.GetState(Participant);
+        if (ActiveSection == TeamSection.Messages) MarkVisibleMessagesRead();
         StateHasChanged();
     });
+
+    private void MarkVisibleMessagesRead()
+    {
+        if (ActiveSection != TeamSection.Messages) return;
+        var readAnyMessage = false;
+        foreach (var message in VisibleMessages)
+        {
+            readAnyMessage |= ReadMessages.Add(message.Id);
+        }
+        if (readAnyMessage) _ = PersistReadMessagesAsync();
+    }
+
+    private async Task<bool> RestoreReadMessagesAsync()
+    {
+        if (Participant is null) return false;
+        try
+        {
+            var saved = await JS.InvokeAsync<PersistedChatReadState>("ascendraChatRead.load", Participant.Username);
+            if (saved is null || !saved.HasState) return false;
+
+            foreach (var id in saved.Ids)
+            {
+                if (Guid.TryParse(id, out var messageId)) ReadMessages.Add(messageId);
+            }
+            return true;
+        }
+        catch (JSDisconnectedException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private async Task PersistReadMessagesAsync()
+    {
+        if (Participant is null || IsDisposed) return;
+        try
+        {
+            await JS.InvokeVoidAsync("ascendraChatRead.save", Participant.Username,
+                ReadMessages.Select(id => id.ToString("D")).Take(8000).ToArray());
+        }
+        catch (JSDisconnectedException)
+        {
+            // El usuario dejó la página antes de terminar de guardar su lectura local.
+        }
+        catch (InvalidOperationException)
+        {
+            // La conexión interactiva puede cerrarse durante una actualización.
+        }
+    }
 
     private void ClearFilters()
     {
@@ -364,10 +458,10 @@
     private static bool IsOrganicPayment(PaymentRecord payment) =>
         TextNormalization.IsOrganic(payment.Agent) || TextNormalization.IsOrganic(payment.AssignmentType);
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        StartChat();
+        await StartChatAsync();
     }
 
     public ValueTask DisposeAsync()
@@ -394,4 +488,5 @@
 
     private enum TeamSection { Messages, Promises, Payments }
     private enum ChatMode { General, Private }
+    private sealed record PersistedChatReadState(bool HasState, string[] Ids);
 }

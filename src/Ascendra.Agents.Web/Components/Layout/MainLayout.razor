@@ -124,6 +124,16 @@
                                                 <span class="chat-composer__error" role="status">@ChatError</span>
                                             }
                                             <div class="chat-composer__actions">
+                                                <button type="button" class="chat-emoji-button" @onclick="ToggleChatEmojiPicker" aria-label="Insertar emoji" aria-expanded="@IsChatEmojiPickerOpen">☺</button>
+                                                @if (IsChatEmojiPickerOpen)
+                                                {
+                                                    <div class="chat-emoji-picker" role="group" aria-label="Emojis para insertar">
+                                                        @foreach (var emoji in ChatEmojis)
+                                                        {
+                                                            <button type="button" title="@emoji.Label" aria-label="@emoji.Label" @onclick="() => AddChatEmoji(emoji.Value)">@emoji.Value</button>
+                                                        }
+                                                    </div>
+                                                }
                                                 <label class="chat-attach-button" title="Adjuntar imagen (máximo 4 MB)">
                                                     <span aria-hidden="true">▧</span> Imagen
                                                     <InputFile @key="ChatAttachmentInputKey" OnChange="SelectChatImageAsync" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Adjuntar imagen" />
@@ -229,9 +239,16 @@
     private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
     private string SelectedChatRecipient { get; set; } = string.Empty;
     private string ChatDraft { get; set; } = string.Empty;
+    private bool IsChatEmojiPickerOpen { get; set; }
     private ChatAttachment? PendingChatAttachment { get; set; }
     private Guid ChatAttachmentInputKey { get; set; } = Guid.NewGuid();
     private string? ChatError { get; set; }
+    private static readonly (string Value, string Label)[] ChatEmojis =
+    [
+        ("👍", "Pulgar arriba"), ("✅", "Confirmado"), ("📌", "Importante"), ("⚠️", "Atención"),
+        ("👀", "Revisar"), ("🙏", "Gracias"), ("💬", "Mensaje"), ("⏱️", "Pendiente"),
+        ("🎯", "Objetivo"), ("🚨", "Urgente"), ("🙂", "Sonrisa"), ("📎", "Adjunto"),
+    ];
     // Durante el prerenderizado todavía no existe un navegador conectado. Sólo
     // intentamos detener el temporizador si realmente llegó a iniciarse en el
     // cliente interactivo.
@@ -313,6 +330,7 @@
     {
         IsChatOpen = !IsChatOpen;
         IsAppearanceMenuOpen = false;
+        IsChatEmojiPickerOpen = false;
         ChatError = null;
         if (IsChatOpen)
         {
@@ -325,12 +343,14 @@
     {
         IsChatOpen = false;
         IsAppearanceMenuOpen = false;
+        IsChatEmojiPickerOpen = false;
     }
 
     private void SelectChatMode(ChatMode mode)
     {
         CurrentChatMode = mode;
         ChatError = null;
+        IsChatEmojiPickerOpen = false;
         if (mode == ChatMode.Private && string.IsNullOrWhiteSpace(SelectedChatRecipient))
         {
             FocusLatestPrivateMessage();
@@ -355,6 +375,14 @@
                 ? message.Recipient.DisplayName
                 : "ti";
 
+    private void ToggleChatEmojiPicker() => IsChatEmojiPickerOpen = !IsChatEmojiPickerOpen;
+
+    private void AddChatEmoji(string emoji)
+    {
+        if (ChatDraft.Length + emoji.Length <= 500) ChatDraft += emoji;
+        IsChatEmojiPickerOpen = false;
+    }
+
     private async Task SendChatMessageAsync()
     {
         if (ChatParticipant is null) return;
@@ -371,6 +399,7 @@
             }
 
             ChatDraft = string.Empty;
+            IsChatEmojiPickerOpen = false;
             PendingChatAttachment = null;
             ChatAttachmentInputKey = Guid.NewGuid();
             ChatError = null;
@@ -417,16 +446,21 @@
 
     private static string ChatAttachmentUrl(ChatAttachment attachment) => $"/chat/attachments/{attachment.Id}";
 
-    private void StartChat()
+    private async Task StartChatAsync()
     {
         if (ChatRegistered || Session.User is null) return;
 
         ChatParticipant = EphemeralChatService.ParticipantFor(Session.User);
+        var hasPersistedReadState = await RestoreReadChatMessagesAsync();
         Chat.Changed += OnChatChanged;
         ChatRegistered = true;
         Chat.Register(ChatConnectionId, ChatParticipant);
         ChatState = Chat.GetState(ChatParticipant);
-        ReadChatMessageIds.UnionWith(ChatState.Messages.Select(message => message.Id));
+        if (!hasPersistedReadState)
+        {
+            ReadChatMessageIds.UnionWith(ChatState.Messages.Select(message => message.Id));
+        }
+        await PersistReadChatMessagesAsync();
     }
 
     private void OnChatChanged()
@@ -454,7 +488,54 @@
     private void MarkVisibleChatMessagesRead()
     {
         if (!IsChatOpen) return;
-        ReadChatMessageIds.UnionWith(VisibleChatMessages.Select(message => message.Id));
+        var readAnyMessage = false;
+        foreach (var message in VisibleChatMessages)
+        {
+            readAnyMessage |= ReadChatMessageIds.Add(message.Id);
+        }
+        if (readAnyMessage) _ = PersistReadChatMessagesAsync();
+    }
+
+    private async Task<bool> RestoreReadChatMessagesAsync()
+    {
+        if (ChatParticipant is null) return false;
+        try
+        {
+            var saved = await JS.InvokeAsync<PersistedChatReadState>("ascendraChatRead.load", ChatParticipant.Username);
+            if (saved is null || !saved.HasState) return false;
+
+            foreach (var id in saved.Ids)
+            {
+                if (Guid.TryParse(id, out var messageId)) ReadChatMessageIds.Add(messageId);
+            }
+            return true;
+        }
+        catch (JSDisconnectedException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private async Task PersistReadChatMessagesAsync()
+    {
+        if (ChatParticipant is null || IsDisposed) return;
+        try
+        {
+            await JS.InvokeVoidAsync("ascendraChatRead.save", ChatParticipant.Username,
+                ReadChatMessageIds.Select(id => id.ToString("D")).Take(8000).ToArray());
+        }
+        catch (JSDisconnectedException)
+        {
+            // El navegador ya cerró la vista; el estado visible se conserva localmente.
+        }
+        catch (InvalidOperationException)
+        {
+            // El circuito puede terminar durante una navegación o actualización.
+        }
     }
 
     private void FocusLatestPrivateMessage()
@@ -484,7 +565,7 @@
         {
             await JS.InvokeVoidAsync("ascendraSession.start");
             SessionTrackingStarted = true;
-            if (!Session.HasFullAccess) StartChat();
+            if (!Session.HasFullAccess) await StartChatAsync();
         }
 
         if (!RefreshChartsAfterRender) return;
@@ -514,6 +595,8 @@
             // El circuito ya terminó; no queda ningún temporizador que cancelar.
         }
     }
+
+    private sealed record PersistedChatReadState(bool HasState, string[] Ids);
 
     private enum AppearanceMode { Light, Dark, Pink, Sierra, Aurora, Oceano }
     private enum ChatMode { General, Private }
