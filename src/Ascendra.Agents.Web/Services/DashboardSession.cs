@@ -11,8 +11,6 @@ public sealed class DashboardSession
     public AgentUser? User { get; private set; }
     public bool IsAgent => User?.IsAgent == true;
     public bool HasFullAccess => User?.HasFullAccess == true;
-    public bool IsManager => User?.IsManager == true;
-    public bool IsSupervisor => User?.IsSupervisor == true;
 
     public string Greeting
     {

@@ -9,8 +9,6 @@ public sealed record AgentUser(
 {
     public bool HasFullAccess => Role.Equals("Gerente", StringComparison.OrdinalIgnoreCase)
         || Role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase);
-    public bool IsManager => Role.Equals("Gerente", StringComparison.OrdinalIgnoreCase);
-    public bool IsSupervisor => Role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase);
     public bool IsAgent => Role.Equals("Agente", StringComparison.OrdinalIgnoreCase);
 }
 
