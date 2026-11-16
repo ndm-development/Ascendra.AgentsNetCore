@@ -6,22 +6,32 @@
 
 <section class="login-stack" aria-labelledby="ascendra-title">
     <header class="login-brand">
-        <div class="login-mark" aria-hidden="true">A</div>
+        <div class="login-mark" aria-hidden="true"><span>A</span></div>
         <h1 id="ascendra-title">Ascendra</h1>
         <p class="login-workspace">Xolo · Agentes</p>
     </header>
-    <form method="post" action="/account/login" class="login-form" aria-label="Acceso a Agentes">
-        <AntiforgeryToken />
-        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-        @if (HasError) { <div class="form-alert form-alert--error" role="alert">Usuario o contraseña no válidos.</div> }
-        @if (SessionExpired) { <div class="form-alert" role="status">Por seguridad, tu sesión se cerró después de dos horas sin actividad.</div> }
-        @if (IsStarting || !SnapshotStore.Health.IsReady) { <div class="form-alert" role="status">Estamos actualizando el corte de trabajo. Tu acceso estará listo en un momento.</div> }
-        <label class="sr-only" for="username">Usuario</label>
-        <input id="username" name="username" placeholder="Usuario" autocomplete="username" required autofocus />
-        <label class="sr-only" for="password">Contraseña</label>
-        <input id="password" name="password" type="password" placeholder="Contraseña" autocomplete="current-password" required />
-        <button type="submit" class="primary-button">Continuar</button>
-    </form>
+    <div class="login-access-card">
+        <div class="login-access-card__header" aria-hidden="true">
+            <span class="login-access-card__signal"><i></i> Acceso seguro</span>
+            <span>ASCENDRA</span>
+        </div>
+        <form method="post" action="/account/login" class="login-form" aria-label="Acceso a Agentes">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            @if (HasError) { <div class="form-alert form-alert--error" role="alert">Usuario o contraseña no válidos.</div> }
+            @if (SessionExpired) { <div class="form-alert" role="status">Por seguridad, tu sesión se cerró después de dos horas sin actividad.</div> }
+            @if (IsStarting || !SnapshotStore.Health.IsReady) { <div class="form-alert" role="status">Estamos actualizando el corte de trabajo. Tu acceso estará listo en un momento.</div> }
+            <label class="login-field" for="username">
+                <span>Usuario</span>
+                <input id="username" name="username" placeholder="Ingresa tu usuario" autocomplete="username" required autofocus />
+            </label>
+            <label class="login-field" for="password">
+                <span>Contraseña</span>
+                <input id="password" name="password" type="password" placeholder="Ingresa tu contraseña" autocomplete="current-password" required />
+            </label>
+            <button type="submit" class="primary-button"><span>Continuar</span><span class="login-button-arrow" aria-hidden="true">→</span></button>
+        </form>
+    </div>
 </section>
 
 @code {
