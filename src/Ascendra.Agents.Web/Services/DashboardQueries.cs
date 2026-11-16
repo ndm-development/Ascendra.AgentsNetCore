@@ -48,9 +48,19 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     /// La página que lo consume exige uno de esos roles; un agente nunca recibe
     /// este alcance aunque intente abrir la ruta de forma directa.
     /// </summary>
-    public ScopedOperations TeamScope() => session.HasFullAccess
-        ? BuildScope(Snapshot.Payments.Concat(Snapshot.OrganicPayments).ToArray(), Snapshot.Promises, Snapshot.Portfolio)
-        : new ScopedOperations([], [], [], []);
+    public ScopedOperations TeamScope()
+    {
+        if (!session.HasFullAccess) return new ScopedOperations([], [], [], []);
+
+        // El orgánico no pertenece a la cartera de un agente. Supervisión
+        // trabaja sólo con la cobranza asignada; Gerencia conserva la vista
+        // íntegra para sus revisiones operativas y exportaciones.
+        var payments = session.IsSupervisor
+            ? Snapshot.Payments
+            : Snapshot.Payments.Concat(Snapshot.OrganicPayments).ToArray();
+
+        return BuildScope(payments, Snapshot.Promises, Snapshot.Portfolio);
+    }
 
     /// <summary>Aplica el buscador de cliente que comparten Mi recuperación y Mis promesas.</summary>
     public ScopedOperations FilterByClient(ScopedOperations scope, string? clientQuery)

@@ -177,6 +177,8 @@ button { cursor: pointer; }
 .theme-oceano .appearance-menu { background:linear-gradient(145deg,rgba(12,67,91,.88),rgba(5,35,60,.77)); }
 .theme-ambar .appearance-menu { background:linear-gradient(145deg,rgba(67,54,44,.90),rgba(31,25,23,.80)); }
 .theme-light .nav-tab.active { background:linear-gradient(145deg,rgba(229,240,250,.68),rgba(203,220,237,.38)); border-color:rgba(238,247,255,.62); }
+.theme-dark .nav-tab.active { color:#f4f7ff; background:linear-gradient(145deg,rgba(82,105,164,.48),rgba(27,38,61,.72)); border-color:rgba(172,195,255,.43); box-shadow:0 7px 18px rgba(2,8,20,.34),inset 0 1px rgba(229,237,255,.18); }
+.theme-dark .nav-tab.active::after { background:linear-gradient(90deg,#9db8ff,#c9d7ff); box-shadow:0 0 9px rgba(157,184,255,.48); }
 .theme-pink .nav-tab.active { background:linear-gradient(145deg,rgba(246,235,250,.64),rgba(226,213,245,.34)); }
 .theme-sierra .nav-tab.active { background:linear-gradient(145deg,rgba(239,241,225,.64),rgba(215,229,213,.35)); }
 .theme-aurora .nav-tab.active { background:linear-gradient(145deg,rgba(86,151,181,.33),rgba(21,68,95,.27)); border-color:rgba(187,242,239,.32); }
