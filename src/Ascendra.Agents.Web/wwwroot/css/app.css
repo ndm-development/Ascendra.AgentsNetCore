@@ -31,19 +31,19 @@ button { cursor: pointer; }
 
 .theme-dark {
   --background-image: var(--ascendra-night-background, url("/assets/galaxy-bg.jpg"));
-  /* El fondo nocturno ya es oscuro: esta capa sólo unifica la composición,
-     sin velar ni apagar la fotografía. */
-  --background-wash: linear-gradient(125deg, rgba(5, 10, 18, .22), rgba(15, 20, 34, .07) 55%, rgba(5, 10, 18, .26));
+  /* Reflejos astrales fríos: aportan profundidad al cristal sin convertirlo
+     en neón ni perder el contraste de la fotografía nocturna. */
+  --background-wash: radial-gradient(circle at 13% 7%, rgba(105, 117, 255, .17), transparent 25%), radial-gradient(circle at 88% 16%, rgba(96, 194, 255, .13), transparent 24%), linear-gradient(125deg, rgba(5, 10, 20, .27), rgba(17, 24, 52, .10) 55%, rgba(5, 10, 20, .31));
   --ink: #eef5ff;
   --ink-muted: #c5d2e4;
-  --accent: #b5c4ff;
-  --accent-strong: #e0e6ff;
-  --accent-soft: rgba(156, 174, 255, .22);
-  --glass-top: rgba(27, 35, 51, .72);
-  --glass-bottom: rgba(10, 16, 28, .60);
-  --glass-control: rgba(20, 28, 42, .84);
-  --glass-border: rgba(209, 223, 255, .24);
-  --line: rgba(207, 220, 250, .22);
+  --accent: #b7c9ff;
+  --accent-strong: #e6edff;
+  --accent-soft: rgba(147, 171, 255, .25);
+  --glass-top: rgba(28, 37, 68, .75);
+  --glass-bottom: rgba(8, 15, 34, .63);
+  --glass-control: rgba(17, 27, 52, .86);
+  --glass-border: rgba(200, 216, 255, .28);
+  --line: rgba(201, 216, 255, .24);
   --shadow: 0 26px 58px rgba(0, 0, 0, .34), 0 3px 10px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(230, 237, 255, .1);
   --table-row: rgba(27, 36, 51, .24);
 }
@@ -177,8 +177,9 @@ button { cursor: pointer; }
 .theme-oceano .appearance-menu { background:linear-gradient(145deg,rgba(12,67,91,.88),rgba(5,35,60,.77)); }
 .theme-ambar .appearance-menu { background:linear-gradient(145deg,rgba(67,54,44,.90),rgba(31,25,23,.80)); }
 .theme-light .nav-tab.active { background:linear-gradient(145deg,rgba(229,240,250,.68),rgba(203,220,237,.38)); border-color:rgba(238,247,255,.62); }
-.theme-dark .nav-tab.active { color:#f4f7ff; background:linear-gradient(145deg,rgba(82,105,164,.48),rgba(27,38,61,.72)); border-color:rgba(172,195,255,.43); box-shadow:0 7px 18px rgba(2,8,20,.34),inset 0 1px rgba(229,237,255,.18); }
-.theme-dark .nav-tab.active::after { background:linear-gradient(90deg,#9db8ff,#c9d7ff); box-shadow:0 0 9px rgba(157,184,255,.48); }
+.theme-dark .nav-tab:hover:not(.active) { color:#f4f7ff; background:linear-gradient(145deg,rgba(86,108,179,.28),rgba(29,44,78,.32)); box-shadow:inset 0 1px rgba(218,231,255,.12),0 5px 14px rgba(4,11,29,.18); }
+.theme-dark .nav-tab.active { color:#f4f7ff; background:linear-gradient(145deg,rgba(83,107,178,.52),rgba(25,37,67,.78)); border-color:rgba(176,200,255,.46); box-shadow:0 7px 18px rgba(2,8,20,.36),inset 0 1px rgba(230,238,255,.20); }
+.theme-dark .nav-tab.active::after { background:linear-gradient(90deg,#9db8ff,#d0dcff); box-shadow:0 0 9px rgba(157,184,255,.48); }
 .theme-pink .nav-tab.active { background:linear-gradient(145deg,rgba(246,235,250,.64),rgba(226,213,245,.34)); }
 .theme-sierra .nav-tab.active { background:linear-gradient(145deg,rgba(239,241,225,.64),rgba(215,229,213,.35)); }
 .theme-aurora .nav-tab.active { background:linear-gradient(145deg,rgba(86,151,181,.33),rgba(21,68,95,.27)); border-color:rgba(187,242,239,.32); }
@@ -201,6 +202,7 @@ button { cursor: pointer; }
   position: relative;
 }
 .glass-card::before { content: ""; position: absolute; height: 1px; top: 0; left: 10%; right: 10%; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(255,255,255,.68), transparent); }
+.theme-dark .glass-card { background:radial-gradient(circle at 7% -18%,rgba(117,135,255,.16),transparent 37%),radial-gradient(circle at 100% 2%,rgba(89,192,255,.09),transparent 30%),linear-gradient(130deg,var(--glass-top),var(--glass-bottom)); }
 .theme-dark .glass-card::before { background: linear-gradient(90deg, transparent, rgba(225,233,255,.17), transparent); }
 .theme-pink .glass-card { background: radial-gradient(circle at 100% 0, rgba(151, 139, 237, .045), transparent 27%), linear-gradient(130deg, var(--glass-top), var(--glass-bottom)); }
 .theme-pink .glass-card::before { background: linear-gradient(90deg, transparent, rgba(255,255,255,.68), rgba(211,182,255,.34), transparent); }
@@ -212,6 +214,7 @@ button { cursor: pointer; }
 
 .brand-card { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 24px; padding: clamp(12px, 1.25vw, 17px) clamp(17px, 1.75vw, 24px); overflow: visible; margin-bottom: 12px; z-index: 12; }
 .brand-card::after { content: ""; position: absolute; right: -15%; top: -220%; height: 430px; width: 430px; border-radius: 999px; pointer-events: none; background: radial-gradient(circle, rgba(151, 204, 255, .22), transparent 66%); }
+.theme-dark .brand-card::after { background:radial-gradient(circle,rgba(129,156,255,.22),rgba(98,207,255,.07) 34%,transparent 67%); }
 .theme-pink .brand-card::after { background: radial-gradient(circle, rgba(137, 125, 232, .065), transparent 66%); }
 .theme-sierra .brand-card::after { background: radial-gradient(circle, rgba(201, 155, 70, .13), transparent 66%); }
 .theme-aurora .brand-card::after { background:radial-gradient(circle,rgba(104,234,209,.16),transparent 66%); }
