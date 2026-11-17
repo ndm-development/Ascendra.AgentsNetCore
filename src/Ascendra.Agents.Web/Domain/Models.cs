@@ -75,6 +75,36 @@ public sealed record ReferenceLookupResult(
     string LatestPromiseAgent,
     string LatestPromiseStatus);
 
+/// <summary>
+/// Catálogo visible de resultados de llamada. El código y la ponderación se
+/// resuelven exclusivamente en el servidor para que no formen parte de la UI.
+/// </summary>
+public sealed record CallDispositionCategory(
+    string Name,
+    IReadOnlyList<string> Results);
+
+/// <summary>
+/// Vista operativa de una tipificación ya registrada. El evento queda ligado
+/// al cliente y conserva el teléfono trabajado como evidencia de la llamada.
+/// </summary>
+public sealed record CallDispositionEntry(
+    Guid Id,
+    DateTimeOffset RecordedAt,
+    string ClientId,
+    string AgentId,
+    string AgentName,
+    string Category,
+    string Result,
+    string Phone);
+
+public sealed record ClientDispositionHistory(
+    IReadOnlyList<CallDispositionEntry> Entries,
+    int TotalEntries,
+    CallDispositionEntry? HighestWeight)
+{
+    public static ClientDispositionHistory Empty { get; } = new([], 0, null);
+}
+
 public sealed record AgentDirectoryRecord(string Id, string FirstName, string PaternalSurname);
 
 public sealed record AgentDataSnapshot(

@@ -32,6 +32,7 @@ if (!string.IsNullOrWhiteSpace(dataProtectionPath))
 builder.Services.Configure<AgentDataOptions>(builder.Configuration.GetSection("Data"));
 builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection("Security"));
 builder.Services.Configure<ChatOptions>(builder.Configuration.GetSection(ChatOptions.SectionName));
+builder.Services.Configure<CallDispositionOptions>(builder.Configuration.GetSection(CallDispositionOptions.SectionName));
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
@@ -75,6 +76,7 @@ builder.Services.AddScoped<DashboardSession>();
 builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddSingleton<WhatsAppTemplateCatalog>();
 builder.Services.AddSingleton<EphemeralChatService>();
+builder.Services.AddSingleton<CallDispositionService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<EphemeralChatService>());
 
 var app = builder.Build();

@@ -1,6 +1,9 @@
 @page "/referencias"
 @attribute [Authorize]
+@using System.Security.Claims
 @inject DashboardQueries Queries
+@inject CallDispositionService Dispositions
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <section class="lookup-shell glass-card">
     <div class="lookup-heading">
@@ -8,14 +11,104 @@
     </div>
     <div class="lookup-controls">
         <div class="segmented-control" role="group" aria-label="Tipo de búsqueda">
-            <button class="@(!ByPhone ? "" : "selected")" @onclick="() => ByPhone = true">Teléfono</button>
-            <button class="@(ByPhone ? "" : "selected")" @onclick="() => ByPhone = false">CLIENTE_UNICO</button>
+            <button class="@(!ByPhone ? "" : "selected")" @onclick="() => SelectSearchMode(true)">Teléfono</button>
+            <button class="@(ByPhone ? "" : "selected")" @onclick="() => SelectSearchMode(false)">CLIENTE_UNICO</button>
         </div>
         <input class="lookup-search-input" @bind="Query" @bind:event="oninput" inputmode="@(ByPhone ? "numeric" : "text")" placeholder="@(ByPhone ? "Escribe un número telefónico" : "Escribe un CLIENTE_UNICO")" aria-label="Consulta" />
-        <button type="button" class="primary-button" @onclick="Search">Consultar</button>
+        <button type="button" class="primary-button" @onclick="SearchAsync">Consultar</button>
         <button type="button" class="secondary-button" @onclick="Clear">Limpiar</button>
     </div>
 </section>
+
+@if (ShowDispositionPanel)
+{
+    var selectedHistory = HistoryFor(SelectedDispositionClientId);
+    <section class="call-disposition glass-card" aria-label="Tipificación de llamada">
+        <div class="call-disposition__heading">
+            <div>
+                <p class="eyebrow">DISPOSICIÓN DE LLAMADA</p>
+                <h2>Registra el resultado de @SearchedPhone</h2>
+                @if (PhoneCandidates.Count > 1)
+                {
+                    <p>Este número está asociado a más de un cliente. Elige a quién corresponde la gestión antes de registrarla.</p>
+                }
+                else
+                {
+                    <p>La tipificación quedará asociada al CLIENTE_UNICO; el teléfono se conserva como evidencia de la llamada.</p>
+                }
+            </div>
+            <div class="call-disposition__highest">
+                <span>Disposición de mayor peso</span>
+                @if (selectedHistory.HighestWeight is { } highest)
+                {
+                    <strong>@highest.Category</strong>
+                    <p>@highest.Result</p>
+                }
+                else if (PhoneCandidates.Count > 1 && string.IsNullOrWhiteSpace(SelectedDispositionClientId))
+                {
+                    <strong>Selecciona un cliente</strong>
+                    <p>Mostraremos su disposición más relevante.</p>
+                }
+                else
+                {
+                    <strong>Sin tipificaciones</strong>
+                    <p>Este cliente aún no tiene gestión registrada.</p>
+                }
+            </div>
+        </div>
+
+        <div class="call-disposition__controls">
+            @if (PhoneCandidates.Count > 1)
+            {
+                <div class="field call-disposition__client">
+                    <label for="disposition-client">CLIENTE_UNICO a tipificar</label>
+                    <select id="disposition-client" @bind="SelectedDispositionClientId" @bind:after="OnDispositionClientChangedAsync">
+                        <option value="">Selecciona un cliente</option>
+                        @foreach (var candidate in PhoneCandidates)
+                        {
+                            <option value="@candidate.ClientId">@candidate.ClientId · @candidate.ClientName</option>
+                        }
+                    </select>
+                </div>
+            }
+            else
+            {
+                <div class="call-disposition__client call-disposition__client--locked">
+                    <span>CLIENTE_UNICO</span>
+                    <strong>@SelectedDispositionClientId</strong>
+                </div>
+            }
+            <div class="field">
+                <label for="disposition-category">Categoría</label>
+                <select id="disposition-category" @bind="SelectedCategory" @bind:after="ResetDispositionResult" disabled="@(!CanChooseDisposition)">
+                    <option value="">Selecciona una categoría</option>
+                    @foreach (var category in Dispositions.Categories)
+                    {
+                        <option value="@category.Name">@category.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label for="disposition-result">Resultado</label>
+                <select id="disposition-result" @bind="SelectedResult" disabled="@string.IsNullOrWhiteSpace(SelectedCategory)">
+                    <option value="">Selecciona un resultado</option>
+                    @foreach (var outcome in Dispositions.ResultsFor(SelectedCategory))
+                    {
+                        <option value="@outcome">@outcome</option>
+                    }
+                </select>
+            </div>
+            <button type="button" class="primary-button call-disposition__save" @onclick="SaveDispositionAsync" disabled="@(!CanSaveDisposition || IsSavingDisposition)">
+                @(IsSavingDisposition ? "Guardando…" : "Registrar tipificación")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(DispositionMessage))
+        {
+            <p class="lookup-notice @(DispositionSucceeded ? "lookup-notice--success" : "lookup-notice--error")" role="status">@DispositionMessage</p>
+        }
+    </section>
+}
 
 @if (Searched && Results.Count == 0)
 {
@@ -23,10 +116,11 @@
 }
 else if (Results.Count > 0)
 {
-    @foreach (var group in Results.GroupBy(x => x.Contact.ClientId).OrderBy(x => x.Key))
+    @foreach (var group in ClientGroups)
     {
         var first = group.First();
         var contact = first.Contact;
+        var history = HistoryFor(group.Key);
         <section class="reference-result glass-card">
             <div class="result-heading">
                 <div><p class="eyebrow">CLIENTE_UNICO</p><h2>@group.Key</h2></div>
@@ -43,6 +137,29 @@ else if (Results.Count > 0)
                 @foreach (var row in group.OrderBy(x => x.Contact.Phone).ThenBy(x => x.Contact.ReferenceName))
                 { <tr><td class="phone-cell">@row.Contact.Phone</td><td>@(string.IsNullOrWhiteSpace(row.Contact.ReferenceName) ? "—" : row.Contact.ReferenceName)</td><td>@(string.IsNullOrWhiteSpace(row.Contact.Relationship) ? "—" : row.Contact.Relationship)</td><td>@row.Contact.Source</td></tr> }
             </tbody></table></div>
+
+            <section class="disposition-history" aria-label="Historial de tipificaciones de @group.Key">
+                <div class="disposition-history__heading">
+                    <div><p class="eyebrow">HISTORIAL DE TIPIFICACIONES</p><h3>Gestiones del cliente</h3></div>
+                    @if (history.TotalEntries > 0)
+                    {
+                        <span>@(history.TotalEntries == history.Entries.Count ? $"{history.TotalEntries} registro{(history.TotalEntries == 1 ? string.Empty : "s")}" : $"Últimos {history.Entries.Count} de {history.TotalEntries}")</span>
+                    }
+                </div>
+                @if (history.Entries.Count == 0)
+                {
+                    <p class="disposition-history__empty">Aún no hay tipificaciones para este cliente.</p>
+                }
+                else
+                {
+                    <div class="table-wrap disposition-history__table"><table><thead><tr><th>Fecha</th><th>ID agente</th><th>Agente</th><th>Tipificación</th><th>Teléfono</th></tr></thead><tbody>
+                        @foreach (var entry in history.Entries)
+                        {
+                            <tr><td>@OperationalClock.Format(entry.RecordedAt, "dd/MM/yyyy · HH:mm")</td><td>@entry.AgentId</td><td>@entry.AgentName</td><td><strong>@entry.Category</strong><span class="disposition-history__result">@entry.Result</span></td><td class="phone-cell">@entry.Phone</td></tr>
+                        }
+                    </tbody></table></div>
+                }
+            </section>
         </section>
     }
 }
@@ -52,6 +169,142 @@ else if (Results.Count > 0)
     private string Query { get; set; } = string.Empty;
     private bool Searched { get; set; }
     private IReadOnlyList<ReferenceLookupResult> Results { get; set; } = [];
-    private void Search() { Results = Queries.FindContacts(Query, ByPhone); Searched = true; }
-    private void Clear() { Query = string.Empty; Results = []; Searched = false; }
+    private IReadOnlyDictionary<string, ClientDispositionHistory> Histories { get; set; } = new Dictionary<string, ClientDispositionHistory>(StringComparer.OrdinalIgnoreCase);
+    private string? SelectedDispositionClientId { get; set; }
+    private string? SelectedCategory { get; set; }
+    private string? SelectedResult { get; set; }
+    private string? DispositionMessage { get; set; }
+    private bool DispositionSucceeded { get; set; }
+    private bool IsSavingDisposition { get; set; }
+
+    private IReadOnlyList<IGrouping<string, ReferenceLookupResult>> ClientGroups => Results
+        .GroupBy(result => result.Contact.ClientId, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private IReadOnlyList<DispositionClientCandidate> PhoneCandidates => ClientGroups
+        .Select(group =>
+        {
+            var contact = group.First().Contact;
+            return new DispositionClientCandidate(
+                group.Key,
+                string.IsNullOrWhiteSpace(contact.ClientName) ? "Nombre no disponible" : contact.ClientName);
+        })
+        .ToArray();
+
+    private string SearchedPhone => TextNormalization.Phone(Query);
+    private bool ShowDispositionPanel => ByPhone && Searched && PhoneCandidates.Count > 0 && SearchedPhone.Length > 0;
+    private bool CanChooseDisposition => !string.IsNullOrWhiteSpace(SelectedDispositionClientId);
+    private bool CanSaveDisposition => CanChooseDisposition
+        && !string.IsNullOrWhiteSpace(SelectedCategory)
+        && !string.IsNullOrWhiteSpace(SelectedResult);
+
+    private async Task SearchAsync()
+    {
+        Results = Queries.FindContacts(Query, ByPhone);
+        Searched = true;
+        SelectedCategory = null;
+        SelectedResult = null;
+        DispositionMessage = null;
+        DispositionSucceeded = false;
+
+        var histories = new Dictionary<string, ClientDispositionHistory>(StringComparer.OrdinalIgnoreCase);
+        foreach (var clientId in ClientGroups.Select(group => group.Key))
+        {
+            histories[clientId] = await Dispositions.GetHistoryAsync(clientId);
+        }
+        Histories = histories;
+
+        SelectedDispositionClientId = ByPhone && PhoneCandidates.Count == 1
+            ? PhoneCandidates[0].ClientId
+            : null;
+    }
+
+    private void SelectSearchMode(bool byPhone)
+    {
+        if (ByPhone == byPhone) return;
+        ByPhone = byPhone;
+        Clear();
+    }
+
+    private void Clear()
+    {
+        Query = string.Empty;
+        Results = [];
+        Histories = new Dictionary<string, ClientDispositionHistory>(StringComparer.OrdinalIgnoreCase);
+        Searched = false;
+        SelectedDispositionClientId = null;
+        SelectedCategory = null;
+        SelectedResult = null;
+        DispositionMessage = null;
+        DispositionSucceeded = false;
+    }
+
+    private async Task OnDispositionClientChangedAsync()
+    {
+        ResetDispositionResult();
+        DispositionMessage = null;
+        DispositionSucceeded = false;
+        if (!string.IsNullOrWhiteSpace(SelectedDispositionClientId)
+            && !Histories.ContainsKey(SelectedDispositionClientId))
+        {
+            var refreshed = new Dictionary<string, ClientDispositionHistory>(Histories, StringComparer.OrdinalIgnoreCase)
+            {
+                [SelectedDispositionClientId] = await Dispositions.GetHistoryAsync(SelectedDispositionClientId),
+            };
+            Histories = refreshed;
+        }
+    }
+
+    private void ResetDispositionResult() => SelectedResult = null;
+
+    private ClientDispositionHistory HistoryFor(string? clientId) =>
+        !string.IsNullOrWhiteSpace(clientId) && Histories.TryGetValue(clientId, out var history)
+            ? history
+            : ClientDispositionHistory.Empty;
+
+    private async Task SaveDispositionAsync()
+    {
+        if (!CanSaveDisposition || IsSavingDisposition) return;
+
+        IsSavingDisposition = true;
+        DispositionMessage = null;
+        try
+        {
+            var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            var agentId = principal.FindFirst(AgentClaimTypes.AgentId)?.Value
+                ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? string.Empty;
+            var agentName = principal.FindFirst(ClaimTypes.Name)?.Value
+                ?? principal.Identity?.Name
+                ?? string.Empty;
+            var history = await Dispositions.RecordAsync(
+                SelectedDispositionClientId,
+                SearchedPhone,
+                SelectedCategory,
+                SelectedResult,
+                agentId,
+                agentName);
+            var refreshed = new Dictionary<string, ClientDispositionHistory>(Histories, StringComparer.OrdinalIgnoreCase)
+            {
+                [SelectedDispositionClientId!] = history,
+            };
+            Histories = refreshed;
+            DispositionMessage = "Tipificación registrada correctamente.";
+            DispositionSucceeded = true;
+            SelectedCategory = null;
+            SelectedResult = null;
+        }
+        catch (InvalidOperationException exception)
+        {
+            DispositionMessage = exception.Message;
+            DispositionSucceeded = false;
+        }
+        finally
+        {
+            IsSavingDisposition = false;
+        }
+    }
+
+    private sealed record DispositionClientCandidate(string ClientId, string ClientName);
 }
