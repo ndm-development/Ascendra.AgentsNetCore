@@ -58,12 +58,13 @@
             {
                 <div class="field call-disposition__client">
                     <label for="disposition-client">CLIENTE_UNICO a tipificar</label>
-                    <GlassSelect Id="disposition-client"
-                                 MenuLabel="CLIENTE_UNICO a tipificar"
-                                 Placeholder="Selecciona un cliente"
-                                 Options="DispositionClientOptions"
-                                 Value="SelectedDispositionClientId"
-                                 ValueChanged="SelectDispositionClientAsync" />
+                    <select id="disposition-client" @bind="SelectedDispositionClientId" @bind:after="OnDispositionClientChangedAsync">
+                        <option value="">Selecciona un cliente</option>
+                        @foreach (var candidate in PhoneCandidates)
+                        {
+                            <option value="@candidate.ClientId">@candidate.ClientId · @candidate.ClientName</option>
+                        }
+                    </select>
                 </div>
             }
             else
@@ -75,23 +76,28 @@
             }
             <div class="field">
                 <label for="disposition-channel">Canal</label>
-                <GlassSelect Id="disposition-channel"
-                             MenuLabel="Selecciona un canal"
-                             Placeholder="Selecciona un canal"
-                             Options="ChannelOptions"
-                             Value="SelectedChannel"
-                             ValueChanged="SelectDispositionChannel"
-                             Disabled="@(!CanChooseDisposition)" />
+                <select id="disposition-channel" @bind="SelectedChannel" disabled="@(!CanChooseDisposition)">
+                    <option value="">Selecciona un canal</option>
+                    @foreach (var channel in Dispositions.Channels)
+                    {
+                        <option value="@channel">@channel</option>
+                    }
+                </select>
             </div>
             <div class="field call-disposition__outcome">
                 <label for="disposition-outcome">Tipificación</label>
-                <GlassSelect Id="disposition-outcome"
-                             MenuLabel="Selecciona una tipificación"
-                             Placeholder="Selecciona una tipificación"
-                             Options="OutcomeOptions"
-                             Value="SelectedOutcome"
-                             ValueChanged="SelectDispositionOutcome"
-                             Disabled="@string.IsNullOrWhiteSpace(SelectedChannel)" />
+                <select id="disposition-outcome" @bind="SelectedOutcome" @bind:after="OnDispositionOutcomeChanged" disabled="@string.IsNullOrWhiteSpace(SelectedChannel)">
+                    <option value="">Selecciona una tipificación</option>
+                    @foreach (var category in Dispositions.Categories)
+                    {
+                        <optgroup label="@category.Name">
+                            @foreach (var result in category.Results)
+                            {
+                                <option value="@OutcomeValue(category.Name, result)">@result</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
             </div>
             <button type="button" class="primary-button call-disposition__save" @onclick="SaveDispositionAsync" disabled="@(!CanSaveDisposition || IsSavingDisposition)">
                 @(IsSavingDisposition ? "Guardando…" : "Registrar tipificación")
@@ -196,22 +202,6 @@ else if (Results.Count > 0)
         })
         .ToArray();
 
-    private IReadOnlyList<GlassSelectOption> DispositionClientOptions => PhoneCandidates
-        .Select(candidate => new GlassSelectOption(candidate.ClientId, $"{candidate.ClientId} · {candidate.ClientName}"))
-        .ToArray();
-
-    private IReadOnlyList<GlassSelectOption> ChannelOptions => Dispositions.Channels
-        .Select(channel => new GlassSelectOption(channel, channel))
-        .ToArray();
-
-    private IReadOnlyList<GlassSelectOption> OutcomeOptions => Dispositions.Categories
-        .SelectMany(category => category.Results.Select(result => new GlassSelectOption(
-            OutcomeValue(category.Name, result),
-            result,
-            category.Name,
-            $"{category.Name} · {result}")))
-        .ToArray();
-
     private string SearchedPhone => TextNormalization.Phone(Query);
     private bool ShowDispositionPanel => ByPhone && Searched && PhoneCandidates.Count > 0 && SearchedPhone.Length > 0;
     private bool CanChooseDisposition => !string.IsNullOrWhiteSpace(SelectedDispositionClientId);
@@ -281,20 +271,6 @@ else if (Results.Count > 0)
             };
             Histories = refreshed;
         }
-    }
-
-    private async Task SelectDispositionClientAsync(string? clientId)
-    {
-        SelectedDispositionClientId = clientId;
-        await OnDispositionClientChangedAsync();
-    }
-
-    private void SelectDispositionChannel(string? channel) => SelectedChannel = channel;
-
-    private void SelectDispositionOutcome(string? outcome)
-    {
-        SelectedOutcome = outcome;
-        OnDispositionOutcomeChanged();
     }
 
     private void OnDispositionOutcomeChanged()
