@@ -34,13 +34,29 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
 
         bool Owns(string sourceAgent, string sourceId) =>
             (!string.IsNullOrWhiteSpace(sourceId) && sourceId == user.Id)
-            || (string.IsNullOrWhiteSpace(sourceId) && TextNormalization.AgentNameMatches(sourceAgent, user.DisplayName));
+            || (string.IsNullOrWhiteSpace(sourceId) && MatchesAgentAlias(sourceAgent, user));
 
         var payments = Snapshot.Payments.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
         var promises = Snapshot.Promises.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
         var allowedClients = payments.Select(x => x.ClientId).Concat(promises.Select(x => x.ClientId))
             .Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return BuildScope(payments, promises, Snapshot.Portfolio.Where(x => allowedClients.Contains(x.ClientId)).ToArray());
+    }
+
+    /// <summary>
+    /// Algunos cortes históricos no contienen Agente_ID. En ese caso se usa el
+    /// nombre visible y, si éste contiene el apellido materno, también el
+    /// nombre operativo de agentes_activos.xlsx asociado al mismo ID.
+    /// </summary>
+    private bool MatchesAgentAlias(string sourceAgent, AgentUser user)
+    {
+        if (TextNormalization.AgentNameMatches(sourceAgent, user.DisplayName)) return true;
+
+        return Snapshot.AgentDirectory
+            .Where(directory => TextNormalization.AgentId(directory.Id)
+                .Equals(user.Id, StringComparison.OrdinalIgnoreCase))
+            .Select(directory => $"{directory.FirstName} {directory.PaternalSurname}".Trim())
+            .Any(alias => TextNormalization.AgentNameMatches(sourceAgent, alias));
     }
 
     /// <summary>
