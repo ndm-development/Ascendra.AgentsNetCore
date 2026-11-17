@@ -75,8 +75,18 @@
                 </div>
             }
             <div class="field">
+                <label for="disposition-channel">Canal</label>
+                <select id="disposition-channel" @bind="SelectedChannel" disabled="@(!CanChooseDisposition)">
+                    <option value="">Selecciona un canal</option>
+                    @foreach (var channel in Dispositions.Channels)
+                    {
+                        <option value="@channel">@channel</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
                 <label for="disposition-category">Categoría</label>
-                <select id="disposition-category" @bind="SelectedCategory" @bind:after="ResetDispositionResult" disabled="@(!CanChooseDisposition)">
+                <select id="disposition-category" @bind="SelectedCategory" @bind:after="ResetDispositionResult" disabled="@string.IsNullOrWhiteSpace(SelectedChannel)">
                     <option value="">Selecciona una categoría</option>
                     @foreach (var category in Dispositions.Categories)
                     {
@@ -91,16 +101,6 @@
                     @foreach (var outcome in Dispositions.ResultsFor(SelectedCategory))
                     {
                         <option value="@outcome">@outcome</option>
-                    }
-                </select>
-            </div>
-            <div class="field">
-                <label for="disposition-channel">Canal</label>
-                <select id="disposition-channel" @bind="SelectedChannel" disabled="@(!CanChooseDisposition)">
-                    <option value="">Selecciona un canal</option>
-                    @foreach (var channel in Dispositions.Channels)
-                    {
-                        <option value="@channel">@channel</option>
                     }
                 </select>
             </div>
