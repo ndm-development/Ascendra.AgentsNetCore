@@ -208,10 +208,7 @@
                     @if (Session.HasFullAccess)
                     {
                         <NavLink href="/equipo" class="nav-tab">Equipo</NavLink>
-                        @if (Session.IsManager)
-                        {
-                            <NavLink href="/codificacion" class="nav-tab">Codificación</NavLink>
-                        }
+                        <NavLink href="/codificacion" class="nav-tab">Codificación</NavLink>
                     }
                     else
                     {

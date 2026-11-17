@@ -315,7 +315,7 @@ app.MapGet("/exports/codificacion", async (
     ExcelExportService exports) =>
 {
     session.Apply(context.User);
-    if (!session.IsManager) return Results.Forbid();
+    if (!session.HasFullAccess) return Results.Forbid();
 
     var summaries = await dispositions.GetHighestWeightSummariesAsync(context.RequestAborted);
     var content = exports.Coding(summaries);

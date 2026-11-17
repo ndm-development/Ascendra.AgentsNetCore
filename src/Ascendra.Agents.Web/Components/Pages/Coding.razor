@@ -1,5 +1,5 @@
 @page "/codificacion"
-@attribute [Authorize(Roles = "Gerente")]
+@attribute [Authorize(Roles = "Gerente,Supervisor")]
 @inject CallDispositionService Dispositions
 
 <section class="coding-console" aria-label="Monitor de codificación">
@@ -45,11 +45,23 @@
             </div>
             <div class="field">
                 <label for="coding-agent-id">ID agente</label>
-                <input id="coding-agent-id" @bind="AgentIdQuery" @bind:event="oninput" @bind:after="ResetPage" placeholder="Filtrar ID" autocomplete="off" />
+                <input id="coding-agent-id" list="coding-agent-id-options" @bind="AgentIdQuery" @bind:event="oninput" @bind:after="ResetPage" placeholder="Filtrar ID" autocomplete="off" />
+                <datalist id="coding-agent-id-options">
+                    @foreach (var agentId in AgentIdOptions)
+                    {
+                        <option value="@agentId"></option>
+                    }
+                </datalist>
             </div>
             <div class="field">
                 <label for="coding-agent">Agente</label>
-                <input id="coding-agent" @bind="AgentQuery" @bind:event="oninput" @bind:after="ResetPage" placeholder="Filtrar agente" autocomplete="off" />
+                <input id="coding-agent" list="coding-agent-options" @bind="AgentQuery" @bind:event="oninput" @bind:after="ResetPage" placeholder="Escribe un nombre" autocomplete="off" />
+                <datalist id="coding-agent-options">
+                    @foreach (var agent in AgentOptions)
+                    {
+                        <option value="@agent"></option>
+                    }
+                </datalist>
             </div>
             <div class="field">
                 <label for="coding-outcome">Tipificación</label>
@@ -200,6 +212,18 @@
         .SelectMany(category => category.Results.Select(result => new OutcomeOption(
             $"{category.Name}|{result}",
             $"{category.Name} · {result}")));
+
+    private IEnumerable<string> AgentOptions => Summaries
+        .Select(summary => summary.AgentName)
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<string> AgentIdOptions => Summaries
+        .Select(summary => summary.AgentId)
+        .Where(id => !string.IsNullOrWhiteSpace(id) && !id.Equals("Sin ID", StringComparison.OrdinalIgnoreCase))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(id => id, StringComparer.OrdinalIgnoreCase);
 
     private string TableTitle => IsHistoryView
         ? $"Gestiones de {HistoryClientId}"
