@@ -9,15 +9,15 @@
     <div class="lookup-heading">
         <h1>Búsqueda clientes</h1>
     </div>
-    <div class="lookup-controls">
+    <form class="lookup-controls" @onsubmit="SearchAsync" @onsubmit:preventDefault="true">
         <div class="segmented-control" role="group" aria-label="Tipo de búsqueda">
-            <button class="@(!ByPhone ? "" : "selected")" @onclick="() => SelectSearchMode(true)">Teléfono</button>
-            <button class="@(ByPhone ? "" : "selected")" @onclick="() => SelectSearchMode(false)">CLIENTE_UNICO</button>
+            <button type="button" class="@(!ByPhone ? "" : "selected")" @onclick="() => SelectSearchMode(true)">Teléfono</button>
+            <button type="button" class="@(ByPhone ? "" : "selected")" @onclick="() => SelectSearchMode(false)">CLIENTE_UNICO</button>
         </div>
         <input class="lookup-search-input" @bind="Query" @bind:event="oninput" inputmode="@(ByPhone ? "numeric" : "text")" placeholder="@(ByPhone ? "Escribe un número telefónico" : "Escribe un CLIENTE_UNICO")" aria-label="Consulta" />
-        <button type="button" class="primary-button" @onclick="SearchAsync">Consultar</button>
+        <button type="submit" class="primary-button">Consultar</button>
         <button type="button" class="secondary-button" @onclick="Clear">Limpiar</button>
-    </div>
+    </form>
 </section>
 
 @if (ShowDispositionPanel)
@@ -58,13 +58,12 @@
             {
                 <div class="field call-disposition__client">
                     <label for="disposition-client">CLIENTE_UNICO a tipificar</label>
-                    <select id="disposition-client" @bind="SelectedDispositionClientId" @bind:after="OnDispositionClientChangedAsync">
-                        <option value="">Selecciona un cliente</option>
-                        @foreach (var candidate in PhoneCandidates)
-                        {
-                            <option value="@candidate.ClientId">@candidate.ClientId · @candidate.ClientName</option>
-                        }
-                    </select>
+                    <GlassSelect Id="disposition-client"
+                                 MenuLabel="CLIENTE_UNICO a tipificar"
+                                 Placeholder="Selecciona un cliente"
+                                 Options="DispositionClientOptions"
+                                 Value="SelectedDispositionClientId"
+                                 ValueChanged="SelectDispositionClientAsync" />
                 </div>
             }
             else
@@ -76,33 +75,23 @@
             }
             <div class="field">
                 <label for="disposition-channel">Canal</label>
-                <select id="disposition-channel" @bind="SelectedChannel" disabled="@(!CanChooseDisposition)">
-                    <option value="">Selecciona un canal</option>
-                    @foreach (var channel in Dispositions.Channels)
-                    {
-                        <option value="@channel">@channel</option>
-                    }
-                </select>
+                <GlassSelect Id="disposition-channel"
+                             MenuLabel="Selecciona un canal"
+                             Placeholder="Selecciona un canal"
+                             Options="ChannelOptions"
+                             Value="SelectedChannel"
+                             ValueChanged="SelectDispositionChannel"
+                             Disabled="@(!CanChooseDisposition)" />
             </div>
-            <div class="field">
-                <label for="disposition-category">Categoría</label>
-                <select id="disposition-category" @bind="SelectedCategory" @bind:after="ResetDispositionResult" disabled="@string.IsNullOrWhiteSpace(SelectedChannel)">
-                    <option value="">Selecciona una categoría</option>
-                    @foreach (var category in Dispositions.Categories)
-                    {
-                        <option value="@category.Name">@category.Name</option>
-                    }
-                </select>
-            </div>
-            <div class="field">
-                <label for="disposition-result">Resultado</label>
-                <select id="disposition-result" @bind="SelectedResult" disabled="@string.IsNullOrWhiteSpace(SelectedCategory)">
-                    <option value="">Selecciona un resultado</option>
-                    @foreach (var outcome in Dispositions.ResultsFor(SelectedCategory))
-                    {
-                        <option value="@outcome">@outcome</option>
-                    }
-                </select>
+            <div class="field call-disposition__outcome">
+                <label for="disposition-outcome">Tipificación</label>
+                <GlassSelect Id="disposition-outcome"
+                             MenuLabel="Selecciona una tipificación"
+                             Placeholder="Selecciona una tipificación"
+                             Options="OutcomeOptions"
+                             Value="SelectedOutcome"
+                             ValueChanged="SelectDispositionOutcome"
+                             Disabled="@string.IsNullOrWhiteSpace(SelectedChannel)" />
             </div>
             <button type="button" class="primary-button call-disposition__save" @onclick="SaveDispositionAsync" disabled="@(!CanSaveDisposition || IsSavingDisposition)">
                 @(IsSavingDisposition ? "Guardando…" : "Registrar tipificación")
@@ -183,6 +172,7 @@ else if (Results.Count > 0)
     private IReadOnlyList<ReferenceLookupResult> Results { get; set; } = [];
     private IReadOnlyDictionary<string, ClientDispositionHistory> Histories { get; set; } = new Dictionary<string, ClientDispositionHistory>(StringComparer.OrdinalIgnoreCase);
     private string? SelectedDispositionClientId { get; set; }
+    private string? SelectedOutcome { get; set; }
     private string? SelectedCategory { get; set; }
     private string? SelectedResult { get; set; }
     private string? SelectedChannel { get; set; }
@@ -206,6 +196,22 @@ else if (Results.Count > 0)
         })
         .ToArray();
 
+    private IReadOnlyList<GlassSelectOption> DispositionClientOptions => PhoneCandidates
+        .Select(candidate => new GlassSelectOption(candidate.ClientId, $"{candidate.ClientId} · {candidate.ClientName}"))
+        .ToArray();
+
+    private IReadOnlyList<GlassSelectOption> ChannelOptions => Dispositions.Channels
+        .Select(channel => new GlassSelectOption(channel, channel))
+        .ToArray();
+
+    private IReadOnlyList<GlassSelectOption> OutcomeOptions => Dispositions.Categories
+        .SelectMany(category => category.Results.Select(result => new GlassSelectOption(
+            OutcomeValue(category.Name, result),
+            result,
+            category.Name,
+            $"{category.Name} · {result}")))
+        .ToArray();
+
     private string SearchedPhone => TextNormalization.Phone(Query);
     private bool ShowDispositionPanel => ByPhone && Searched && PhoneCandidates.Count > 0 && SearchedPhone.Length > 0;
     private bool CanChooseDisposition => !string.IsNullOrWhiteSpace(SelectedDispositionClientId);
@@ -222,8 +228,7 @@ else if (Results.Count > 0)
     {
         Results = Queries.FindContacts(Query, ByPhone);
         Searched = true;
-        SelectedCategory = null;
-        SelectedResult = null;
+        ResetDispositionOutcome();
         SelectedChannel = null;
         DispositionComment = string.Empty;
         DispositionMessage = null;
@@ -255,8 +260,7 @@ else if (Results.Count > 0)
         Histories = new Dictionary<string, ClientDispositionHistory>(StringComparer.OrdinalIgnoreCase);
         Searched = false;
         SelectedDispositionClientId = null;
-        SelectedCategory = null;
-        SelectedResult = null;
+        ResetDispositionOutcome();
         SelectedChannel = null;
         DispositionComment = string.Empty;
         DispositionMessage = null;
@@ -265,7 +269,7 @@ else if (Results.Count > 0)
 
     private async Task OnDispositionClientChangedAsync()
     {
-        ResetDispositionResult();
+        ResetDispositionOutcome();
         DispositionMessage = null;
         DispositionSucceeded = false;
         if (!string.IsNullOrWhiteSpace(SelectedDispositionClientId)
@@ -279,7 +283,45 @@ else if (Results.Count > 0)
         }
     }
 
-    private void ResetDispositionResult() => SelectedResult = null;
+    private async Task SelectDispositionClientAsync(string? clientId)
+    {
+        SelectedDispositionClientId = clientId;
+        await OnDispositionClientChangedAsync();
+    }
+
+    private void SelectDispositionChannel(string? channel) => SelectedChannel = channel;
+
+    private void SelectDispositionOutcome(string? outcome)
+    {
+        SelectedOutcome = outcome;
+        OnDispositionOutcomeChanged();
+    }
+
+    private void OnDispositionOutcomeChanged()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedOutcome))
+        {
+            ResetDispositionOutcome();
+            return;
+        }
+
+        var parts = SelectedOutcome.Split(OutcomeSeparator, 2, StringSplitOptions.None);
+        if (parts.Length != 2 || !Dispositions.ResultsFor(parts[0]).Contains(parts[1], StringComparer.OrdinalIgnoreCase))
+        {
+            ResetDispositionOutcome();
+            return;
+        }
+
+        SelectedCategory = parts[0];
+        SelectedResult = parts[1];
+    }
+
+    private void ResetDispositionOutcome()
+    {
+        SelectedOutcome = null;
+        SelectedCategory = null;
+        SelectedResult = null;
+    }
 
     private ClientDispositionHistory HistoryFor(string? clientId) =>
         !string.IsNullOrWhiteSpace(clientId) && Histories.TryGetValue(clientId, out var history)
@@ -317,8 +359,7 @@ else if (Results.Count > 0)
             Histories = refreshed;
             DispositionMessage = "Tipificación registrada correctamente.";
             DispositionSucceeded = true;
-            SelectedCategory = null;
-            SelectedResult = null;
+            ResetDispositionOutcome();
             SelectedChannel = null;
             DispositionComment = string.Empty;
         }
@@ -334,4 +375,7 @@ else if (Results.Count > 0)
     }
 
     private sealed record DispositionClientCandidate(string ClientId, string ClientName);
+
+    private const string OutcomeSeparator = "\u001f";
+    private static string OutcomeValue(string category, string result) => $"{category}{OutcomeSeparator}{result}";
 }

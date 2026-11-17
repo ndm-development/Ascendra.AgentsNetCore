@@ -1,0 +1,173 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="glass-select @(IsOpen ? "glass-select--open" : null) @(Disabled ? "glass-select--disabled" : null)" @ref="Container">
+    <button id="@Id"
+            type="button"
+            class="glass-select__trigger"
+            role="combobox"
+            aria-controls="@MenuId"
+            aria-expanded="@IsOpen"
+            aria-haspopup="listbox"
+            disabled="@Disabled"
+            @onclick="ToggleAsync"
+            @onkeydown="HandleTriggerKeyAsync">
+        <span class="glass-select__value @(SelectedOption is null ? "glass-select__value--placeholder" : null)">@DisplayText</span>
+        <span class="glass-select__chevron" aria-hidden="true">⌄</span>
+    </button>
+
+    @if (IsOpen && !Disabled)
+    {
+        <div id="@MenuId" class="glass-select__menu" role="listbox" aria-label="@MenuLabel">
+            @foreach (var group in OptionGroups)
+            {
+                @if (!string.IsNullOrWhiteSpace(group.Key))
+                {
+                    <p class="glass-select__group">@group.Key</p>
+                }
+                @foreach (var option in group)
+                {
+                    var isSelected = string.Equals(Value, option.Value, StringComparison.Ordinal);
+                    <button type="button"
+                            class="glass-select__option @(isSelected ? "glass-select__option--selected" : null)"
+                            role="option"
+                            aria-selected="@isSelected"
+                            aria-label="@(string.IsNullOrWhiteSpace(option.Group) ? option.Label : $"{option.Group}: {option.Label}")"
+                            disabled="@option.Disabled"
+                            @onclick="() => SelectAsync(option.Value)">
+                        <span>@option.Label</span>
+                        @if (isSelected)
+                        {
+                            <span class="glass-select__check" aria-hidden="true">✓</span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = $"glass-select-{Guid.NewGuid():N}";
+    [Parameter] public string MenuLabel { get; set; } = "Opciones";
+    [Parameter] public string Placeholder { get; set; } = "Selecciona una opción";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<GlassSelectOption> Options { get; set; } = [];
+    [Parameter] public bool Disabled { get; set; }
+
+    private ElementReference Container { get; set; }
+    private bool IsOpen { get; set; }
+    private bool IsWatchingForOutsideClick { get; set; }
+    private DotNetObjectReference<GlassSelect>? CallbackReference { get; set; }
+
+    private string MenuId => $"{Id}-options";
+    private GlassSelectOption? SelectedOption => Options.FirstOrDefault(option => string.Equals(option.Value, Value, StringComparison.Ordinal));
+    private string DisplayText => SelectedOption?.SelectedLabel ?? SelectedOption?.Label ?? Placeholder;
+    private IEnumerable<IGrouping<string, GlassSelectOption>> OptionGroups => Options.GroupBy(option => option.Group ?? string.Empty, StringComparer.Ordinal);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsOpen || IsWatchingForOutsideClick)
+        {
+            return;
+        }
+
+        CallbackReference ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("ascendraGlassSelect.watch", Container, CallbackReference);
+        IsWatchingForOutsideClick = true;
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (Disabled)
+        {
+            return;
+        }
+
+        if (IsOpen)
+        {
+            await CloseAsync();
+            return;
+        }
+
+        IsOpen = true;
+    }
+
+    private async Task HandleTriggerKeyAsync(KeyboardEventArgs args)
+    {
+        if (Disabled)
+        {
+            return;
+        }
+
+        if (args.Key is "Enter" or " " or "ArrowDown")
+        {
+            IsOpen = true;
+            return;
+        }
+
+        if (args.Key == "Escape")
+        {
+            await CloseAsync();
+        }
+    }
+
+    private async Task SelectAsync(string value)
+    {
+        if (!string.Equals(Value, value, StringComparison.Ordinal))
+        {
+            await ValueChanged.InvokeAsync(value);
+        }
+
+        await CloseAsync();
+    }
+
+    [JSInvokable]
+    public async Task CloseFromOutside()
+    {
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        await CloseAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseAsync()
+    {
+        IsOpen = false;
+        if (!IsWatchingForOutsideClick)
+        {
+            return;
+        }
+
+        IsWatchingForOutsideClick = false;
+        try
+        {
+            await JS.InvokeVoidAsync("ascendraGlassSelect.unwatch", Container);
+        }
+        catch (JSDisconnectedException)
+        {
+            // During a deployment the interactive circuit may already be gone.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (IsWatchingForOutsideClick)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("ascendraGlassSelect.unwatch", Container);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is already closing.
+            }
+        }
+
+        CallbackReference?.Dispose();
+    }
+}
