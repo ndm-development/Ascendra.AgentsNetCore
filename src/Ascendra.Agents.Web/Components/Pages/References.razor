@@ -7,7 +7,7 @@
 
 <section class="lookup-shell glass-card">
     <div class="lookup-heading">
-        <h1>Referencias</h1>
+        <h1>Búsqueda clientes</h1>
     </div>
     <div class="lookup-controls">
         <div class="segmented-control" role="group" aria-label="Tipo de búsqueda">
@@ -31,10 +31,6 @@
                 @if (PhoneCandidates.Count > 1)
                 {
                     <p>Este número está asociado a más de un cliente. Elige a quién corresponde la gestión antes de registrarla.</p>
-                }
-                else
-                {
-                    <p>La tipificación quedará asociada al CLIENTE_UNICO; el teléfono se conserva como evidencia de la llamada.</p>
                 }
             </div>
             <div class="call-disposition__highest">
@@ -103,6 +99,12 @@
             </button>
         </div>
 
+        <div class="call-disposition__comment field">
+            <label for="disposition-comment">Comentario opcional <span>@CommentWordCount/100 palabras</span></label>
+            <textarea id="disposition-comment" rows="2" @bind="DispositionComment" @bind:event="oninput" placeholder="Agrega un contexto breve, si hace falta." aria-describedby="disposition-comment-limit"></textarea>
+            <small id="disposition-comment-limit">Solo se mostrará junto con esta gestión.</small>
+        </div>
+
         @if (!string.IsNullOrWhiteSpace(DispositionMessage))
         {
             <p class="lookup-notice @(DispositionSucceeded ? "lookup-notice--success" : "lookup-notice--error")" role="status">@DispositionMessage</p>
@@ -155,7 +157,7 @@ else if (Results.Count > 0)
                     <div class="table-wrap disposition-history__table"><table><thead><tr><th>Fecha</th><th>ID agente</th><th>Agente</th><th>Tipificación</th><th>Teléfono</th></tr></thead><tbody>
                         @foreach (var entry in history.Entries)
                         {
-                            <tr><td>@OperationalClock.Format(entry.RecordedAt, "dd/MM/yyyy · HH:mm")</td><td>@entry.AgentId</td><td>@entry.AgentName</td><td><strong>@entry.Category</strong><span class="disposition-history__result">@entry.Result</span></td><td class="phone-cell">@entry.Phone</td></tr>
+                            <tr><td>@OperationalClock.Format(entry.RecordedAt, "dd/MM/yyyy · HH:mm")</td><td>@entry.AgentId</td><td>@entry.AgentName</td><td><strong>@entry.Category</strong><span class="disposition-history__result">@entry.Result</span>@if (!string.IsNullOrWhiteSpace(entry.Comment)) { <span class="disposition-history__comment">@entry.Comment</span> }</td><td class="phone-cell">@entry.Phone</td></tr>
                         }
                     </tbody></table></div>
                 }
@@ -173,6 +175,7 @@ else if (Results.Count > 0)
     private string? SelectedDispositionClientId { get; set; }
     private string? SelectedCategory { get; set; }
     private string? SelectedResult { get; set; }
+    private string DispositionComment { get; set; } = string.Empty;
     private string? DispositionMessage { get; set; }
     private bool DispositionSucceeded { get; set; }
     private bool IsSavingDisposition { get; set; }
@@ -197,7 +200,11 @@ else if (Results.Count > 0)
     private bool CanChooseDisposition => !string.IsNullOrWhiteSpace(SelectedDispositionClientId);
     private bool CanSaveDisposition => CanChooseDisposition
         && !string.IsNullOrWhiteSpace(SelectedCategory)
-        && !string.IsNullOrWhiteSpace(SelectedResult);
+        && !string.IsNullOrWhiteSpace(SelectedResult)
+        && CommentWordCount <= 100;
+    private int CommentWordCount => string.IsNullOrWhiteSpace(DispositionComment)
+        ? 0
+        : DispositionComment.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 
     private async Task SearchAsync()
     {
@@ -205,6 +212,7 @@ else if (Results.Count > 0)
         Searched = true;
         SelectedCategory = null;
         SelectedResult = null;
+        DispositionComment = string.Empty;
         DispositionMessage = null;
         DispositionSucceeded = false;
 
@@ -236,6 +244,7 @@ else if (Results.Count > 0)
         SelectedDispositionClientId = null;
         SelectedCategory = null;
         SelectedResult = null;
+        DispositionComment = string.Empty;
         DispositionMessage = null;
         DispositionSucceeded = false;
     }
@@ -283,6 +292,7 @@ else if (Results.Count > 0)
                 SearchedPhone,
                 SelectedCategory,
                 SelectedResult,
+                DispositionComment,
                 agentId,
                 agentName);
             var refreshed = new Dictionary<string, ClientDispositionHistory>(Histories, StringComparer.OrdinalIgnoreCase)
@@ -294,6 +304,7 @@ else if (Results.Count > 0)
             DispositionSucceeded = true;
             SelectedCategory = null;
             SelectedResult = null;
+            DispositionComment = string.Empty;
         }
         catch (InvalidOperationException exception)
         {

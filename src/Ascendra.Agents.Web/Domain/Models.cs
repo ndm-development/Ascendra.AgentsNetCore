@@ -95,7 +95,8 @@ public sealed record CallDispositionEntry(
     string AgentName,
     string Category,
     string Result,
-    string Phone);
+    string Phone,
+    string Comment);
 
 public sealed record ClientDispositionHistory(
     IReadOnlyList<CallDispositionEntry> Entries,

@@ -101,6 +101,7 @@ public sealed class CallDispositionService
         string? phone,
         string? category,
         string? result,
+        string? comment,
         string? agentId,
         string? agentName,
         CancellationToken cancellationToken = default)
@@ -118,6 +119,12 @@ public sealed class CallDispositionService
         if (outcome is null)
         {
             throw new InvalidOperationException("Selecciona una categoría y un resultado válidos.");
+        }
+
+        var normalizedComment = NormalizeComment(comment);
+        if (CountWords(normalizedComment) > 100)
+        {
+            throw new InvalidOperationException("El comentario puede tener hasta 100 palabras.");
         }
 
         var snapshotHasPhone = _snapshots.Current.Contacts.Any(contact =>
@@ -139,7 +146,8 @@ public sealed class CallDispositionService
             outcome.Category,
             outcome.Result,
             outcome.Code,
-            outcome.Weight);
+            outcome.Weight,
+            normalizedComment);
 
         var gate = _clientGates.GetOrAdd(normalizedClientId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
@@ -249,11 +257,16 @@ public sealed class CallDispositionService
         stored.AgentName,
         stored.Category,
         stored.Result,
-        stored.Phone);
+        stored.Phone,
+        stored.Comment ?? string.Empty);
 
     private static string NormalizeClientId(string? value) => (value ?? string.Empty).Trim();
     private static string NormalizeActorValue(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    private static string NormalizeComment(string? value) => (value ?? string.Empty).Trim();
+    private static int CountWords(string value) => string.IsNullOrWhiteSpace(value)
+        ? 0
+        : value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 
     private static string ResolveStorageDirectory(string? configuredPath, IWebHostEnvironment environment)
     {
@@ -287,7 +300,8 @@ public sealed class CallDispositionService
         string Category,
         string Result,
         string Code,
-        int Weight);
+        int Weight,
+        string? Comment);
 }
 
 public sealed class CallDispositionOptions
