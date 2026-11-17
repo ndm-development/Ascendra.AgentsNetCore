@@ -95,6 +95,7 @@ public sealed record CallDispositionEntry(
     string AgentName,
     string Category,
     string Result,
+    string Channel,
     string Phone,
     string Comment);
 

@@ -94,6 +94,16 @@
                     }
                 </select>
             </div>
+            <div class="field">
+                <label for="disposition-channel">Canal</label>
+                <select id="disposition-channel" @bind="SelectedChannel" disabled="@(!CanChooseDisposition)">
+                    <option value="">Selecciona un canal</option>
+                    @foreach (var channel in Dispositions.Channels)
+                    {
+                        <option value="@channel">@channel</option>
+                    }
+                </select>
+            </div>
             <button type="button" class="primary-button call-disposition__save" @onclick="SaveDispositionAsync" disabled="@(!CanSaveDisposition || IsSavingDisposition)">
                 @(IsSavingDisposition ? "Guardando…" : "Registrar tipificación")
             </button>
@@ -154,10 +164,10 @@ else if (Results.Count > 0)
                 }
                 else
                 {
-                    <div class="table-wrap disposition-history__table"><table><thead><tr><th>Fecha</th><th>ID agente</th><th>Agente</th><th>Tipificación</th><th>Teléfono</th></tr></thead><tbody>
+                    <div class="table-wrap disposition-history__table"><table><thead><tr><th>Fecha</th><th>ID agente</th><th>Agente</th><th>Tipificación</th><th>Canal</th><th>Teléfono</th></tr></thead><tbody>
                         @foreach (var entry in history.Entries)
                         {
-                            <tr><td>@OperationalClock.Format(entry.RecordedAt, "dd/MM/yyyy · HH:mm")</td><td>@entry.AgentId</td><td>@entry.AgentName</td><td><strong>@entry.Category</strong><span class="disposition-history__result">@entry.Result</span>@if (!string.IsNullOrWhiteSpace(entry.Comment)) { <span class="disposition-history__comment">@entry.Comment</span> }</td><td class="phone-cell">@entry.Phone</td></tr>
+                            <tr><td>@OperationalClock.Format(entry.RecordedAt, "dd/MM/yyyy · HH:mm")</td><td>@entry.AgentId</td><td>@entry.AgentName</td><td><strong>@entry.Category</strong><span class="disposition-history__result">@entry.Result</span>@if (!string.IsNullOrWhiteSpace(entry.Comment)) { <span class="disposition-history__comment">@entry.Comment</span> }</td><td class="disposition-history__channel">@entry.Channel</td><td class="phone-cell">@entry.Phone</td></tr>
                         }
                     </tbody></table></div>
                 }
@@ -175,6 +185,7 @@ else if (Results.Count > 0)
     private string? SelectedDispositionClientId { get; set; }
     private string? SelectedCategory { get; set; }
     private string? SelectedResult { get; set; }
+    private string? SelectedChannel { get; set; }
     private string DispositionComment { get; set; } = string.Empty;
     private string? DispositionMessage { get; set; }
     private bool DispositionSucceeded { get; set; }
@@ -201,6 +212,7 @@ else if (Results.Count > 0)
     private bool CanSaveDisposition => CanChooseDisposition
         && !string.IsNullOrWhiteSpace(SelectedCategory)
         && !string.IsNullOrWhiteSpace(SelectedResult)
+        && !string.IsNullOrWhiteSpace(SelectedChannel)
         && CommentWordCount <= 100;
     private int CommentWordCount => string.IsNullOrWhiteSpace(DispositionComment)
         ? 0
@@ -212,6 +224,7 @@ else if (Results.Count > 0)
         Searched = true;
         SelectedCategory = null;
         SelectedResult = null;
+        SelectedChannel = null;
         DispositionComment = string.Empty;
         DispositionMessage = null;
         DispositionSucceeded = false;
@@ -244,6 +257,7 @@ else if (Results.Count > 0)
         SelectedDispositionClientId = null;
         SelectedCategory = null;
         SelectedResult = null;
+        SelectedChannel = null;
         DispositionComment = string.Empty;
         DispositionMessage = null;
         DispositionSucceeded = false;
@@ -292,6 +306,7 @@ else if (Results.Count > 0)
                 SearchedPhone,
                 SelectedCategory,
                 SelectedResult,
+                SelectedChannel,
                 DispositionComment,
                 agentId,
                 agentName);
@@ -304,6 +319,7 @@ else if (Results.Count > 0)
             DispositionSucceeded = true;
             SelectedCategory = null;
             SelectedResult = null;
+            SelectedChannel = null;
             DispositionComment = string.Empty;
         }
         catch (InvalidOperationException exception)

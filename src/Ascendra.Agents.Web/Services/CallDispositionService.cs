@@ -15,7 +15,9 @@ namespace Ascendra.Agents.Web.Services;
 /// </summary>
 public sealed class CallDispositionService
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
+    private static readonly IReadOnlyList<string> AvailableChannels =
+        ["Predictivo", "WhatsApp", "Manual", "SMS"];
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private static readonly IReadOnlyList<CallDispositionDefinition> Definitions =
     [
@@ -71,6 +73,7 @@ public sealed class CallDispositionService
 
     /// <summary>Catálogo visible; no expone códigos ni pesos al navegador.</summary>
     public IReadOnlyList<CallDispositionCategory> Categories => VisibleCatalog;
+    public IReadOnlyList<string> Channels => AvailableChannels;
 
     public IReadOnlyList<string> ResultsFor(string? category) => Definitions
         .Where(definition => definition.Category.Equals(category?.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -101,6 +104,7 @@ public sealed class CallDispositionService
         string? phone,
         string? category,
         string? result,
+        string? channel,
         string? comment,
         string? agentId,
         string? agentName,
@@ -119,6 +123,13 @@ public sealed class CallDispositionService
         if (outcome is null)
         {
             throw new InvalidOperationException("Selecciona una categoría y un resultado válidos.");
+        }
+
+        var normalizedChannel = AvailableChannels.FirstOrDefault(available =>
+            available.Equals(channel?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (normalizedChannel is null)
+        {
+            throw new InvalidOperationException("Selecciona el canal de la gestión.");
         }
 
         var normalizedComment = NormalizeComment(comment);
@@ -145,6 +156,7 @@ public sealed class CallDispositionService
             NormalizeActorValue(agentName, "Agente Ascendra"),
             outcome.Category,
             outcome.Result,
+            normalizedChannel,
             outcome.Code,
             outcome.Weight,
             normalizedComment);
@@ -257,6 +269,7 @@ public sealed class CallDispositionService
         stored.AgentName,
         stored.Category,
         stored.Result,
+        string.IsNullOrWhiteSpace(stored.Channel) ? "Sin canal" : stored.Channel,
         stored.Phone,
         stored.Comment ?? string.Empty);
 
@@ -299,6 +312,7 @@ public sealed class CallDispositionService
         string AgentName,
         string Category,
         string Result,
+        string? Channel,
         string Code,
         int Weight,
         string? Comment);
