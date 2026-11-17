@@ -16,6 +16,7 @@ namespace Ascendra.Agents.Web.Services;
 public sealed class CallDispositionService
 {
     private const int SchemaVersion = 2;
+    private const string SummaryIndexFileName = "summary-index.jsonl";
     private static readonly IReadOnlyList<string> AvailableChannels =
         ["Predictivo", "WhatsApp", "Manual", "SMS"];
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
@@ -54,10 +55,12 @@ public sealed class CallDispositionService
         .ToArray();
 
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _clientGates = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _summaryIndexGate = new(1, 1);
     private readonly ExcelSnapshotStore _snapshots;
     private readonly ILogger<CallDispositionService> _logger;
     private readonly string _storageDirectory;
     private readonly int _historyDisplayLimit;
+    private IReadOnlyList<ClientDispositionSummary>? _summaryCache;
 
     public CallDispositionService(
         ExcelSnapshotStore snapshots,
@@ -79,6 +82,70 @@ public sealed class CallDispositionService
         .Where(definition => definition.Category.Equals(category?.Trim(), StringComparison.OrdinalIgnoreCase))
         .Select(definition => definition.Result)
         .ToArray();
+
+    /// <summary>
+    /// Devuelve una fila por CLIENTE_UNICO que tenga tipificaciones, con la
+    /// disposición de mayor peso. El índice se deriva de los journals, por lo
+    /// que puede reconstruirse sin depender de una base de datos adicional.
+    /// </summary>
+    public async Task<IReadOnlyList<ClientDispositionSummary>> GetHighestWeightSummariesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureSummaryIndexAsync(cancellationToken);
+
+        await _summaryIndexGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_summaryCache is not null) return _summaryCache;
+
+            var highestByClient = new Dictionary<string, StoredDispositionSummary>(StringComparer.OrdinalIgnoreCase);
+            var skippedMalformedLine = false;
+            await using var stream = new FileStream(
+                SummaryIndexPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite,
+                bufferSize: 8 * 1024,
+                useAsync: true);
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                StoredDispositionSummary? stored;
+                try
+                {
+                    stored = JsonSerializer.Deserialize<StoredDispositionSummary>(line, SerializerOptions);
+                }
+                catch (JsonException)
+                {
+                    skippedMalformedLine = true;
+                    continue;
+                }
+
+                if (stored is null || string.IsNullOrWhiteSpace(stored.ClientId)) continue;
+                if (!highestByClient.TryGetValue(stored.ClientId, out var current) || IsHigher(stored, current))
+                {
+                    highestByClient[stored.ClientId] = stored;
+                }
+            }
+
+            if (skippedMalformedLine)
+            {
+                _logger.LogWarning("Se ignoró una línea incompleta del índice de tipificaciones.");
+            }
+
+            _summaryCache = highestByClient.Values
+                .OrderBy(summary => summary.ClientId, StringComparer.OrdinalIgnoreCase)
+                .Select(ToSummary)
+                .ToArray();
+            return _summaryCache;
+        }
+        finally
+        {
+            _summaryIndexGate.Release();
+        }
+    }
 
     public async Task<ClientDispositionHistory> GetHistoryAsync(
         string? clientId,
@@ -146,6 +213,8 @@ public sealed class CallDispositionService
             throw new InvalidOperationException("El teléfono ya no está asociado a ese CLIENTE_UNICO en el corte actual.");
         }
 
+        await EnsureSummaryIndexAsync(cancellationToken);
+
         var stored = new StoredCallDisposition(
             SchemaVersion,
             Guid.NewGuid(),
@@ -191,6 +260,19 @@ public sealed class CallDispositionService
         finally
         {
             gate.Release();
+        }
+
+        try
+        {
+            await AppendSummaryEventAsync(stored, cancellationToken);
+        }
+        catch (IOException exception)
+        {
+            // El journal del cliente ya quedó persistido. Al borrar el índice
+            // parcial, la siguiente consulta de Gerencia lo reconstruirá desde
+            // esos journals sin perder la gestión recién registrada.
+            _logger.LogError(exception, "No se pudo actualizar el índice de tipificaciones; se reconstruirá automáticamente.");
+            await InvalidateSummaryIndexAsync();
         }
 
         return await GetHistoryAsync(normalizedClientId, cancellationToken);
@@ -261,6 +343,153 @@ public sealed class CallDispositionService
         _storageDirectory,
         $"{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedClientId))).ToLowerInvariant()}.jsonl");
 
+    private string SummaryIndexPath => Path.Combine(_storageDirectory, SummaryIndexFileName);
+
+    private async Task EnsureSummaryIndexAsync(CancellationToken cancellationToken)
+    {
+        await _summaryIndexGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (File.Exists(SummaryIndexPath)) return;
+
+            Directory.CreateDirectory(_storageDirectory);
+            var temporaryPath = Path.Combine(_storageDirectory, $"summary-index-{Guid.NewGuid():N}.tmp");
+            try
+            {
+                await using (var stream = new FileStream(
+                    temporaryPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    bufferSize: 8 * 1024,
+                    useAsync: true))
+                {
+                    await using var writer = new StreamWriter(
+                        stream,
+                        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                        bufferSize: 8 * 1024,
+                        leaveOpen: true);
+                    foreach (var path in Directory.EnumerateFiles(_storageDirectory, "*.jsonl")
+                        .Where(path => !Path.GetFileName(path).Equals(SummaryIndexFileName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var summary = await ReadHighestSummaryFromClientFileAsync(path, cancellationToken);
+                        if (summary is not null)
+                        {
+                            await writer.WriteLineAsync(JsonSerializer.Serialize(summary, SerializerOptions));
+                        }
+                    }
+
+                    await writer.FlushAsync();
+                    stream.Flush(flushToDisk: true);
+                }
+
+                File.Move(temporaryPath, SummaryIndexPath, overwrite: false);
+                _summaryCache = null;
+            }
+            catch
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+                throw;
+            }
+        }
+        finally
+        {
+            _summaryIndexGate.Release();
+        }
+    }
+
+    private async Task<StoredDispositionSummary?> ReadHighestSummaryFromClientFileAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        StoredDispositionSummary? highest = null;
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite,
+            bufferSize: 8 * 1024,
+            useAsync: true);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            try
+            {
+                var stored = JsonSerializer.Deserialize<StoredCallDisposition>(line, SerializerOptions);
+                if (stored is null || string.IsNullOrWhiteSpace(stored.ClientId)) continue;
+                var candidate = ToStoredSummary(stored);
+                if (highest is null || IsHigher(candidate, highest)) highest = candidate;
+            }
+            catch (JsonException)
+            {
+                // La consulta individual ya tolera una última línea incompleta;
+                // el índice aplica la misma regla al reconstruirse.
+            }
+        }
+
+        return highest;
+    }
+
+    private async Task AppendSummaryEventAsync(StoredCallDisposition stored, CancellationToken cancellationToken)
+    {
+        await _summaryIndexGate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var stream = new FileStream(
+                SummaryIndexPath,
+                FileMode.Append,
+                FileAccess.Write,
+                FileShare.Read,
+                bufferSize: 4 * 1024,
+                useAsync: true);
+            await using var writer = new StreamWriter(
+                stream,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                bufferSize: 4 * 1024,
+                leaveOpen: true);
+            await writer.WriteLineAsync(JsonSerializer.Serialize(ToStoredSummary(stored), SerializerOptions));
+            await writer.FlushAsync();
+            stream.Flush(flushToDisk: true);
+            _summaryCache = null;
+        }
+        finally
+        {
+            _summaryIndexGate.Release();
+        }
+    }
+
+    private async Task InvalidateSummaryIndexAsync()
+    {
+        await _summaryIndexGate.WaitAsync();
+        try
+        {
+            _summaryCache = null;
+            if (File.Exists(SummaryIndexPath)) File.Delete(SummaryIndexPath);
+        }
+        finally
+        {
+            _summaryIndexGate.Release();
+        }
+    }
+
+    private static bool IsHigher(StoredDispositionSummary candidate, StoredDispositionSummary current) =>
+        candidate.Weight > current.Weight
+        || candidate.Weight == current.Weight && candidate.RecordedAt > current.RecordedAt;
+
+    private static StoredDispositionSummary ToStoredSummary(StoredCallDisposition stored) => new(
+        stored.ClientId,
+        stored.RecordedAt,
+        stored.Category,
+        stored.Result,
+        stored.Weight);
+
+    private static ClientDispositionSummary ToSummary(StoredDispositionSummary stored) => new(
+        stored.ClientId,
+        stored.Category,
+        stored.Result);
+
     private static CallDispositionEntry ToEntry(StoredCallDisposition stored) => new(
         stored.Id,
         stored.RecordedAt,
@@ -316,6 +545,13 @@ public sealed class CallDispositionService
         string Code,
         int Weight,
         string? Comment);
+
+    private sealed record StoredDispositionSummary(
+        string ClientId,
+        DateTimeOffset RecordedAt,
+        string Category,
+        string Result,
+        int Weight);
 }
 
 public sealed class CallDispositionOptions

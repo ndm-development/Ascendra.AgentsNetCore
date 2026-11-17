@@ -305,6 +305,22 @@ app.MapGet("/exports/team/promises", (
     var content = exports.Promises(promises);
     return Results.File(content, ExcelExportService.ExcelContentType, "promesas_equipo.xlsx");
 }).RequireAuthorization();
+
+// Este consolidado contiene gestiones de todos los clientes; por ello la
+// autorización se valida también aquí, no sólo al ocultar la pestaña.
+app.MapGet("/exports/codificacion", async (
+    HttpContext context,
+    DashboardSession session,
+    CallDispositionService dispositions,
+    ExcelExportService exports) =>
+{
+    session.Apply(context.User);
+    if (!session.IsManager) return Results.Forbid();
+
+    var summaries = await dispositions.GetHighestWeightSummariesAsync(context.RequestAborted);
+    var content = exports.Coding(summaries);
+    return Results.File(content, ExcelExportService.ExcelContentType, "codificacion_clientes.xlsx");
+}).RequireAuthorization();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();

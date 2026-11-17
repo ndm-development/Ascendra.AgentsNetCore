@@ -9,6 +9,7 @@ public sealed record AgentUser(
 {
     public bool HasFullAccess => Role.Equals("Gerente", StringComparison.OrdinalIgnoreCase)
         || Role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase);
+    public bool IsManager => Role.Equals("Gerente", StringComparison.OrdinalIgnoreCase);
     public bool IsSupervisor => Role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase);
     public bool IsAgent => Role.Equals("Agente", StringComparison.OrdinalIgnoreCase);
 }
@@ -106,6 +107,15 @@ public sealed record ClientDispositionHistory(
 {
     public static ClientDispositionHistory Empty { get; } = new([], 0, null);
 }
+
+/// <summary>
+/// Resumen de la disposición con mayor ponderación para cada cliente con
+/// actividad. Sólo se usa en la vista consolidada de Gerencia.
+/// </summary>
+public sealed record ClientDispositionSummary(
+    string ClientId,
+    string Category,
+    string Result);
 
 public sealed record AgentDirectoryRecord(string Id, string FirstName, string PaternalSurname);
 

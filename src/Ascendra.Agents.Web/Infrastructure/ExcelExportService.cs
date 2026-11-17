@@ -41,6 +41,18 @@ public sealed class ExcelExportService
         return Create("Promesas", headers, rows, moneyColumns: new HashSet<int> { 8, 9 });
     }
 
+    public byte[] Coding(IReadOnlyList<ClientDispositionSummary> summaries)
+    {
+        var headers = new[] { "Cliente único", "Categoría", "Resultado de mayor peso" };
+        var rows = summaries.Select(summary => new object?[]
+        {
+            summary.ClientId,
+            summary.Category,
+            summary.Result,
+        });
+        return Create("Codificación", headers, rows, moneyColumns: new HashSet<int>());
+    }
+
     private static byte[] Create(
         string sheetName,
         IReadOnlyList<string> headers,

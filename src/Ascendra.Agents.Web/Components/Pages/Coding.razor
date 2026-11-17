@@ -1,0 +1,126 @@
+@page "/codificacion"
+@attribute [Authorize(Roles = "Gerente")]
+@inject CallDispositionService Dispositions
+
+<section class="coding-console" aria-label="Codificación de clientes">
+    <header class="coding-console__hero glass-card">
+        <div>
+            <p class="eyebrow">GESTIÓN CONSOLIDADA</p>
+            <h1>Codificación</h1>
+            <p>Consulta la disposición de mayor peso registrada por cliente.</p>
+        </div>
+        <a class="secondary-button coding-console__download" href="/exports/codificacion" download>
+            <span aria-hidden="true">↓</span> Descargar Excel
+        </a>
+    </header>
+
+    @if (IsLoading)
+    {
+        <section class="coding-console__loading glass-card" aria-live="polite">
+            <span class="loading-spinner" aria-hidden="true"></span>
+            <p>Preparando la codificación de clientes…</p>
+        </section>
+    }
+    else if (!string.IsNullOrWhiteSpace(LoadError))
+    {
+        <section class="empty-state glass-card" role="alert">
+            <h2>No fue posible cargar la codificación</h2>
+            <p>@LoadError</p>
+        </section>
+    }
+    else if (FilteredSummaries.Length == 0)
+    {
+        <section class="empty-state glass-card">
+            <h2>@(Summaries.Count == 0 ? "Aún no hay clientes codificados" : "No hay coincidencias")</h2>
+            <p>@(Summaries.Count == 0 ? "Las tipificaciones registradas aparecerán aquí automáticamente." : "Prueba con otro cliente único.")</p>
+        </section>
+    }
+    else
+    {
+        <section class="coding-console__table table-card glass-card">
+            <div class="coding-console__table-heading">
+                <div>
+                    <p class="eyebrow">CLIENTES CON GESTIÓN</p>
+                    <h2>@FilteredSummaries.Length clientes codificados</h2>
+                </div>
+                <label class="coding-console__search">
+                    <span class="visually-hidden">Buscar cliente único</span>
+                    <input @bind="SearchTerm" @bind:event="oninput" @bind:after="ResetPage" placeholder="Buscar cliente único" autocomplete="off" />
+                </label>
+            </div>
+
+            <div class="table-wrap">
+                <table class="coding-console__data">
+                    <thead>
+                        <tr>
+                            <th>Cliente único</th>
+                            <th>Codificación de mayor peso</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var summary in CurrentPage)
+                        {
+                            <tr>
+                                <td class="coding-console__client">@summary.ClientId</td>
+                                <td>
+                                    <div class="coding-console__outcome">
+                                        <strong>@summary.Category</strong>
+                                        <span>@summary.Result</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (TotalPages > 1)
+            {
+                <nav class="coding-console__pagination" aria-label="Paginación de codificación">
+                    <button type="button" class="secondary-button" disabled="@(Page == 1)" @onclick="PreviousPage">Anterior</button>
+                    <span>Página @Page de @TotalPages</span>
+                    <button type="button" class="secondary-button" disabled="@(Page == TotalPages)" @onclick="NextPage">Siguiente</button>
+                </nav>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    private const int PageSize = 100;
+    private IReadOnlyList<ClientDispositionSummary> Summaries { get; set; } = [];
+    private bool IsLoading { get; set; } = true;
+    private string? LoadError { get; set; }
+    private string SearchTerm { get; set; } = string.Empty;
+    private int Page { get; set; } = 1;
+
+    private ClientDispositionSummary[] FilteredSummaries => Summaries
+        .Where(summary => string.IsNullOrWhiteSpace(SearchTerm)
+            || summary.ClientId.Contains(SearchTerm.Trim(), StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredSummaries.Length / (double)PageSize));
+    private IEnumerable<ClientDispositionSummary> CurrentPage => FilteredSummaries
+        .Skip((Page - 1) * PageSize)
+        .Take(PageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Summaries = await Dispositions.GetHighestWeightSummariesAsync();
+        }
+        catch (Exception)
+        {
+            LoadError = "Intenta actualizar la página en un momento.";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void ResetPage() => Page = 1;
+    private void PreviousPage() => Page = Math.Max(1, Page - 1);
+    private void NextPage() => Page = Math.Min(TotalPages, Page + 1);
+}
