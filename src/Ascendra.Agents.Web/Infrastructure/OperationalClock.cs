@@ -14,6 +14,9 @@ public static class OperationalClock
     public static string Format(DateTimeOffset instant, string format) =>
         TimeZoneInfo.ConvertTime(instant, MexicoCityTimeZone).ToString(format, MexicoCulture);
 
+    public static DateOnly Date(DateTimeOffset instant) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, MexicoCityTimeZone).DateTime);
+
     private static TimeZoneInfo ResolveMexicoCityTimeZone()
     {
         try

@@ -43,12 +43,19 @@ public sealed class ExcelExportService
 
     public byte[] Coding(IReadOnlyList<ClientDispositionSummary> summaries)
     {
-        var headers = new[] { "Cliente único", "Categoría", "Resultado de mayor peso" };
+        var headers = new[]
+        {
+            "Cliente único", "Fecha", "ID agente", "Agente", "Tipificación", "Canal", "Teléfono",
+        };
         var rows = summaries.Select(summary => new object?[]
         {
             summary.ClientId,
-            summary.Category,
-            summary.Result,
+            OperationalClock.Format(summary.RecordedAt, "dd/MM/yyyy HH:mm"),
+            summary.AgentId,
+            summary.AgentName,
+            $"{summary.Category} · {summary.Result}",
+            summary.Channel,
+            summary.Phone,
         });
         return Create("Codificación", headers, rows, moneyColumns: new HashSet<int>());
     }

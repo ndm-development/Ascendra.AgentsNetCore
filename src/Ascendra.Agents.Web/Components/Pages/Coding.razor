@@ -2,12 +2,12 @@
 @attribute [Authorize(Roles = "Gerente")]
 @inject CallDispositionService Dispositions
 
-<section class="coding-console" aria-label="Codificación de clientes">
+<section class="coding-console" aria-label="Monitor de codificación">
     <header class="coding-console__hero glass-card">
         <div>
-            <p class="eyebrow">GESTIÓN CONSOLIDADA</p>
+            <p class="eyebrow">MONITOR DE GESTIÓN</p>
             <h1>Codificación</h1>
-            <p>Consulta la disposición de mayor peso registrada por cliente.</p>
+            <p>Una vista consolidada de la gestión con mayor peso de cada cliente.</p>
         </div>
         <a class="secondary-button coding-console__download" href="/exports/codificacion" download>
             <span aria-hidden="true">↓</span> Descargar Excel
@@ -18,7 +18,7 @@
     {
         <section class="coding-console__loading glass-card" aria-live="polite">
             <span class="loading-spinner" aria-hidden="true"></span>
-            <p>Preparando la codificación de clientes…</p>
+            <p>Preparando el monitor de codificación…</p>
         </section>
     }
     else if (!string.IsNullOrWhiteSpace(LoadError))
@@ -28,81 +28,188 @@
             <p>@LoadError</p>
         </section>
     }
-    else if (FilteredSummaries.Length == 0)
-    {
-        <section class="empty-state glass-card">
-            <h2>@(Summaries.Count == 0 ? "Aún no hay clientes codificados" : "No hay coincidencias")</h2>
-            <p>@(Summaries.Count == 0 ? "Las tipificaciones registradas aparecerán aquí automáticamente." : "Prueba con otro cliente único.")</p>
-        </section>
-    }
     else
     {
-        <section class="coding-console__table table-card glass-card">
-            <div class="coding-console__table-heading">
-                <div>
-                    <p class="eyebrow">CLIENTES CON GESTIÓN</p>
-                    <h2>@FilteredSummaries.Length clientes codificados</h2>
-                </div>
-                <label class="coding-console__search">
-                    <span class="visually-hidden">Buscar cliente único</span>
-                    <input @bind="SearchTerm" @bind:event="oninput" @bind:after="ResetPage" placeholder="Buscar cliente único" autocomplete="off" />
-                </label>
+        <section class="coding-console__filters glass-card" aria-label="Filtros de codificación">
+            <div class="field coding-console__client-filter">
+                <label for="coding-client">Cliente único</label>
+                <input id="coding-client" value="@ClientQuery" @oninput="OnClientQueryChangedAsync" placeholder="Buscar cliente único" autocomplete="off" />
             </div>
-
-            <div class="table-wrap">
-                <table class="coding-console__data">
-                    <thead>
-                        <tr>
-                            <th>Cliente único</th>
-                            <th>Codificación de mayor peso</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var summary in CurrentPage)
-                        {
-                            <tr>
-                                <td class="coding-console__client">@summary.ClientId</td>
-                                <td>
-                                    <div class="coding-console__outcome">
-                                        <strong>@summary.Category</strong>
-                                        <span>@summary.Result</span>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+            <div class="field compact-field">
+                <label for="coding-start">Fecha inicial</label>
+                <input id="coding-start" type="date" @bind="StartDate" @bind:after="ResetPage" />
             </div>
-
-            @if (TotalPages > 1)
-            {
-                <nav class="coding-console__pagination" aria-label="Paginación de codificación">
-                    <button type="button" class="secondary-button" disabled="@(Page == 1)" @onclick="PreviousPage">Anterior</button>
-                    <span>Página @Page de @TotalPages</span>
-                    <button type="button" class="secondary-button" disabled="@(Page == TotalPages)" @onclick="NextPage">Siguiente</button>
-                </nav>
-            }
+            <div class="field compact-field">
+                <label for="coding-end">Fecha final</label>
+                <input id="coding-end" type="date" @bind="EndDate" @bind:after="ResetPage" />
+            </div>
+            <div class="field">
+                <label for="coding-agent-id">ID agente</label>
+                <input id="coding-agent-id" @bind="AgentIdQuery" @bind:event="oninput" @bind:after="ResetPage" placeholder="Filtrar ID" autocomplete="off" />
+            </div>
+            <div class="field">
+                <label for="coding-agent">Agente</label>
+                <input id="coding-agent" @bind="AgentQuery" @bind:event="oninput" @bind:after="ResetPage" placeholder="Filtrar agente" autocomplete="off" />
+            </div>
+            <div class="field">
+                <label for="coding-outcome">Tipificación</label>
+                <select id="coding-outcome" @bind="SelectedOutcome" @bind:after="ResetPage">
+                    <option value="">Todas las tipificaciones</option>
+                    @foreach (var outcome in OutcomeOptions)
+                    {
+                        <option value="@outcome.Value">@outcome.Label</option>
+                    }
+                </select>
+            </div>
+            <div class="field compact-field">
+                <label for="coding-channel">Canal</label>
+                <select id="coding-channel" @bind="SelectedChannel" @bind:after="ResetPage">
+                    <option value="">Todos los canales</option>
+                    @foreach (var channel in Dispositions.Channels)
+                    {
+                        <option value="@channel">@channel</option>
+                    }
+                    <option value="Sin canal">Sin canal</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="coding-phone">Teléfono</label>
+                <input id="coding-phone" @bind="PhoneQuery" @bind:event="oninput" @bind:after="ResetPage" placeholder="Filtrar teléfono" autocomplete="off" />
+            </div>
+            <button type="button" class="secondary-button coding-console__clear" @onclick="ClearFilters">Limpiar filtros</button>
         </section>
+
+        @if (FilteredRows.Length == 0)
+        {
+            <section class="empty-state glass-card">
+                <h2>@EmptyStateTitle</h2>
+                <p>@EmptyStateMessage</p>
+            </section>
+        }
+        else
+        {
+            <section class="coding-console__table table-card glass-card">
+                <div class="coding-console__table-heading">
+                    <div>
+                        <p class="eyebrow">@(IsHistoryView ? "HISTORIAL COMPLETO" : "DISPOSICIÓN DE MAYOR PESO")</p>
+                        <h2>@TableTitle</h2>
+                    </div>
+                    <span class="coding-console__count">@FilteredRows.Length registros</span>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="coding-console__data">
+                        <thead>
+                            <tr>
+                                @if (!IsHistoryView)
+                                {
+                                    <th>Cliente único</th>
+                                }
+                                <th>Fecha</th>
+                                <th>ID agente</th>
+                                <th>Agente</th>
+                                <th>Tipificación</th>
+                                <th>Canal</th>
+                                <th>Teléfono</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in CurrentPage)
+                            {
+                                <tr>
+                                    @if (!IsHistoryView)
+                                    {
+                                        <td class="coding-console__client">@row.ClientId</td>
+                                    }
+                                    <td class="coding-console__date">@OperationalClock.Format(row.RecordedAt, "dd/MM/yyyy · HH:mm")</td>
+                                    <td>@row.AgentId</td>
+                                    <td>@row.AgentName</td>
+                                    <td>
+                                        <div class="coding-console__outcome">
+                                            <strong>@row.Category</strong>
+                                            <span>@row.Result</span>
+                                        </div>
+                                    </td>
+                                    <td><span class="coding-console__channel">@row.Channel</span></td>
+                                    <td class="coding-console__phone">@row.Phone</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (TotalPages > 1)
+                {
+                    <nav class="coding-console__pagination" aria-label="Paginación de codificación">
+                        <button type="button" class="secondary-button" disabled="@(Page == 1)" @onclick="PreviousPage">Anterior</button>
+                        <span>Página @Page de @TotalPages</span>
+                        <button type="button" class="secondary-button" disabled="@(Page == TotalPages)" @onclick="NextPage">Siguiente</button>
+                    </nav>
+                }
+            </section>
+        }
     }
 </section>
 
 @code {
     private const int PageSize = 100;
     private IReadOnlyList<ClientDispositionSummary> Summaries { get; set; } = [];
+    private IReadOnlyList<CallDispositionEntry> ClientHistory { get; set; } = [];
+    private string? HistoryClientId { get; set; }
     private bool IsLoading { get; set; } = true;
     private string? LoadError { get; set; }
-    private string SearchTerm { get; set; } = string.Empty;
+    private string ClientQuery { get; set; } = string.Empty;
+    private DateOnly? StartDate { get; set; }
+    private DateOnly? EndDate { get; set; }
+    private string AgentIdQuery { get; set; } = string.Empty;
+    private string AgentQuery { get; set; } = string.Empty;
+    private string SelectedOutcome { get; set; } = string.Empty;
+    private string SelectedChannel { get; set; } = string.Empty;
+    private string PhoneQuery { get; set; } = string.Empty;
     private int Page { get; set; } = 1;
 
-    private ClientDispositionSummary[] FilteredSummaries => Summaries
-        .Where(summary => string.IsNullOrWhiteSpace(SearchTerm)
-            || summary.ClientId.Contains(SearchTerm.Trim(), StringComparison.OrdinalIgnoreCase))
+    private bool IsHistoryView => !string.IsNullOrWhiteSpace(HistoryClientId)
+        && HistoryClientId.Equals(ClientQuery.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private IEnumerable<MonitorRow> SourceRows => IsHistoryView
+        ? ClientHistory.Select(entry => new MonitorRow(
+            entry.ClientId, entry.RecordedAt, entry.AgentId, entry.AgentName,
+            entry.Category, entry.Result, entry.Channel, entry.Phone))
+        : Summaries.Select(summary => new MonitorRow(
+            summary.ClientId, summary.RecordedAt, summary.AgentId, summary.AgentName,
+            summary.Category, summary.Result, summary.Channel, summary.Phone));
+
+    private MonitorRow[] FilteredRows => SourceRows
+        .Where(row => (IsHistoryView || Contains(row.ClientId, ClientQuery))
+            && (StartDate is null || OperationalClock.Date(row.RecordedAt) >= StartDate)
+            && (EndDate is null || OperationalClock.Date(row.RecordedAt) <= EndDate)
+            && Contains(row.AgentId, AgentIdQuery)
+            && Contains(row.AgentName, AgentQuery)
+            && (string.IsNullOrWhiteSpace(SelectedOutcome) || OutcomeValue(row) == SelectedOutcome)
+            && (string.IsNullOrWhiteSpace(SelectedChannel) || row.Channel.Equals(SelectedChannel, StringComparison.OrdinalIgnoreCase))
+            && Contains(row.Phone, PhoneQuery))
+        .OrderByDescending(row => row.RecordedAt)
         .ToArray();
 
-    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredSummaries.Length / (double)PageSize));
-    private IEnumerable<ClientDispositionSummary> CurrentPage => FilteredSummaries
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredRows.Length / (double)PageSize));
+    private IEnumerable<MonitorRow> CurrentPage => FilteredRows
         .Skip((Page - 1) * PageSize)
         .Take(PageSize);
+
+    private IEnumerable<OutcomeOption> OutcomeOptions => Dispositions.Categories
+        .SelectMany(category => category.Results.Select(result => new OutcomeOption(
+            $"{category.Name}|{result}",
+            $"{category.Name} · {result}")));
+
+    private string TableTitle => IsHistoryView
+        ? $"Gestiones de {HistoryClientId}"
+        : "Clientes con tipificación";
+    private string EmptyStateTitle => Summaries.Count == 0
+        ? "Aún no hay clientes codificados"
+        : IsHistoryView ? "No hay gestiones con esos filtros" : "No hay coincidencias";
+    private string EmptyStateMessage => Summaries.Count == 0
+        ? "Las tipificaciones registradas aparecerán aquí automáticamente."
+        : IsHistoryView ? "Ajusta los filtros para consultar el historial completo del cliente." : "Ajusta los filtros para consultar las gestiones registradas.";
 
     protected override async Task OnInitializedAsync()
     {
@@ -120,7 +227,55 @@
         }
     }
 
+    private async Task OnClientQueryChangedAsync(ChangeEventArgs args)
+    {
+        ClientQuery = args.Value?.ToString() ?? string.Empty;
+        Page = 1;
+        var selectedClient = Summaries.FirstOrDefault(summary =>
+            summary.ClientId.Equals(ClientQuery.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (selectedClient is null)
+        {
+            HistoryClientId = null;
+            ClientHistory = [];
+            return;
+        }
+
+        HistoryClientId = selectedClient.ClientId;
+        ClientHistory = await Dispositions.GetFullHistoryAsync(selectedClient.ClientId);
+    }
+
+    private void ClearFilters()
+    {
+        ClientQuery = string.Empty;
+        StartDate = null;
+        EndDate = null;
+        AgentIdQuery = string.Empty;
+        AgentQuery = string.Empty;
+        SelectedOutcome = string.Empty;
+        SelectedChannel = string.Empty;
+        PhoneQuery = string.Empty;
+        HistoryClientId = null;
+        ClientHistory = [];
+        Page = 1;
+    }
+
     private void ResetPage() => Page = 1;
     private void PreviousPage() => Page = Math.Max(1, Page - 1);
     private void NextPage() => Page = Math.Min(TotalPages, Page + 1);
+    private static bool Contains(string value, string query) => string.IsNullOrWhiteSpace(query)
+        || value.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase);
+    private static string OutcomeValue(MonitorRow row) => $"{row.Category}|{row.Result}";
+
+    private sealed record MonitorRow(
+        string ClientId,
+        DateTimeOffset RecordedAt,
+        string AgentId,
+        string AgentName,
+        string Category,
+        string Result,
+        string Channel,
+        string Phone);
+
+    private sealed record OutcomeOption(string Value, string Label);
 }

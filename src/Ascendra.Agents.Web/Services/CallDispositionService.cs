@@ -16,7 +16,7 @@ namespace Ascendra.Agents.Web.Services;
 public sealed class CallDispositionService
 {
     private const int SchemaVersion = 2;
-    private const string SummaryIndexFileName = "summary-index.jsonl";
+    private const string SummaryIndexFileName = "summary-index-v2.jsonl";
     private static readonly IReadOnlyList<string> AvailableChannels =
         ["Predictivo", "WhatsApp", "Manual", "SMS"];
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
@@ -166,6 +166,30 @@ public sealed class CallDispositionService
         }
     }
 
+    /// <summary>
+    /// Consulta el historial íntegro de un cliente. Sólo la vista de monitor
+    /// de Gerencia lo utiliza después de una búsqueda exacta; la consulta
+    /// operativa de agentes conserva su límite compacto de visualización.
+    /// </summary>
+    public async Task<IReadOnlyList<CallDispositionEntry>> GetFullHistoryAsync(
+        string? clientId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedClientId = NormalizeClientId(clientId);
+        if (normalizedClientId.Length == 0) return [];
+
+        var gate = _clientGates.GetOrAdd(normalizedClientId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await ReadFullHistoryLockedAsync(normalizedClientId, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public async Task<ClientDispositionHistory> RecordAsync(
         string? clientId,
         string? phone,
@@ -212,8 +236,6 @@ public sealed class CallDispositionService
         {
             throw new InvalidOperationException("El teléfono ya no está asociado a ese CLIENTE_UNICO en el corte actual.");
         }
-
-        await EnsureSummaryIndexAsync(cancellationToken);
 
         var stored = new StoredCallDisposition(
             SchemaVersion,
@@ -264,15 +286,23 @@ public sealed class CallDispositionService
 
         try
         {
+            await EnsureSummaryIndexAsync(cancellationToken);
             await AppendSummaryEventAsync(stored, cancellationToken);
         }
-        catch (IOException exception)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // El journal del cliente ya quedó persistido. Al borrar el índice
             // parcial, la siguiente consulta de Gerencia lo reconstruirá desde
             // esos journals sin perder la gestión recién registrada.
             _logger.LogError(exception, "No se pudo actualizar el índice de tipificaciones; se reconstruirá automáticamente.");
-            await InvalidateSummaryIndexAsync();
+            try
+            {
+                await InvalidateSummaryIndexAsync();
+            }
+            catch (Exception invalidationException) when (invalidationException is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogError(invalidationException, "No se pudo invalidar el índice de tipificaciones después de un error.");
+            }
         }
 
         return await GetHistoryAsync(normalizedClientId, cancellationToken);
@@ -339,6 +369,51 @@ public sealed class CallDispositionService
             highest is null ? null : ToEntry(highest));
     }
 
+    private async Task<IReadOnlyList<CallDispositionEntry>> ReadFullHistoryLockedAsync(
+        string normalizedClientId,
+        CancellationToken cancellationToken)
+    {
+        var path = ClientPath(normalizedClientId);
+        if (!File.Exists(path)) return [];
+
+        var entries = new List<CallDispositionEntry>();
+        var skippedMalformedLine = false;
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite,
+            bufferSize: 8 * 1024,
+            useAsync: true);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            try
+            {
+                var stored = JsonSerializer.Deserialize<StoredCallDisposition>(line, SerializerOptions);
+                if (stored is not null && stored.ClientId.Equals(normalizedClientId, StringComparison.OrdinalIgnoreCase))
+                {
+                    entries.Add(ToEntry(stored));
+                }
+            }
+            catch (JsonException)
+            {
+                skippedMalformedLine = true;
+            }
+        }
+
+        if (skippedMalformedLine)
+        {
+            _logger.LogWarning("Se ignoró una línea incompleta del historial íntegro de tipificaciones.");
+        }
+
+        return entries
+            .OrderByDescending(entry => entry.RecordedAt)
+            .ToArray();
+    }
+
     private string ClientPath(string normalizedClientId) => Path.Combine(
         _storageDirectory,
         $"{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedClientId))).ToLowerInvariant()}.jsonl");
@@ -370,7 +445,7 @@ public sealed class CallDispositionService
                         bufferSize: 8 * 1024,
                         leaveOpen: true);
                     foreach (var path in Directory.EnumerateFiles(_storageDirectory, "*.jsonl")
-                        .Where(path => !Path.GetFileName(path).Equals(SummaryIndexFileName, StringComparison.OrdinalIgnoreCase)))
+                        .Where(path => !IsSummaryIndexFile(path)))
                     {
                         var summary = await ReadHighestSummaryFromClientFileAsync(path, cancellationToken);
                         if (summary is not null)
@@ -481,14 +556,26 @@ public sealed class CallDispositionService
     private static StoredDispositionSummary ToStoredSummary(StoredCallDisposition stored) => new(
         stored.ClientId,
         stored.RecordedAt,
+        stored.AgentId,
+        stored.AgentName,
         stored.Category,
         stored.Result,
+        string.IsNullOrWhiteSpace(stored.Channel) ? "Sin canal" : stored.Channel,
+        stored.Phone,
         stored.Weight);
 
     private static ClientDispositionSummary ToSummary(StoredDispositionSummary stored) => new(
         stored.ClientId,
+        stored.RecordedAt,
+        stored.AgentId,
+        stored.AgentName,
         stored.Category,
-        stored.Result);
+        stored.Result,
+        stored.Channel,
+        stored.Phone);
+
+    private static bool IsSummaryIndexFile(string path) => Path.GetFileName(path)
+        .StartsWith("summary-index", StringComparison.OrdinalIgnoreCase);
 
     private static CallDispositionEntry ToEntry(StoredCallDisposition stored) => new(
         stored.Id,
@@ -549,8 +636,12 @@ public sealed class CallDispositionService
     private sealed record StoredDispositionSummary(
         string ClientId,
         DateTimeOffset RecordedAt,
+        string AgentId,
+        string AgentName,
         string Category,
         string Result,
+        string Channel,
+        string Phone,
         int Weight);
 }
 

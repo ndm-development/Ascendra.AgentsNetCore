@@ -114,8 +114,13 @@ public sealed record ClientDispositionHistory(
 /// </summary>
 public sealed record ClientDispositionSummary(
     string ClientId,
+    DateTimeOffset RecordedAt,
+    string AgentId,
+    string AgentName,
     string Category,
-    string Result);
+    string Result,
+    string Channel,
+    string Phone);
 
 public sealed record AgentDirectoryRecord(string Id, string FirstName, string PaternalSurname);
 
