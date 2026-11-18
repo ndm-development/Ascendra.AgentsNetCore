@@ -73,7 +73,7 @@
                                 <option value="">Selecciona un usuario</option>
                                 @foreach (var user in AvailableRecipients)
                                 {
-                                    <option value="@user.Username">@user.DisplayName · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
+                                    <option value="@user.Username">@user.DisplayName · Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
                                 }
                             </select>
                         </label>
@@ -189,7 +189,7 @@
                     <label for="team-status">Estatus</label>
                     <select id="team-status" @bind="SelectedStatus">
                         <option value="">Todos los estatus</option>
-                        @foreach (var status in Queries.PromiseStatuses(scope)) { <option value="@status">@status</option> }
+                        @foreach (var status in Queries.PromiseStatuses(scope)) { <option value="@status">@DashboardQueries.PromiseStatusLabel(status)</option> }
                     </select>
                 </div>
             }
@@ -213,7 +213,7 @@
                 <div class="result-heading"><div><p class="eyebrow">SEGUIMIENTO DEL EQUIPO</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros visibles</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
                 <div class="table-wrap"><table class="promise-table"><thead><tr><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Estatus</th></tr></thead><tbody>
                     @foreach (var row in teamPromises.Take(400))
-                    { <tr><td>@row.Agent</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td><span class="promise-status @StatusClass(row.Status)">@row.Status</span></td></tr> }
+                    { <tr><td>@row.Agent</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td></tr> }
                 </tbody></table></div>
             </section>
         }
@@ -415,6 +415,12 @@
     {
         if (IsDisposed || Participant is null) return;
         ChatState = Chat.GetState(Participant);
+        if (CurrentChatMode == ChatMode.Private && !string.IsNullOrWhiteSpace(SelectedRecipient)
+            && !AvailableRecipients.Any(user => string.Equals(user.Username, SelectedRecipient, StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedRecipient = string.Empty;
+            CurrentChatMode = ChatMode.General;
+        }
         if (ActiveSection == TeamSection.Messages) MarkVisibleMessagesRead();
         StateHasChanged();
     });

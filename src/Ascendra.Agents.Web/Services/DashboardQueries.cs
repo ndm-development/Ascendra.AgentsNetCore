@@ -112,6 +112,17 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase)
         .Order(StringComparer.OrdinalIgnoreCase).ToArray();
 
+    /// <summary>Etiqueta operativa para interfaz; el valor original de Excel se conserva para filtros y exportaciones.</summary>
+    public static string PromiseStatusLabel(string? status) => TextNormalization.Normalize(status) switch
+    {
+        "duplicada" => "Duplicada",
+        "robada" => "Robada",
+        "activa" or "cumplida" or "cumplido" => "Pagada",
+        "incumplida" => "No pagó",
+        "vigente" => "Esperando pago",
+        _ => string.IsNullOrWhiteSpace(status) ? "Sin estatus" : status.Trim(),
+    };
+
     public ScopedOperations FilterAgentStatus(ScopedOperations scope, string? status)
     {
         if (string.IsNullOrWhiteSpace(status)) return scope;
@@ -353,9 +364,9 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         var duplicate = records.Count(x => IsStatus(x.Status, "duplicada"));
         var eligible = active + open + failed;
         var focus = failed > 0
-            ? $"Tienes {failed:N0} promesa(s) incumplida(s) que requieren atención."
-            : open > 0 ? $"Tienes {open:N0} promesa(s) vigente(s) en seguimiento."
-            : active > 0 ? "Todas tus promesas elegibles están activas."
+            ? $"Tienes {failed:N0} promesa(s) sin pago que requieren atención."
+            : open > 0 ? $"Tienes {open:N0} promesa(s) esperando pago en seguimiento."
+            : active > 0 ? "Todas tus promesas elegibles están pagadas."
             : "Aún no hay promesas elegibles en este corte.";
         return new PromiseComplianceSummary(eligible == 0 ? null : (decimal)active / eligible, active, open, failed, stolen, duplicate, eligible, focus);
     }
@@ -368,9 +379,9 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         var summary = PersonalPromiseSummary(scope, week);
         return [
             new("Cobranza semanal", Currency(recovery), $"{payments.Length:N0} pagos · {clients:N0} cuentas", "positive"),
-            new("Cumplimiento", summary.Rate is null ? "—" : summary.Rate.Value.ToString("P0", CultureInfo.GetCultureInfo("es-MX")), $"{summary.Active:N0} activas de {summary.Eligible:N0} elegibles", summary.Eligible == 0 ? "neutral" : "accent"),
-            new("Promesas vigentes", $"{summary.Open:N0}", "En seguimiento esta semana", "warning"),
-            new("Incumplidas", $"{summary.Failed:N0}", "Requieren atención", "danger"),
+            new("Cumplimiento", summary.Rate is null ? "—" : summary.Rate.Value.ToString("P0", CultureInfo.GetCultureInfo("es-MX")), $"{summary.Active:N0} pagadas de {summary.Eligible:N0} elegibles", summary.Eligible == 0 ? "neutral" : "accent"),
+            new("Esperando pago", $"{summary.Open:N0}", "En seguimiento esta semana", "warning"),
+            new("No pagó", $"{summary.Failed:N0}", "Requieren atención", "danger"),
         ];
     }
 
@@ -435,11 +446,11 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     {
         var statuses = new[]
         {
-            (Key: "vigente", Label: "Vigentes", Color: "rgba(68, 139, 232, .93)", Border: "rgba(142, 190, 255, .92)"),
-            (Key: "activa", Label: "Activas", Color: "rgba(45, 163, 119, .93)", Border: "rgba(143, 226, 193, .92)"),
-            (Key: "incumplida", Label: "Incumplidas", Color: "rgba(206, 78, 92, .93)", Border: "rgba(255, 174, 183, .92)"),
-            (Key: "robada", Label: "Robadas", Color: "rgba(218, 135, 55, .93)", Border: "rgba(255, 199, 128, .92)"),
-            (Key: "duplicada", Label: "Duplicadas", Color: "rgba(124, 87, 194, .93)", Border: "rgba(190, 166, 244, .92)"),
+            (Key: "vigente", Label: PromiseStatusLabel("vigente"), Color: "rgba(68, 139, 232, .93)", Border: "rgba(142, 190, 255, .92)"),
+            (Key: "activa", Label: PromiseStatusLabel("activa"), Color: "rgba(45, 163, 119, .93)", Border: "rgba(143, 226, 193, .92)"),
+            (Key: "incumplida", Label: PromiseStatusLabel("incumplida"), Color: "rgba(206, 78, 92, .93)", Border: "rgba(255, 174, 183, .92)"),
+            (Key: "robada", Label: PromiseStatusLabel("robada"), Color: "rgba(218, 135, 55, .93)", Border: "rgba(255, 199, 128, .92)"),
+            (Key: "duplicada", Label: PromiseStatusLabel("duplicada"), Color: "rgba(124, 87, 194, .93)", Border: "rgba(190, 166, 244, .92)"),
         };
         var series = statuses.Select(status => (object)new
         {
@@ -504,21 +515,21 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     public static string? PromiseChartStatusKey(string? traceName) =>
         TextNormalization.Normalize(traceName) switch
         {
-            "vigentes" => "vigente",
-            "activas" => "activa",
-            "incumplidas" => "incumplida",
-            "robadas" => "robada",
-            "duplicadas" => "duplicada",
+            "esperando pago" or "vigentes" => "vigente",
+            "pagada" or "activas" => "activa",
+            "no pago" or "incumplidas" => "incumplida",
+            "robada" or "robadas" => "robada",
+            "duplicada" or "duplicadas" => "duplicada",
             _ => null,
         };
 
     public static string PromiseChartStatusLabel(string? chartStatus) => chartStatus switch
     {
-        "vigente" => "vigentes",
-        "activa" => "activas",
-        "incumplida" => "incumplidas",
-        "robada" => "robadas",
-        "duplicada" => "duplicadas",
+        "vigente" => PromiseStatusLabel("vigente"),
+        "activa" => PromiseStatusLabel("activa"),
+        "incumplida" => PromiseStatusLabel("incumplida"),
+        "robada" => PromiseStatusLabel("robada"),
+        "duplicada" => PromiseStatusLabel("duplicada"),
         "elegible" => "elegibles",
         _ => "seleccionadas",
     };
@@ -547,9 +558,9 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             customdata = rows.Select(x => x.Details).ToArray(), text = rows.Select(x => x.Labels).ToArray(), texttemplate = "%{text}", textfont = new { size = 12 },
             colorscale = new object[][] { [0d, "rgba(244,249,255,.45)"], [.2d, "rgba(184,215,240,.58)"], [.48d, "rgba(105,171,217,.72)"], [.74d, "rgba(43,123,191,.88)"], [1d, "rgba(12,62,133,.98)"] },
             zmin = 0d, zmax = 1d, xgap = 3, ygap = 3, hoverongaps = false, colorbar = new { title = "Cumplimiento", tickformat = ".0%", thickness = 12 },
-            hovertemplate = "<b>Agente:</b> %{y}<br><b>Periodo:</b> %{x}<br><b>Cumplimiento:</b> %{z:.1%}<br>Activas: %{customdata[0]}<br>Vigentes: %{customdata[1]}<br>Incumplidas: %{customdata[2]}<br>Total elegible: %{customdata[3]}<extra></extra>",
+            hovertemplate = "<b>Agente:</b> %{y}<br><b>Periodo:</b> %{x}<br><b>Cumplimiento:</b> %{z:.1%}<br>Pagadas: %{customdata[0]}<br>Esperando pago: %{customdata[1]}<br>No pagó: %{customdata[2]}<br>Total elegible: %{customdata[3]}<extra></extra>",
         }],
-        HeatmapLayout($"Cumplimiento de promesas · Semana {week}<br><sup>Activas ÷ (Vigentes + Activas + Incumplidas). Robadas y duplicadas excluidas.</sup>", rows.Length), Config());
+        HeatmapLayout($"Cumplimiento de promesas · Semana {week}<br><sup>Pagadas ÷ (Esperando pago + Pagadas + No pagó). Robada y Duplicada se excluyen.</sup>", rows.Length), Config());
     }
 
     public ChartModel TeamDailyRecoveryChart(ScopedOperations scope, int week, string? selectedAgent = null) => RecoveryMatrix(scope, week, Days, "Día", "Recuperación diaria por agente", selectedAgent);

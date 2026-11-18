@@ -138,7 +138,7 @@ else if (Results.Count > 0)
                 <div><dt>Producto</dt><dd>@(string.IsNullOrWhiteSpace(contact.Product) ? "No disponible en cartera vigente" : contact.Product)</dd></div>
                 <div><dt>Saldo total</dt><dd>@(contact.TotalBalance is null ? "No disponible" : DashboardQueries.Currency(contact.TotalBalance.Value))</dd></div>
                 <div><dt>Última promesa · Agente</dt><dd>@(string.IsNullOrWhiteSpace(first.LatestPromiseAgent) ? "Sin promesa registrada" : first.LatestPromiseAgent)</dd></div>
-                <div><dt>Última promesa · Estatus</dt><dd>@(string.IsNullOrWhiteSpace(first.LatestPromiseStatus) ? "—" : first.LatestPromiseStatus)</dd></div>
+                <div><dt>Última promesa · Estatus</dt><dd>@(string.IsNullOrWhiteSpace(first.LatestPromiseStatus) ? "—" : DashboardQueries.PromiseStatusLabel(first.LatestPromiseStatus))</dd></div>
             </dl>
             <div class="table-wrap"><table><thead><tr><th>Teléfono</th><th>Referencia</th><th>Parentesco</th><th>Origen</th></tr></thead><tbody>
                 @foreach (var row in group.OrderBy(x => x.Contact.Phone).ThenBy(x => x.Contact.ReferenceName))

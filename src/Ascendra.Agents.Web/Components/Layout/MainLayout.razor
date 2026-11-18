@@ -66,7 +66,7 @@
                                                     <option value="">Selecciona una persona</option>
                                                     @foreach (var user in PrivateConversationRecipients)
                                                     {
-                                                        <option value="@user.Username">@user.DisplayName · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
+                                                        <option value="@user.Username">@user.DisplayName · Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
                                                     }
                                                 </select>
                                             </label>

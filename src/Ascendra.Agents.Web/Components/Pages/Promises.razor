@@ -53,17 +53,17 @@ else
         <div class="compliance-summary__intro"><p class="eyebrow">TU CUMPLIMIENTO</p><h1>Mis promesas</h1><p>@summary.Focus</p></div>
         <div class="compliance-score @(ComplianceTone(summary.Rate))" style="--compliance-rate:@CompliancePercentage(summary.Rate)%" role="img" aria-label="@(summary.Rate?.ToString("P0") ?? "Sin datos") de cumplimiento"><div class="compliance-score__inner"><strong>@(summary.Rate?.ToString("P0") ?? "—")</strong><span>cumplimiento</span></div></div>
         <div class="compliance-metrics">
-            <button type="button" class="compliance-metric compliance-metric--active @(MetricSelected(ActiveStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(ActiveStatusKey)" title="Filtrar promesas activas" @onclick="() => ToggleMetric(ActiveStatusKey)"><strong>@summary.Active</strong><span>Activas</span></button>
-            <button type="button" class="compliance-metric compliance-metric--open @(MetricSelected(OpenStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(OpenStatusKey)" title="Filtrar promesas vigentes" @onclick="() => ToggleMetric(OpenStatusKey)"><strong>@summary.Open</strong><span>Vigentes</span></button>
-            <button type="button" class="compliance-metric compliance-metric--failed @(MetricSelected(FailedStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(FailedStatusKey)" title="Filtrar promesas incumplidas" @onclick="() => ToggleMetric(FailedStatusKey)"><strong>@summary.Failed</strong><span>Incumplidas</span></button>
-            <button type="button" class="compliance-metric compliance-metric--stolen @(MetricSelected(StolenStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(StolenStatusKey)" title="Filtrar promesas robadas" @onclick="() => ToggleMetric(StolenStatusKey)"><strong>@summary.Stolen</strong><span>Robadas</span></button>
-            <button type="button" class="compliance-metric compliance-metric--duplicate @(MetricSelected(DuplicateStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(DuplicateStatusKey)" title="Filtrar promesas duplicadas" @onclick="() => ToggleMetric(DuplicateStatusKey)"><strong>@summary.Duplicate</strong><span>Duplicadas</span></button>
+            <button type="button" class="compliance-metric compliance-metric--active @(MetricSelected(ActiveStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(ActiveStatusKey)" title="Filtrar promesas pagadas" @onclick="() => ToggleMetric(ActiveStatusKey)"><strong>@summary.Active</strong><span>Pagada</span></button>
+            <button type="button" class="compliance-metric compliance-metric--open @(MetricSelected(OpenStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(OpenStatusKey)" title="Filtrar promesas esperando pago" @onclick="() => ToggleMetric(OpenStatusKey)"><strong>@summary.Open</strong><span>Esperando pago</span></button>
+            <button type="button" class="compliance-metric compliance-metric--failed @(MetricSelected(FailedStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(FailedStatusKey)" title="Filtrar promesas sin pago" @onclick="() => ToggleMetric(FailedStatusKey)"><strong>@summary.Failed</strong><span>No pagó</span></button>
+            <button type="button" class="compliance-metric compliance-metric--stolen @(MetricSelected(StolenStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(StolenStatusKey)" title="Filtrar por Robada" @onclick="() => ToggleMetric(StolenStatusKey)"><strong>@summary.Stolen</strong><span>Robada</span></button>
+            <button type="button" class="compliance-metric compliance-metric--duplicate @(MetricSelected(DuplicateStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(DuplicateStatusKey)" title="Filtrar por Duplicada" @onclick="() => ToggleMetric(DuplicateStatusKey)"><strong>@summary.Duplicate</strong><span>Duplicada</span></button>
             <button type="button" class="compliance-metric @(MetricSelected(EligibleStatusKey) ? "is-selected" : "")" aria-pressed="@MetricSelected(EligibleStatusKey)" title="Filtrar promesas elegibles" @onclick="() => ToggleMetric(EligibleStatusKey)"><strong>@summary.Eligible</strong><span>Elegibles</span></button>
         </div>
     </section>
 
     <section class="chart-card glass-card personal-chart-card">
-        <div class="result-heading collection-chart-heading"><div><h2>Mis promesas por día</h2><p>Vigentes, activas, incumplidas, robadas y duplicadas.</p></div></div>
+        <div class="result-heading collection-chart-heading"><div><h2>Mis promesas por día</h2><p>Esperando pago, pagadas, no pagó, robada y duplicada.</p></div></div>
         <PlotlyChart Id="personal-promises" Model="Queries.PromiseStatusChart(scope, _week)" AccessibleLabel="Mis promesas por día" OnPointSelected="SelectPromiseSegment" />
     </section>
 
@@ -72,7 +72,7 @@ else
         <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Cliente único</th><th>Nombre</th><th>Teléfono</th><th>Fecha promesa</th><th>Monto inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
             @foreach (var row in visible)
             {
-                <tr><td>@row.Id</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td>@(row.CreatedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td><span class="promise-status @StatusClass(row.Status)">@row.Status</span></td></tr>
+                <tr><td>@row.Id</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td>@(row.CreatedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td></tr>
             }
         </tbody></table></div>
     </section>
