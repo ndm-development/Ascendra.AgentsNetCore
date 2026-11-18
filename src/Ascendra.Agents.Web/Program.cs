@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Ascendra.Agents.Web.Auth;
 using Ascendra.Agents.Web.Components;
+using Ascendra.Agents.Web.Domain;
 using Ascendra.Agents.Web.Infrastructure;
 using Ascendra.Agents.Web.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -312,13 +313,44 @@ app.MapGet("/exports/codificacion", async (
     HttpContext context,
     DashboardSession session,
     CallDispositionService dispositions,
-    ExcelExportService exports) =>
+    ExcelExportService exports,
+    string? client,
+    DateOnly? start,
+    DateOnly? end,
+    string? agentId,
+    string? agent,
+    string? outcome,
+    string? channel,
+    string? phone) =>
 {
     session.Apply(context.User);
     if (!session.HasFullAccess) return Results.Forbid();
 
     var summaries = await dispositions.GetHighestWeightSummariesAsync(context.RequestAborted);
-    var content = exports.Coding(summaries);
+    var exactClient = summaries.FirstOrDefault(summary =>
+        string.Equals(summary.ClientId, client?.Trim(), StringComparison.OrdinalIgnoreCase));
+    var source = exactClient is null
+        ? summaries
+        : (await dispositions.GetFullHistoryAsync(exactClient.ClientId, context.RequestAborted))
+            .Select(entry => new ClientDispositionSummary(
+                entry.ClientId, entry.RecordedAt, entry.AgentId, entry.AgentName,
+                entry.Category, entry.Result, entry.Channel, entry.Phone))
+            .ToArray();
+    var isHistoryExport = exactClient is not null;
+    var filtered = source
+        .Where(row => (isHistoryExport || Contains(row.ClientId, client))
+            && (start is null || OperationalClock.Date(row.RecordedAt) >= start)
+            && (end is null || OperationalClock.Date(row.RecordedAt) <= end)
+            && Contains(row.AgentId, agentId)
+            && Contains(row.AgentName, agent)
+            && (string.IsNullOrWhiteSpace(outcome)
+                || string.Equals($"{row.Category}|{row.Result}", outcome, StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(channel)
+                || string.Equals(row.Channel, channel, StringComparison.OrdinalIgnoreCase))
+            && Contains(row.Phone, phone))
+        .OrderByDescending(row => row.RecordedAt)
+        .ToArray();
+    var content = exports.Coding(filtered);
     return Results.File(content, ExcelExportService.ExcelContentType, "codificacion_clientes.xlsx");
 }).RequireAuthorization();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
@@ -327,3 +359,6 @@ app.Run();
 
 static bool IsSafeReturnUrl(string value) =>
     !string.IsNullOrWhiteSpace(value) && value.StartsWith('/') && !value.StartsWith("//");
+
+static bool Contains(string value, string? query) => string.IsNullOrWhiteSpace(query)
+    || value.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase);

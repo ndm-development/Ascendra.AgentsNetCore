@@ -50,37 +50,33 @@
                                     <section class="chat-recipient-picker" aria-label="Elige a quién escribir">
                                         <div class="chat-recipient-picker__heading">
                                             <span>Escribe a</span>
-                                            <small>Elige una persona para mensaje privado</small>
+                                            <small>Elige o escribe el nombre de una persona</small>
                                         </div>
-                                        <div class="chat-recipient-rail" role="list">
-                                            <button type="button" class="@ChatRecipientClass(null)" aria-pressed="@(CurrentChatMode == ChatMode.General)" @onclick="SelectGeneralChat">
-                                                <span class="chat-recipient-choice__avatar chat-recipient-choice__avatar--general" aria-hidden="true">✦</span>
-                                                <span>
-                                                    <strong>Equipo</strong>
-                                                    <small>Canal general</small>
-                                                </span>
+                                        <div class="chat-recipient-picker__controls">
+                                            <button type="button" class="chat-recipient-picker__general @(CurrentChatMode == ChatMode.General ? "chat-recipient-picker__general--selected" : string.Empty)" aria-pressed="@(CurrentChatMode == ChatMode.General)" @onclick="SelectGeneralChat">
+                                                <span aria-hidden="true">✦</span> Equipo
                                                 @if (UnreadGeneralCount > 0)
                                                 {
-                                                    <span class="chat-recipient-choice__badge" aria-label="@($"{UnreadGeneralCount} mensaje(s) nuevo(s)")">@UnreadGeneralCount</span>
+                                                    <small>@UnreadGeneralCount</small>
                                                 }
                                             </button>
-                                            @foreach (var user in PrivateConversationRecipients)
-                                            {
-                                                <button type="button" class="@ChatRecipientClass(user.Username)" aria-pressed="@(CurrentChatMode == ChatMode.Private && string.Equals(SelectedChatRecipient, user.Username, StringComparison.OrdinalIgnoreCase))" title="Mensaje privado a @user.DisplayName" @onclick="() => SelectChatRecipient(user.Username)">
-                                                    <span class="chat-recipient-choice__avatar" aria-hidden="true">@ChatParticipantInitials(user)</span>
-                                                    <span>
-                                                        <strong>@ChatRecipientLabel(user)</strong>
-                                                        <small>@(IsOnline(user) ? "En línea" : "Sin conexión")</small>
-                                                    </span>
-                                                </button>
-                                            }
+                                            <label class="chat-recipient-picker__person">
+                                                <span>Privado</span>
+                                                <select @bind="SelectedChatRecipient" @bind:after="OnChatRecipientChanged" aria-label="Destinatario del mensaje privado">
+                                                    <option value="">Selecciona una persona</option>
+                                                    @foreach (var user in PrivateConversationRecipients)
+                                                    {
+                                                        <option value="@user.Username">@user.DisplayName · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
+                                                    }
+                                                </select>
+                                            </label>
                                         </div>
                                     </section>
 
                                     <div class="chat-thread" aria-live="polite">
                                         @if (VisibleChatMessages.Count == 0)
                                         {
-                                            <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : CanReviewPrivateMessages ? "Aún no hay mensajes privados internos." : "Escribe tu primer mensaje a esta persona.")</p>
+                                            <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : string.IsNullOrWhiteSpace(SelectedChatRecipient) ? "Elige una persona para abrir una conversación privada." : "Escribe tu primer mensaje a esta persona.")</p>
                                         }
                                         else
                                         {
@@ -304,8 +300,6 @@
     private IReadOnlyList<ChatParticipant> PrivateConversationRecipients => AvailableDirectRecipients;
     private IReadOnlyList<ChatMessage> VisibleChatMessages => CurrentChatMode == ChatMode.General
         ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
-        : CanReviewPrivateMessages
-            ? ChatState.Messages.Where(message => message.Recipient is not null).ToArray()
         : string.IsNullOrWhiteSpace(SelectedChatRecipient)
             ? Array.Empty<ChatMessage>()
             : ChatState.Messages.Where(message => message.Recipient is not null
@@ -361,25 +355,15 @@
         MarkVisibleChatMessagesRead();
     }
 
-    private string ChatRecipientClass(string? username) =>
-        username is null
-            ? CurrentChatMode == ChatMode.General
-                ? "chat-recipient-choice chat-recipient-choice--selected chat-recipient-choice--general"
-                : "chat-recipient-choice chat-recipient-choice--general"
-            : CurrentChatMode == ChatMode.Private && string.Equals(SelectedChatRecipient, username, StringComparison.OrdinalIgnoreCase)
-                ? "chat-recipient-choice chat-recipient-choice--selected"
-                : "chat-recipient-choice";
-
-    private static string ChatParticipantInitials(ChatParticipant user)
+    private void OnChatRecipientChanged()
     {
-        var parts = user.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
-    }
+        if (string.IsNullOrWhiteSpace(SelectedChatRecipient))
+        {
+            SelectGeneralChat();
+            return;
+        }
 
-    private static string ChatRecipientLabel(ChatParticipant user)
-    {
-        var parts = user.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Length < 2 ? user.DisplayName : $"{parts[0]} {char.ToUpperInvariant(parts[^1][0])}.";
+        SelectChatRecipient(SelectedChatRecipient);
     }
 
     private bool IsOwnMessage(ChatMessage message) => ChatParticipant is not null
@@ -388,9 +372,7 @@
     private string RecipientLabel(ChatMessage message) =>
         message.Recipient is null
             ? string.Empty
-            : IsOwnMessage(message) || CanReviewPrivateMessages
-                ? message.Recipient.DisplayName
-                : "ti";
+            : IsOwnMessage(message) ? message.Recipient.DisplayName : "ti";
 
     private void ToggleChatEmojiPicker() => IsChatEmojiPickerOpen = !IsChatEmojiPickerOpen;
 

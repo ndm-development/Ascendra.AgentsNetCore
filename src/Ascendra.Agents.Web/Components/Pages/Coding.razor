@@ -9,7 +9,7 @@
             <h1>Codificación</h1>
             <p>Una vista consolidada de la gestión con mayor peso de cada cliente.</p>
         </div>
-        <a class="secondary-button coding-console__download" href="/exports/codificacion" download>
+        <a class="secondary-button coding-console__download" href="@CodingExportUrl" download>
             <span aria-hidden="true">↓</span> Descargar Excel
         </a>
     </header>
@@ -228,6 +228,22 @@
     private string TableTitle => IsHistoryView
         ? $"Gestiones de {HistoryClientId}"
         : "Clientes con tipificación";
+    private string CodingExportUrl
+    {
+        get
+        {
+            var query = new List<string>();
+            AddQuery(query, "client", ClientQuery);
+            AddQuery(query, "start", StartDate?.ToString("yyyy-MM-dd"));
+            AddQuery(query, "end", EndDate?.ToString("yyyy-MM-dd"));
+            AddQuery(query, "agentId", AgentIdQuery);
+            AddQuery(query, "agent", AgentQuery);
+            AddQuery(query, "outcome", SelectedOutcome);
+            AddQuery(query, "channel", SelectedChannel);
+            AddQuery(query, "phone", PhoneQuery);
+            return query.Count == 0 ? "/exports/codificacion" : $"/exports/codificacion?{string.Join('&', query)}";
+        }
+    }
     private string EmptyStateTitle => Summaries.Count == 0
         ? "Aún no hay clientes codificados"
         : IsHistoryView ? "No hay gestiones con esos filtros" : "No hay coincidencias";
@@ -287,6 +303,10 @@
     private void ResetPage() => Page = 1;
     private void PreviousPage() => Page = Math.Max(1, Page - 1);
     private void NextPage() => Page = Math.Min(TotalPages, Page + 1);
+    private static void AddQuery(ICollection<string> query, string name, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) query.Add($"{name}={Uri.EscapeDataString(value.Trim())}");
+    }
     private static bool Contains(string value, string query) => string.IsNullOrWhiteSpace(query)
         || value.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase);
     private static string OutcomeValue(MonitorRow row) => $"{row.Category}|{row.Result}";

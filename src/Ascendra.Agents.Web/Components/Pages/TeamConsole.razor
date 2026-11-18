@@ -44,7 +44,7 @@
 
     @if (ActiveSection == TeamSection.Messages)
     {
-        <section class="team-chat glass-card @(CurrentChatMode == ChatMode.General ? "team-chat--general" : "team-chat--private")" aria-label="Mensajes internos del equipo">
+        <section class="team-chat glass-card @TeamChatModeClass" aria-label="Mensajes internos del equipo">
             <div class="team-chat__heading">
                 <div>
                     <p class="eyebrow">CANAL DE EQUIPO</p>
@@ -59,13 +59,17 @@
                     <div class="team-chat__mode" role="tablist" aria-label="Canal de mensajes">
                         <button type="button" class="@MessageModeClass(ChatMode.General)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.General)" @onclick="() => SelectChatMode(ChatMode.General)">General</button>
                         <button type="button" class="@MessageModeClass(ChatMode.Private)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Private)" @onclick="() => SelectChatMode(ChatMode.Private)">Privado</button>
+                        @if (CanReviewPrivateMessages)
+                        {
+                            <button type="button" class="@MessageModeClass(ChatMode.Monitor)" role="tab" aria-selected="@(CurrentChatMode == ChatMode.Monitor)" @onclick="() => SelectChatMode(ChatMode.Monitor)">Monitoreo</button>
+                        }
                     </div>
 
                     @if (CurrentChatMode == ChatMode.Private)
                     {
                         <label class="team-chat__recipient">
                             <span>Enviar privado a</span>
-                            <select @bind="SelectedRecipient" @bind:after="MarkVisibleMessagesRead" aria-label="Destinatario del mensaje privado">
+                            <select @bind="SelectedRecipient" @bind:after="OnPrivateRecipientChanged" aria-label="Destinatario del mensaje privado">
                                 <option value="">Selecciona un usuario</option>
                                 @foreach (var user in AvailableRecipients)
                                 {
@@ -75,10 +79,15 @@
                         </label>
                     }
 
+                    @if (CurrentChatMode == ChatMode.Monitor)
+                    {
+                        <p class="team-chat__monitor-note">Consulta autorizada de conversaciones internas. Esta vista es sólo de lectura.</p>
+                    }
+
                     <div class="team-chat__messages" aria-live="polite">
                         @if (VisibleMessages.Count == 0)
                         {
-                            <p class="team-chat__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay comunicados generales." : "Aún no hay mensajes privados visibles para esta vista.")</p>
+                            <p class="team-chat__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay comunicados generales." : CurrentChatMode == ChatMode.Monitor ? "Aún no hay conversaciones disponibles para monitoreo." : string.IsNullOrWhiteSpace(SelectedRecipient) ? "Elige una persona para ver su conversación privada." : "Aún no hay mensajes con esta persona.")</p>
                         }
                         else
                         {
@@ -107,6 +116,8 @@
                     </div>
                 </div>
 
+                @if (CurrentChatMode != ChatMode.Monitor)
+                {
                 <form class="team-chat__composer" @onsubmit="SendMessageAsync" @onsubmit:preventDefault="true">
                     <label for="team-chat-message">Nuevo mensaje</label>
                     <textarea id="team-chat-message" @bind="Draft" maxlength="500" rows="5" placeholder="Escribe un comunicado o mensaje privado…"></textarea>
@@ -140,6 +151,7 @@
                         <button type="submit" class="primary-button" disabled="@(CurrentChatMode == ChatMode.Private && !CanSendPrivate)">Enviar</button>
                     </div>
                 </form>
+                }
             </div>
         </section>
     }
@@ -254,11 +266,21 @@
     private IReadOnlyList<ChatParticipant> AvailableRecipients => Participant is null ? [] : Chat.PrivateRecipients(Participant);
     private IReadOnlyList<ChatMessage> VisibleMessages => CurrentChatMode == ChatMode.General
         ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
-        : ChatState.Messages.Where(message => message.Recipient is not null).ToArray();
+        : CurrentChatMode == ChatMode.Monitor
+            ? ChatState.Messages.Where(message => message.Recipient is not null).ToArray()
+            : string.IsNullOrWhiteSpace(SelectedRecipient)
+                ? []
+                : ChatState.Messages.Where(message => message.Recipient is not null
+                    && ((IsOwnMessage(message)
+                            && string.Equals(message.Recipient.Username, SelectedRecipient, StringComparison.OrdinalIgnoreCase))
+                        || (string.Equals(message.Sender.Username, SelectedRecipient, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(message.Recipient.Username, Participant?.Username, StringComparison.OrdinalIgnoreCase))))
+                    .ToArray();
     private int UnreadMessageCount => ChatState.Messages.Count(message => !IsOwnMessage(message) && !ReadMessages.Contains(message.Id));
     private bool CanSendPrivate => AvailableRecipients.Any(user => string.Equals(user.Username, SelectedRecipient, StringComparison.OrdinalIgnoreCase));
     private bool IsOnline(ChatParticipant user) => OnlineUsers.Any(online =>
         string.Equals(online.Username, user.Username, StringComparison.OrdinalIgnoreCase));
+    private bool CanReviewPrivateMessages => Participant?.CanReviewPrivateMessages == true;
     private string ChatReviewNote => Participant?.Role switch
     {
         ChatUserRole.Manager => "Gerencia consulta los mensajes del equipo; los enviados por otros gerentes permanecen privados.",
@@ -284,12 +306,27 @@
         HasDateRange ? null : _week);
     private string TabClass(TeamSection section) => ActiveSection == section ? "is-selected" : string.Empty;
     private string MessageModeClass(ChatMode mode) => CurrentChatMode == mode ? "is-selected" : string.Empty;
+    private string TeamChatModeClass => CurrentChatMode switch
+    {
+        ChatMode.General => "team-chat--general",
+        ChatMode.Monitor => "team-chat--monitor",
+        _ => "team-chat--private",
+    };
     private bool IsOwnMessage(ChatMessage message) => Participant is not null && string.Equals(message.Sender.Username, Participant.Username, StringComparison.OrdinalIgnoreCase);
     private static string AttachmentUrl(ChatAttachment attachment) => $"/chat/attachments/{attachment.Id}";
 
     private void SelectChatMode(ChatMode mode)
     {
+        if (mode == ChatMode.Monitor && !CanReviewPrivateMessages) return;
         CurrentChatMode = mode;
+        ChatError = null;
+        IsEmojiPickerOpen = false;
+        MarkVisibleMessagesRead();
+    }
+
+    private void OnPrivateRecipientChanged()
+    {
+        CurrentChatMode = ChatMode.Private;
         ChatError = null;
         IsEmojiPickerOpen = false;
         MarkVisibleMessagesRead();
@@ -313,6 +350,7 @@
     private async Task SendMessageAsync()
     {
         if (Participant is null) return;
+        if (CurrentChatMode == ChatMode.Monitor) return;
         try
         {
             if (CurrentChatMode == ChatMode.General) Chat.SendToEveryone(Participant, Draft, PendingAttachment);
@@ -491,6 +529,6 @@
     };
 
     private enum TeamSection { Messages, Promises, Payments }
-    private enum ChatMode { General, Private }
+    private enum ChatMode { General, Private, Monitor }
     private sealed record PersistedChatReadState(bool HasState, string[] Ids);
 }
