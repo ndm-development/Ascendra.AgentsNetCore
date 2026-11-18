@@ -293,9 +293,7 @@
     private IReadOnlyList<ChatParticipant> AvailableDirectRecipients =>
         ChatParticipant is null
             ? Array.Empty<ChatParticipant>()
-            : ChatState.ConnectedUsers
-                .Where(user => !string.Equals(user.Username, ChatParticipant.Username, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
+            : Chat.PrivateRecipients(ChatParticipant);
     private bool CanReviewPrivateMessages => ChatParticipant?.CanReviewPrivateMessages == true;
     private string ChatReviewNote => ChatParticipant?.Role switch
     {
@@ -303,16 +301,7 @@
         ChatUserRole.Supervisor => "Vista de supervisión: puedes consultar las conversaciones internas entre agentes de los últimos 7 días.",
         _ => string.Empty,
     };
-    private IReadOnlyList<ChatParticipant> PrivateConversationRecipients =>
-        AvailableDirectRecipients
-            .Concat(ChatState.Messages
-                .Where(message => message.Recipient is not null && (IsOwnMessage(message)
-                    || string.Equals(message.Recipient.Username, ChatParticipant?.Username, StringComparison.OrdinalIgnoreCase)))
-                .Select(message => IsOwnMessage(message) ? message.Recipient! : message.Sender))
-            .GroupBy(user => user.Username, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .OrderBy(user => user.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .ToArray();
+    private IReadOnlyList<ChatParticipant> PrivateConversationRecipients => AvailableDirectRecipients;
     private IReadOnlyList<ChatMessage> VisibleChatMessages => CurrentChatMode == ChatMode.General
         ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
         : CanReviewPrivateMessages

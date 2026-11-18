@@ -44,7 +44,7 @@
 
     @if (ActiveSection == TeamSection.Messages)
     {
-        <section class="team-chat glass-card" aria-label="Mensajes internos del equipo">
+        <section class="team-chat glass-card @(CurrentChatMode == ChatMode.General ? "team-chat--general" : "team-chat--private")" aria-label="Mensajes internos del equipo">
             <div class="team-chat__heading">
                 <div>
                     <p class="eyebrow">CANAL DE EQUIPO</p>
@@ -66,10 +66,10 @@
                         <label class="team-chat__recipient">
                             <span>Enviar privado a</span>
                             <select @bind="SelectedRecipient" @bind:after="MarkVisibleMessagesRead" aria-label="Destinatario del mensaje privado">
-                                <option value="">Selecciona un usuario conectado</option>
+                                <option value="">Selecciona un usuario</option>
                                 @foreach (var user in AvailableRecipients)
                                 {
-                                    <option value="@user.Username">@user.DisplayName</option>
+                                    <option value="@user.Username">@user.DisplayName · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
                                 }
                             </select>
                         </label>
@@ -251,13 +251,14 @@
     private DateOnly? EndDate { get; set; }
 
     private IReadOnlyList<ChatParticipant> OnlineUsers => ChatState.ConnectedUsers;
-    private IReadOnlyList<ChatParticipant> AvailableRecipients => Participant is null ? [] : OnlineUsers
-        .Where(user => !string.Equals(user.Username, Participant.Username, StringComparison.OrdinalIgnoreCase)).ToArray();
+    private IReadOnlyList<ChatParticipant> AvailableRecipients => Participant is null ? [] : Chat.PrivateRecipients(Participant);
     private IReadOnlyList<ChatMessage> VisibleMessages => CurrentChatMode == ChatMode.General
         ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
         : ChatState.Messages.Where(message => message.Recipient is not null).ToArray();
     private int UnreadMessageCount => ChatState.Messages.Count(message => !IsOwnMessage(message) && !ReadMessages.Contains(message.Id));
     private bool CanSendPrivate => AvailableRecipients.Any(user => string.Equals(user.Username, SelectedRecipient, StringComparison.OrdinalIgnoreCase));
+    private bool IsOnline(ChatParticipant user) => OnlineUsers.Any(online =>
+        string.Equals(online.Username, user.Username, StringComparison.OrdinalIgnoreCase));
     private string ChatReviewNote => Participant?.Role switch
     {
         ChatUserRole.Manager => "Gerencia consulta los mensajes del equipo; los enviados por otros gerentes permanecen privados.",

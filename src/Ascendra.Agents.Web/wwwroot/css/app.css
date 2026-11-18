@@ -413,6 +413,10 @@ button { cursor: pointer; }
    comunicados, pero deja que Promesas y Pagos aparezcan sin desplazamientos
    excesivos. */
 .team-chat { padding:clamp(15px,1.65vw,21px); }.team-chat__heading { margin-bottom:11px; }.team-chat__heading h2 { font-size:clamp(22px,2vw,28px); }.team-chat__heading p:not(.eyebrow) { font-size:12px; }.team-chat__body { grid-template-columns:minmax(0,1.6fr) minmax(280px,.72fr); gap:12px; }.team-chat__feed { grid-template-rows:auto auto minmax(260px,1fr); gap:8px; padding:9px; }.team-chat__messages { min-height:260px; max-height:420px; gap:7px; }.team-chat__message { padding:9px 11px; }.team-chat__message > p { font-size:12px; line-height:1.43; }.team-chat__image img { max-height:300px; }.team-chat__composer { padding:12px; }.team-chat__composer textarea { min-height:132px; margin-top:6px; padding:10px; font-size:12px; }.team-chat__actions { margin-top:9px; }.team-console__filters { grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:10px; }.team-console__filters .filter-reset { justify-self:start; }
+/* El canal general es una bandeja de coordinación, no un lienzo vacío. El
+   compositor no estira el módulo y el historial conserva una altura compacta
+   con desplazamiento cuando sea necesario. */
+.team-chat__body { align-items:start; }.team-chat__composer { align-self:start; }.team-chat__composer textarea { flex:0 0 auto; height:112px; min-height:112px; }.team-chat--general .team-chat__feed { grid-template-rows:auto minmax(0,1fr); }.team-chat--general .team-chat__messages { height:clamp(220px,30vh,320px); min-height:0; max-height:320px; }.team-chat--general .team-chat__message { max-width:92%; }
 @media (max-width: 900px) { .team-chat__body { grid-template-columns:1fr; }.team-chat__messages { max-height:370px; }.team-chat__composer textarea { min-height:118px; } }
 @media (max-width: 560px) { .team-chat__messages { min-height:250px; max-height:340px; }.team-console__filters .filter-reset { justify-self:stretch; } }
 

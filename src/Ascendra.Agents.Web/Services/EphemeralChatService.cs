@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ascendra.Agents.Web.Domain;
+using Ascendra.Agents.Web.Infrastructure;
 using Microsoft.Extensions.Options;
 
 namespace Ascendra.Agents.Web.Services;
@@ -22,6 +23,7 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
     private readonly Dictionary<Guid, string> _stagedAttachmentOwners = [];
     private readonly List<ChatMessage> _messages = [];
     private readonly ILogger<EphemeralChatService> _logger;
+    private readonly ExcelSnapshotStore _snapshots;
     private readonly string _storagePath;
     private readonly string _attachmentDirectory;
     private readonly TimeSpan _messageLifetime;
@@ -30,9 +32,11 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
     public EphemeralChatService(
         IOptions<ChatOptions> options,
         IWebHostEnvironment environment,
+        ExcelSnapshotStore snapshots,
         ILogger<EphemeralChatService> logger)
     {
         _logger = logger;
+        _snapshots = snapshots;
         var configuration = options.Value;
         _messageLifetime = TimeSpan.FromDays(Math.Clamp(configuration.RetentionDays, 1, 14));
         _storagePath = ResolveStoragePath(configuration.StoragePath, environment);
@@ -94,45 +98,41 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         }
     }
 
+    /// <summary>
+    /// El directorio de destinatarios se alimenta del padrón activo, no de las
+    /// conexiones abiertas. Así un mensaje privado puede quedar disponible
+    /// para alguien que vuelva a conectarse más tarde.
+    /// </summary>
+    public IReadOnlyList<ChatParticipant> PrivateRecipients(ChatParticipant sender) => _snapshots.Current.Users
+        .Where(user => user.IsActive
+            && !string.Equals(user.Username, sender.Username, StringComparison.OrdinalIgnoreCase))
+        .Select(ParticipantFor)
+        .OrderBy(user => user.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
     public void SendToEveryone(ChatParticipant sender, string? content, ChatAttachment? attachment = null) =>
         AddMessage(sender, null, content, attachment);
 
     public void SendPrivate(ChatParticipant sender, string? recipientUsername, string? content, ChatAttachment? attachment = null)
     {
-        ChatParticipant recipient;
-        lock (_gate)
-        {
-            PruneExpiredLocked();
-            recipient = FindKnownRecipientLocked(sender, recipientUsername)
-                ?? throw new InvalidOperationException("Ese usuario ya no está conectado.");
-        }
-
-        if (string.Equals(sender.Username, recipient.Username, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(sender.Username, recipientUsername, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Elige a otro usuario para enviar un mensaje privado.");
         }
 
+        var recipient = ActiveParticipantFor(recipientUsername)
+            ?? throw new InvalidOperationException("Ese usuario ya no está habilitado para recibir mensajes.");
+
         AddMessage(sender, recipient, content, attachment);
     }
 
-    // Una conversación ya establecida conserva los datos mínimos del
-    // destinatario en su historial. Si la conexión de esa persona se cae por
-    // unos instantes, podemos guardar el mensaje de forma segura y mostrarlo
-    // cuando regrese, en lugar de perder el intento de envío.
-    private ChatParticipant? FindKnownRecipientLocked(ChatParticipant sender, string? username)
+    private ChatParticipant? ActiveParticipantFor(string? username)
     {
         if (string.IsNullOrWhiteSpace(username)) return null;
 
-        var connected = _connections.Values.FirstOrDefault(user =>
-            string.Equals(user.Username, username, StringComparison.OrdinalIgnoreCase));
-        if (connected is not null) return connected;
-
-        return _messages
-            .Where(message => message.Recipient is not null
-                && (IsParticipant(sender, message.Sender) || IsParticipant(sender, message.Recipient)))
-            .Select(message => IsParticipant(sender, message.Sender) ? message.Recipient : message.Sender)
-            .OfType<ChatParticipant>()
-            .FirstOrDefault(participant => string.Equals(participant.Username, username, StringComparison.OrdinalIgnoreCase));
+        var user = _snapshots.Current.Users.FirstOrDefault(candidate => candidate.IsActive
+            && string.Equals(candidate.Username, username, StringComparison.OrdinalIgnoreCase));
+        return user is null ? null : ParticipantFor(user);
     }
 
     public async Task<ChatAttachment> StoreImageAsync(
