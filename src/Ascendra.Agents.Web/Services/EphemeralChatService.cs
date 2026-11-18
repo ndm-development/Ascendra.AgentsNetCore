@@ -103,8 +103,7 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         lock (_gate)
         {
             PruneExpiredLocked();
-            recipient = _connections.Values.FirstOrDefault(user =>
-                string.Equals(user.Username, recipientUsername, StringComparison.OrdinalIgnoreCase))
+            recipient = FindKnownRecipientLocked(sender, recipientUsername)
                 ?? throw new InvalidOperationException("Ese usuario ya no está conectado.");
         }
 
@@ -114,6 +113,26 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         }
 
         AddMessage(sender, recipient, content, attachment);
+    }
+
+    // Una conversación ya establecida conserva los datos mínimos del
+    // destinatario en su historial. Si la conexión de esa persona se cae por
+    // unos instantes, podemos guardar el mensaje de forma segura y mostrarlo
+    // cuando regrese, en lugar de perder el intento de envío.
+    private ChatParticipant? FindKnownRecipientLocked(ChatParticipant sender, string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return null;
+
+        var connected = _connections.Values.FirstOrDefault(user =>
+            string.Equals(user.Username, username, StringComparison.OrdinalIgnoreCase));
+        if (connected is not null) return connected;
+
+        return _messages
+            .Where(message => message.Recipient is not null
+                && (IsParticipant(sender, message.Sender) || IsParticipant(sender, message.Recipient)))
+            .Select(message => IsParticipant(sender, message.Sender) ? message.Recipient : message.Sender)
+            .OfType<ChatParticipant>()
+            .FirstOrDefault(participant => string.Equals(participant.Username, username, StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<ChatAttachment> StoreImageAsync(

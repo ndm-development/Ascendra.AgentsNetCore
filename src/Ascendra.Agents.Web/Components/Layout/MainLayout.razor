@@ -304,9 +304,7 @@
         _ => string.Empty,
     };
     private IReadOnlyList<ChatParticipant> PrivateConversationRecipients =>
-        CanReviewPrivateMessages
-            ? AvailableDirectRecipients
-            : AvailableDirectRecipients
+        AvailableDirectRecipients
             .Concat(ChatState.Messages
                 .Where(message => message.Recipient is not null && (IsOwnMessage(message)
                     || string.Equals(message.Recipient.Username, ChatParticipant?.Username, StringComparison.OrdinalIgnoreCase)))
@@ -333,7 +331,7 @@
     private int UnreadChatCount => UnreadIncomingMessages.Count;
     private int UnreadGeneralCount => UnreadIncomingMessages.Count(message => message.Recipient is null);
     private int UnreadPrivateCount => UnreadIncomingMessages.Count(message => message.Recipient is not null);
-    private bool CanSendPrivateMessage => AvailableDirectRecipients.Any(user =>
+    private bool CanSendPrivateMessage => PrivateConversationRecipients.Any(user =>
         string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase));
 
     private void ToggleChatPanel()
@@ -415,7 +413,15 @@
 
     private async Task SendChatMessageAsync()
     {
-        if (ChatParticipant is null) return;
+        // Después de una reconexión breve el primer render puede ocurrir antes
+        // de que el panel se haya registrado de nuevo. Reintenta el registro
+        // aquí para que un clic en Enviar nunca se pierda silenciosamente.
+        if (!ChatRegistered || ChatParticipant is null) await StartChatAsync();
+        if (ChatParticipant is null)
+        {
+            ChatError = "El chat se está reconectando. Intenta enviar nuevamente en unos segundos.";
+            return;
+        }
 
         try
         {
@@ -596,7 +602,9 @@
         {
             await JS.InvokeVoidAsync("ascendraSession.start");
             SessionTrackingStarted = true;
-            if (!Session.HasFullAccess) await StartChatAsync();
+            // El chat es común a todos los roles. La restricción de WhatsApp
+            // para Supervisión y Gerencia no debe impedirles participar aquí.
+            await StartChatAsync();
         }
 
         if (!RefreshChartsAfterRender) return;
