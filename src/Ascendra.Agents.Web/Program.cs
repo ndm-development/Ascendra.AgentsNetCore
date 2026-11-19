@@ -59,12 +59,20 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("login", rule =>
+    // El limitador anterior compartía un único contador para todo el servicio.
+    // Un exceso de un usuario podía bloquear el acceso del resto y Render lo
+    // presentaba como 503. El contador se separa por la conexión de origen.
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("login", context =>
     {
-        rule.PermitLimit = 8;
-        rule.Window = TimeSpan.FromMinutes(10);
-        rule.QueueLimit = 0;
-        rule.AutoReplenishment = true;
+        var partitionKey = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 8,
+            Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        });
     });
 });
 
