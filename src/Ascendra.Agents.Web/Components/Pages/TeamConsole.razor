@@ -69,13 +69,13 @@
                     {
                         <label class="team-chat__recipient">
                             <span>Enviar privado a</span>
-                            <select @bind="SelectedRecipient" @bind:after="OnPrivateRecipientChanged" aria-label="Destinatario del mensaje privado">
-                                <option value="">Selecciona un usuario</option>
+                            <input type="search" list="team-private-recipients" @bind="RecipientSearch" @bind:event="oninput" @bind:after="OnPrivateRecipientSearchChanged" placeholder="Escribe el nombre del agente…" autocomplete="off" aria-label="Escribe el destinatario del mensaje privado" />
+                            <datalist id="team-private-recipients">
                                 @foreach (var user in AvailableRecipients)
                                 {
-                                    <option value="@user.Username">@user.DisplayName · Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
+                                    <option value="@user.DisplayName" label="Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")"></option>
                                 }
-                            </select>
+                            </datalist>
                         </label>
                     }
 
@@ -239,6 +239,7 @@
     private TeamSection ActiveSection { get; set; } = TeamSection.Messages;
     private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
     private string SelectedRecipient { get; set; } = string.Empty;
+    private string RecipientSearch { get; set; } = string.Empty;
     private string Draft { get; set; } = string.Empty;
     private bool IsEmojiPickerOpen { get; set; }
     private string? ChatError { get; set; }
@@ -324,9 +325,17 @@
         MarkVisibleMessagesRead();
     }
 
-    private void OnPrivateRecipientChanged()
+    private void OnPrivateRecipientSearchChanged()
     {
         CurrentChatMode = ChatMode.Private;
+        var normalizedSearch = TextNormalization.Normalize(RecipientSearch);
+        var matches = AvailableRecipients
+            .Where(user => TextNormalization.Normalize(user.DisplayName).Contains(normalizedSearch, StringComparison.Ordinal)
+                || TextNormalization.Normalize(user.Username).Contains(normalizedSearch, StringComparison.Ordinal))
+            .ToArray();
+        var exactMatch = matches.FirstOrDefault(user => string.Equals(TextNormalization.Normalize(user.DisplayName), normalizedSearch, StringComparison.Ordinal)
+            || string.Equals(TextNormalization.Normalize(user.Username), normalizedSearch, StringComparison.Ordinal));
+        SelectedRecipient = exactMatch?.Username ?? (matches.Length == 1 ? matches[0].Username : string.Empty);
         ChatError = null;
         IsEmojiPickerOpen = false;
         MarkVisibleMessagesRead();
@@ -419,6 +428,7 @@
             && !AvailableRecipients.Any(user => string.Equals(user.Username, SelectedRecipient, StringComparison.OrdinalIgnoreCase)))
         {
             SelectedRecipient = string.Empty;
+            RecipientSearch = string.Empty;
             CurrentChatMode = ChatMode.General;
         }
         if (ActiveSection == TeamSection.Messages) MarkVisibleMessagesRead();

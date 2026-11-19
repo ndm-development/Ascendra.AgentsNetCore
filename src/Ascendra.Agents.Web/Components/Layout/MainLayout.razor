@@ -62,13 +62,13 @@
                                             </button>
                                             <label class="chat-recipient-picker__person">
                                                 <span>Privado</span>
-                                                <select @bind="SelectedChatRecipient" @bind:after="OnChatRecipientChanged" aria-label="Destinatario del mensaje privado">
-                                                    <option value="">Selecciona una persona</option>
+                                                <input type="search" list="chat-private-recipients" @bind="ChatRecipientSearch" @bind:event="oninput" @bind:after="OnChatRecipientSearchChanged" placeholder="Escribe un nombre…" autocomplete="off" aria-label="Escribe el destinatario del mensaje privado" />
+                                                <datalist id="chat-private-recipients">
                                                     @foreach (var user in PrivateConversationRecipients)
                                                     {
-                                                        <option value="@user.Username">@user.DisplayName · Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")</option>
+                                                        <option value="@user.DisplayName" label="Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")"></option>
                                                     }
-                                                </select>
+                                                </datalist>
                                             </label>
                                         </div>
                                     </section>
@@ -240,6 +240,7 @@
     private readonly HashSet<Guid> ReadChatMessageIds = [];
     private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
     private string SelectedChatRecipient { get; set; } = string.Empty;
+    private string ChatRecipientSearch { get; set; } = string.Empty;
     private string ChatDraft { get; set; } = string.Empty;
     private bool IsChatEmojiPickerOpen { get; set; }
     private ChatAttachment? PendingChatAttachment { get; set; }
@@ -341,29 +342,26 @@
     {
         CurrentChatMode = ChatMode.General;
         SelectedChatRecipient = string.Empty;
+        ChatRecipientSearch = string.Empty;
         ChatError = null;
         IsChatEmojiPickerOpen = false;
         MarkVisibleChatMessagesRead();
     }
 
-    private void SelectChatRecipient(string username)
+    private void OnChatRecipientSearchChanged()
     {
         CurrentChatMode = ChatMode.Private;
-        SelectedChatRecipient = username;
+        var normalizedSearch = TextNormalization.Normalize(ChatRecipientSearch);
+        var matches = PrivateConversationRecipients
+            .Where(user => TextNormalization.Normalize(user.DisplayName).Contains(normalizedSearch, StringComparison.Ordinal)
+                || TextNormalization.Normalize(user.Username).Contains(normalizedSearch, StringComparison.Ordinal))
+            .ToArray();
+        var exactMatch = matches.FirstOrDefault(user => string.Equals(TextNormalization.Normalize(user.DisplayName), normalizedSearch, StringComparison.Ordinal)
+            || string.Equals(TextNormalization.Normalize(user.Username), normalizedSearch, StringComparison.Ordinal));
+        SelectedChatRecipient = exactMatch?.Username ?? (matches.Length == 1 ? matches[0].Username : string.Empty);
         ChatError = null;
         IsChatEmojiPickerOpen = false;
         MarkVisibleChatMessagesRead();
-    }
-
-    private void OnChatRecipientChanged()
-    {
-        if (string.IsNullOrWhiteSpace(SelectedChatRecipient))
-        {
-            SelectGeneralChat();
-            return;
-        }
-
-        SelectChatRecipient(SelectedChatRecipient);
     }
 
     private bool IsOwnMessage(ChatMessage message) => ChatParticipant is not null
@@ -481,6 +479,7 @@
                 && !PrivateConversationRecipients.Any(user => string.Equals(user.Username, SelectedChatRecipient, StringComparison.OrdinalIgnoreCase)))
             {
                 SelectedChatRecipient = string.Empty;
+                ChatRecipientSearch = string.Empty;
                 CurrentChatMode = ChatMode.General;
             }
 
