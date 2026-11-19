@@ -67,16 +67,30 @@
 
                     @if (CurrentChatMode == ChatMode.Private)
                     {
-                        <label class="team-chat__recipient">
+                        <div class="team-chat__recipient">
                             <span>Enviar privado a</span>
-                            <input type="search" list="team-private-recipients" @bind="RecipientSearch" @bind:event="oninput" @bind:after="OnPrivateRecipientSearchChanged" placeholder="Escribe el nombre del agente…" autocomplete="off" aria-label="Escribe el destinatario del mensaje privado" />
-                            <datalist id="team-private-recipients">
-                                @foreach (var user in AvailableRecipients)
-                                {
-                                    <option value="@user.DisplayName" label="Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")"></option>
-                                }
-                            </datalist>
-                        </label>
+                            <input type="search" @bind="RecipientSearch" @bind:event="oninput" @bind:after="OnPrivateRecipientSearchChanged" @onfocus="OpenPrivateRecipientSuggestions" placeholder="Escribe el nombre del agente…" autocomplete="off" aria-label="Escribe el destinatario del mensaje privado" aria-autocomplete="list" aria-expanded="@IsPrivateRecipientSuggestionsOpen" aria-controls="team-private-recipients" />
+                            @if (IsPrivateRecipientSuggestionsOpen)
+                            {
+                                <div id="team-private-recipients" class="recipient-suggestions" aria-label="@PrivateRecipientSuggestionsLabel">
+                                    <span class="recipient-suggestions__label">@PrivateRecipientSuggestionsLabel</span>
+                                    @if (PrivateRecipientSuggestions.Count == 0)
+                                    {
+                                        <p class="recipient-suggestions__empty">No hay coincidencias.</p>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var user in PrivateRecipientSuggestions)
+                                        {
+                                            <button type="button" class="recipient-suggestions__option" aria-pressed="@string.Equals(SelectedRecipient, user.Username, StringComparison.OrdinalIgnoreCase)" @onclick="() => SelectPrivateRecipient(user)">
+                                                <strong>@user.DisplayName</strong>
+                                                <span>Activo · @(IsOnline(user) ? "En línea" : "Sin conexión")</span>
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
                     }
 
                     @if (CurrentChatMode == ChatMode.Monitor)
@@ -240,6 +254,7 @@
     private ChatMode CurrentChatMode { get; set; } = ChatMode.General;
     private string SelectedRecipient { get; set; } = string.Empty;
     private string RecipientSearch { get; set; } = string.Empty;
+    private bool IsPrivateRecipientSuggestionsOpen { get; set; }
     private string Draft { get; set; } = string.Empty;
     private bool IsEmojiPickerOpen { get; set; }
     private string? ChatError { get; set; }
@@ -265,6 +280,40 @@
 
     private IReadOnlyList<ChatParticipant> OnlineUsers => ChatState.ConnectedUsers;
     private IReadOnlyList<ChatParticipant> AvailableRecipients => Participant is null ? [] : Chat.PrivateRecipients(Participant);
+    private IReadOnlyList<ChatParticipant> RecentPrivateRecipients => AvailableRecipients
+        .Select(user => new
+        {
+            User = user,
+            LastMessageAt = ChatState.Messages
+                .Where(message => IsPrivateConversationWith(message, user))
+                .Select(message => (DateTimeOffset?)message.SentAt)
+                .Max(),
+        })
+        .Where(item => item.LastMessageAt is not null)
+        .OrderByDescending(item => item.LastMessageAt)
+        .Select(item => item.User)
+        .Take(5)
+        .ToArray();
+    private IReadOnlyList<ChatParticipant> PrivateRecipientSuggestions
+    {
+        get
+        {
+            var normalizedSearch = TextNormalization.Normalize(RecipientSearch);
+            if (!string.IsNullOrWhiteSpace(normalizedSearch))
+            {
+                return AvailableRecipients
+                    .Where(user => RecipientMatches(user, normalizedSearch))
+                    .Take(5)
+                    .ToArray();
+            }
+
+            var recent = RecentPrivateRecipients;
+            return recent.Count > 0 ? recent : AvailableRecipients.Take(5).ToArray();
+        }
+    }
+    private string PrivateRecipientSuggestionsLabel => !string.IsNullOrWhiteSpace(RecipientSearch)
+        ? "Coincidencias"
+        : RecentPrivateRecipients.Count > 0 ? "Chats recientes" : "Personas disponibles";
     private IReadOnlyList<ChatMessage> VisibleMessages => CurrentChatMode == ChatMode.General
         ? ChatState.Messages.Where(message => message.Recipient is null).ToArray()
         : CurrentChatMode == ChatMode.Monitor
@@ -329,17 +378,37 @@
     {
         CurrentChatMode = ChatMode.Private;
         var normalizedSearch = TextNormalization.Normalize(RecipientSearch);
-        var matches = AvailableRecipients
-            .Where(user => TextNormalization.Normalize(user.DisplayName).Contains(normalizedSearch, StringComparison.Ordinal)
-                || TextNormalization.Normalize(user.Username).Contains(normalizedSearch, StringComparison.Ordinal))
-            .ToArray();
-        var exactMatch = matches.FirstOrDefault(user => string.Equals(TextNormalization.Normalize(user.DisplayName), normalizedSearch, StringComparison.Ordinal)
+        var exactMatch = AvailableRecipients.FirstOrDefault(user => string.Equals(TextNormalization.Normalize(user.DisplayName), normalizedSearch, StringComparison.Ordinal)
             || string.Equals(TextNormalization.Normalize(user.Username), normalizedSearch, StringComparison.Ordinal));
-        SelectedRecipient = exactMatch?.Username ?? (matches.Length == 1 ? matches[0].Username : string.Empty);
+        SelectedRecipient = exactMatch?.Username ?? string.Empty;
+        IsPrivateRecipientSuggestionsOpen = true;
         ChatError = null;
         IsEmojiPickerOpen = false;
         MarkVisibleMessagesRead();
     }
+
+    private void OpenPrivateRecipientSuggestions() => IsPrivateRecipientSuggestionsOpen = true;
+
+    private void SelectPrivateRecipient(ChatParticipant recipient)
+    {
+        CurrentChatMode = ChatMode.Private;
+        SelectedRecipient = recipient.Username;
+        RecipientSearch = recipient.DisplayName;
+        IsPrivateRecipientSuggestionsOpen = false;
+        ChatError = null;
+        IsEmojiPickerOpen = false;
+        MarkVisibleMessagesRead();
+    }
+
+    private bool IsPrivateConversationWith(ChatMessage message, ChatParticipant recipient) => message.Recipient is not null
+        && ((string.Equals(message.Sender.Username, Participant?.Username, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(message.Recipient.Username, recipient.Username, StringComparison.OrdinalIgnoreCase))
+            || (string.Equals(message.Sender.Username, recipient.Username, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(message.Recipient.Username, Participant?.Username, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool RecipientMatches(ChatParticipant user, string normalizedSearch) =>
+        TextNormalization.Normalize(user.DisplayName).Contains(normalizedSearch, StringComparison.Ordinal)
+        || TextNormalization.Normalize(user.Username).Contains(normalizedSearch, StringComparison.Ordinal);
 
     private void SelectSection(TeamSection section)
     {
@@ -429,6 +498,7 @@
         {
             SelectedRecipient = string.Empty;
             RecipientSearch = string.Empty;
+            IsPrivateRecipientSuggestionsOpen = false;
             CurrentChatMode = ChatMode.General;
         }
         if (ActiveSection == TeamSection.Messages) MarkVisibleMessagesRead();
