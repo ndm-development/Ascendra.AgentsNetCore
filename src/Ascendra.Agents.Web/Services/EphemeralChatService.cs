@@ -2,13 +2,14 @@ using System.Text.Json;
 using Ascendra.Agents.Web.Domain;
 using Ascendra.Agents.Web.Infrastructure;
 using Microsoft.Extensions.Options;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace Ascendra.Agents.Web.Services;
 
 /// <summary>
-/// Chat operativo de corta vida. Conserva mensajes e imágenes en el disco
-/// persistente durante el periodo configurado, sin depender de Excel o de una
-/// base de datos.
+/// Chat operativo de corta vida. Los mensajes se almacenan en PostgreSQL y
+/// las imágenes adjuntas permanecen en el disco persistente.
 /// </summary>
 public sealed class EphemeralChatService : IHostedService, IDisposable
 {
@@ -22,6 +23,7 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
     private readonly Dictionary<string, ChatParticipant> _connections = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, string> _stagedAttachmentOwners = [];
     private readonly List<ChatMessage> _messages = [];
+    private readonly PostgresDatabase _database;
     private readonly ILogger<EphemeralChatService> _logger;
     private readonly ExcelSnapshotStore _snapshots;
     private readonly string _storagePath;
@@ -33,8 +35,10 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         IOptions<ChatOptions> options,
         IWebHostEnvironment environment,
         ExcelSnapshotStore snapshots,
+        PostgresDatabase database,
         ILogger<EphemeralChatService> logger)
     {
+        _database = database;
         _logger = logger;
         _snapshots = snapshots;
         var configuration = options.Value;
@@ -110,10 +114,10 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         .OrderBy(user => user.DisplayName, StringComparer.CurrentCultureIgnoreCase)
         .ToArray();
 
-    public void SendToEveryone(ChatParticipant sender, string? content, ChatAttachment? attachment = null) =>
-        AddMessage(sender, null, content, attachment);
+    public Task SendToEveryoneAsync(ChatParticipant sender, string? content, ChatAttachment? attachment = null) =>
+        AddMessageAsync(sender, null, content, attachment);
 
-    public void SendPrivate(ChatParticipant sender, string? recipientUsername, string? content, ChatAttachment? attachment = null)
+    public async Task SendPrivateAsync(ChatParticipant sender, string? recipientUsername, string? content, ChatAttachment? attachment = null)
     {
         if (string.Equals(sender.Username, recipientUsername, StringComparison.OrdinalIgnoreCase))
         {
@@ -123,7 +127,7 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         var recipient = ActiveParticipantFor(recipientUsername)
             ?? throw new InvalidOperationException("Ese usuario ya no está habilitado para recibir mensajes.");
 
-        AddMessage(sender, recipient, content, attachment);
+        await AddMessageAsync(sender, recipient, content, attachment);
     }
 
     private ChatParticipant? ActiveParticipantFor(string? username)
@@ -222,17 +226,22 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         return null;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         lock (_gate)
         {
             LoadJournalLocked();
-            if (PruneExpiredLocked()) PersistAfterCleanupLocked();
+            PruneExpiredLocked();
+        }
+
+        await ImportLegacyJournalAsync(cancellationToken);
+        await LoadMessagesFromDatabaseAsync(cancellationToken);
+        lock (_gate)
+        {
             RemoveOrphanedAttachmentFilesLocked();
         }
 
-        _cleanupTimer = new Timer(_ => RemoveExpiredMessages(), null, CleanupInterval, CleanupInterval);
-        return Task.CompletedTask;
+        _cleanupTimer = new Timer(_ => _ = RemoveExpiredMessagesAsync(), null, CleanupInterval, CleanupInterval);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -243,9 +252,10 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
 
     public void Dispose() => _cleanupTimer?.Dispose();
 
-    private void AddMessage(ChatParticipant sender, ChatParticipant? recipient, string? content, ChatAttachment? attachment)
+    private async Task AddMessageAsync(ChatParticipant sender, ChatParticipant? recipient, string? content, ChatAttachment? attachment)
     {
-        var message = CleanMessage(content, attachment is not null);
+        var contentValue = CleanMessage(content, attachment is not null);
+        ChatMessage newMessage;
         lock (_gate)
         {
             PruneExpiredLocked();
@@ -259,25 +269,140 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
                 throw new InvalidOperationException("La imagen ya no está disponible. Vuelve a adjuntarla.");
             }
 
-            var newMessage = new ChatMessage(Guid.NewGuid(), DateTimeOffset.UtcNow, sender, recipient, message, attachment);
+            newMessage = new ChatMessage(Guid.NewGuid(), DateTimeOffset.UtcNow, sender, recipient, contentValue, attachment);
+        }
+
+        try
+        {
+            await using var connection = await _database.OpenConnectionAsync();
+            await InsertMessageAsync(connection, newMessage, ignoreExisting: false);
+        }
+        catch (Exception exception) when (exception is PostgresException or NpgsqlException or TimeoutException)
+        {
+            if (attachment is not null) DeleteAttachmentFile(attachment);
+            _logger.LogError(exception, "No se pudo guardar un mensaje del chat en PostgreSQL.");
+            throw new InvalidOperationException("No se pudo guardar el mensaje temporalmente. Intenta de nuevo.");
+        }
+
+        lock (_gate)
+        {
             _messages.Add(newMessage);
             TrimMessageCountLocked();
-
-            try
-            {
-                PersistJournalLocked();
-            }
-            catch (Exception exception)
-            {
-                _messages.Remove(newMessage);
-                if (attachment is not null) DeleteAttachmentFile(attachment);
-                _logger.LogError(exception, "No se pudo conservar un mensaje del chat en {StoragePath}", _storagePath);
-                throw new InvalidOperationException("No se pudo guardar el mensaje temporalmente. Intenta de nuevo.");
-            }
         }
 
         NotifyChanged();
     }
+
+    private async Task ImportLegacyJournalAsync(CancellationToken cancellationToken)
+    {
+        const string importKey = "chat-json-to-postgres-v1";
+        if (await _database.HasCompletedImportAsync(importKey, cancellationToken)) return;
+
+        ChatMessage[] legacyMessages;
+        lock (_gate)
+        {
+            legacyMessages = _messages.ToArray();
+        }
+
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+        foreach (var message in legacyMessages)
+        {
+            await InsertMessageAsync(connection, message, ignoreExisting: true, cancellationToken: cancellationToken);
+        }
+        await _database.MarkImportCompletedAsync(importKey, cancellationToken);
+        _logger.LogInformation("Se migraron {MessageCount} mensajes históricos del chat a PostgreSQL.", legacyMessages.Length);
+    }
+
+    private async Task LoadMessagesFromDatabaseAsync(CancellationToken cancellationToken)
+    {
+        var cutoff = DateTimeOffset.UtcNow - _messageLifetime;
+        var messages = new List<ChatMessage>();
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT id, sent_at,
+                   sender_username, sender_display_name, sender_role,
+                   recipient_username, recipient_display_name, recipient_role,
+                   content,
+                   attachment_id, attachment_file_name, attachment_content_type, attachment_length
+            FROM chat_messages
+            WHERE sent_at >= @cutoff
+            ORDER BY sent_at DESC
+            LIMIT @limit;
+            """, connection);
+        command.Parameters.AddWithValue("cutoff", cutoff);
+        command.Parameters.AddWithValue("limit", MaximumStoredMessages);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            messages.Add(ReadMessage(reader));
+        }
+        messages.Reverse();
+
+        lock (_gate)
+        {
+            _messages.Clear();
+            _messages.AddRange(messages);
+        }
+        _logger.LogInformation("Se cargaron {MessageCount} mensajes vigentes del chat desde PostgreSQL.", messages.Count);
+    }
+
+    private static async Task InsertMessageAsync(
+        NpgsqlConnection connection,
+        ChatMessage message,
+        bool ignoreExisting,
+        CancellationToken cancellationToken = default)
+    {
+        var conflictClause = ignoreExisting ? " ON CONFLICT (id) DO NOTHING" : string.Empty;
+        await using var command = new NpgsqlCommand($"""
+            INSERT INTO chat_messages (
+                id, sent_at,
+                sender_username, sender_display_name, sender_role,
+                recipient_username, recipient_display_name, recipient_role,
+                content,
+                attachment_id, attachment_file_name, attachment_content_type, attachment_length)
+            VALUES (
+                @id, @sentAt,
+                @senderUsername, @senderDisplayName, @senderRole,
+                @recipientUsername, @recipientDisplayName, @recipientRole,
+                @content,
+                @attachmentId, @attachmentFileName, @attachmentContentType, @attachmentLength){conflictClause};
+            """, connection);
+        command.Parameters.AddWithValue("id", message.Id);
+        command.Parameters.AddWithValue("sentAt", message.SentAt);
+        command.Parameters.AddWithValue("senderUsername", message.Sender.Username);
+        command.Parameters.AddWithValue("senderDisplayName", message.Sender.DisplayName);
+        command.Parameters.AddWithValue("senderRole", message.Sender.Role.ToString());
+        command.Parameters.Add(new NpgsqlParameter("recipientUsername", NpgsqlDbType.Text) { Value = (object?)message.Recipient?.Username ?? DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("recipientDisplayName", NpgsqlDbType.Text) { Value = (object?)message.Recipient?.DisplayName ?? DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("recipientRole", NpgsqlDbType.Text) { Value = message.Recipient is null ? DBNull.Value : message.Recipient.Role.ToString() });
+        command.Parameters.AddWithValue("content", message.Content);
+        command.Parameters.Add(new NpgsqlParameter("attachmentId", NpgsqlDbType.Uuid) { Value = (object?)message.Attachment?.Id ?? DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("attachmentFileName", NpgsqlDbType.Text) { Value = (object?)message.Attachment?.FileName ?? DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("attachmentContentType", NpgsqlDbType.Text) { Value = (object?)message.Attachment?.ContentType ?? DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("attachmentLength", NpgsqlDbType.Bigint) { Value = message.Attachment is null ? DBNull.Value : message.Attachment.Length });
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static ChatMessage ReadMessage(NpgsqlDataReader reader)
+    {
+        var recipient = reader.IsDBNull(5)
+            ? null
+            : new ChatParticipant(reader.GetString(5), reader.GetString(6), ReadRole(reader.GetString(7)));
+        var attachment = reader.IsDBNull(9)
+            ? null
+            : new ChatAttachment(reader.GetGuid(9), reader.GetString(10), reader.GetString(11), reader.GetInt64(12));
+        return new ChatMessage(
+            reader.GetGuid(0),
+            reader.GetFieldValue<DateTimeOffset>(1),
+            new ChatParticipant(reader.GetString(2), reader.GetString(3), ReadRole(reader.GetString(4))),
+            recipient,
+            reader.GetString(8),
+            attachment);
+    }
+
+    private static ChatUserRole ReadRole(string value) => Enum.TryParse<ChatUserRole>(value, ignoreCase: true, out var role)
+        ? role
+        : ChatUserRole.Agent;
 
     private static string CleanMessage(string? content, bool hasAttachment)
     {
@@ -287,16 +412,46 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         return value;
     }
 
-    private void RemoveExpiredMessages()
+    private async Task RemoveExpiredMessagesAsync()
     {
+        var cutoff = DateTimeOffset.UtcNow - _messageLifetime;
+        var expiredAttachments = new List<ChatAttachment>();
+        try
+        {
+            await using var connection = await _database.OpenConnectionAsync();
+            await using var command = new NpgsqlCommand("""
+                DELETE FROM chat_messages
+                WHERE sent_at < @cutoff
+                RETURNING attachment_id, attachment_file_name, attachment_content_type, attachment_length;
+                """, connection);
+            command.Parameters.AddWithValue("cutoff", cutoff);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    expiredAttachments.Add(new ChatAttachment(
+                        reader.GetGuid(0),
+                        reader.IsDBNull(1) ? "imagen" : reader.GetString(1),
+                        reader.IsDBNull(2) ? "application/octet-stream" : reader.GetString(2),
+                        reader.IsDBNull(3) ? 0 : reader.GetInt64(3)));
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "No se pudo depurar el historial vencido del chat en PostgreSQL.");
+            return;
+        }
+
         var changed = false;
         lock (_gate)
         {
             changed = PruneExpiredLocked();
-            if (changed) PersistAfterCleanupLocked();
         }
+        foreach (var attachment in expiredAttachments) DeleteAttachmentFile(attachment);
 
-        if (changed) NotifyChanged();
+        if (changed || expiredAttachments.Count > 0) NotifyChanged();
     }
 
     private bool PruneExpiredLocked()

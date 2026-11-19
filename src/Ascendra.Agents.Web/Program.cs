@@ -76,9 +76,12 @@ builder.Services.AddSingleton<ExcelExportService>();
 builder.Services.AddScoped<DashboardSession>();
 builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddSingleton<WhatsAppTemplateCatalog>();
+builder.Services.AddSingleton<PostgresDatabase>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresDatabase>());
 builder.Services.AddSingleton<EphemeralChatService>();
 builder.Services.AddSingleton<CallDispositionService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<EphemeralChatService>());
+builder.Services.AddHostedService(provider => provider.GetRequiredService<CallDispositionService>());
 
 var app = builder.Build();
 

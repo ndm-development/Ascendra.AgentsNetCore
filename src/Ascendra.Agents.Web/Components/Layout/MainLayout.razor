@@ -471,11 +471,11 @@
         {
             if (CurrentChatMode == ChatMode.General)
             {
-                Chat.SendToEveryone(ChatParticipant, ChatDraft, PendingChatAttachment);
+                await Chat.SendToEveryoneAsync(ChatParticipant, ChatDraft, PendingChatAttachment);
             }
             else
             {
-                Chat.SendPrivate(ChatParticipant, SelectedChatRecipient, ChatDraft, PendingChatAttachment);
+                await Chat.SendPrivateAsync(ChatParticipant, SelectedChatRecipient, ChatDraft, PendingChatAttachment);
             }
 
             ChatDraft = string.Empty;

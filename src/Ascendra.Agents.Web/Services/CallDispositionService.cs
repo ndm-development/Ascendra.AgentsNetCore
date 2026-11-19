@@ -5,6 +5,7 @@ using System.Text.Json;
 using Ascendra.Agents.Web.Domain;
 using Ascendra.Agents.Web.Infrastructure;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Ascendra.Agents.Web.Services;
 
@@ -13,7 +14,7 @@ namespace Ascendra.Agents.Web.Services;
 /// Los Excel siguen siendo la fuente de cartera y de teléfonos; este journal
 /// sólo registra la gestión hecha sobre un teléfono que exista en el corte.
 /// </summary>
-public sealed class CallDispositionService
+public sealed class CallDispositionService : IHostedService
 {
     private const int SchemaVersion = 2;
     private const string SummaryIndexFileName = "summary-index-v2.jsonl";
@@ -57,6 +58,7 @@ public sealed class CallDispositionService
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _clientGates = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _summaryIndexGate = new(1, 1);
     private readonly ExcelSnapshotStore _snapshots;
+    private readonly PostgresDatabase _database;
     private readonly ILogger<CallDispositionService> _logger;
     private readonly string _storageDirectory;
     private readonly int _historyDisplayLimit;
@@ -66,9 +68,11 @@ public sealed class CallDispositionService
         ExcelSnapshotStore snapshots,
         IOptions<CallDispositionOptions> options,
         IWebHostEnvironment environment,
+        PostgresDatabase database,
         ILogger<CallDispositionService> logger)
     {
         _snapshots = snapshots;
+        _database = database;
         _logger = logger;
         _storageDirectory = ResolveStorageDirectory(options.Value.StoragePath, environment);
         _historyDisplayLimit = Math.Clamp(options.Value.HistoryDisplayLimit, 20, 250);
@@ -83,61 +87,81 @@ public sealed class CallDispositionService
         .Select(definition => definition.Result)
         .ToArray();
 
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        const string importKey = "call-dispositions-jsonl-to-postgres-v1";
+        if (await _database.HasCompletedImportAsync(importKey, cancellationToken)) return;
+
+        var imported = 0;
+        if (Directory.Exists(_storageDirectory))
+        {
+            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+            foreach (var path in Directory.EnumerateFiles(_storageDirectory, "*.jsonl")
+                .Where(path => !IsSummaryIndexFile(path)))
+            {
+                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
+                    bufferSize: 8 * 1024, useAsync: true);
+                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+                while (await reader.ReadLineAsync(cancellationToken) is { } line)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    try
+                    {
+                        var stored = JsonSerializer.Deserialize<StoredCallDisposition>(line, SerializerOptions);
+                        if (stored is null || string.IsNullOrWhiteSpace(stored.ClientId)) continue;
+                        await InsertDispositionAsync(connection, stored, ignoreExisting: true, cancellationToken: cancellationToken);
+                        imported++;
+                    }
+                    catch (JsonException)
+                    {
+                        _logger.LogWarning("Se ignoró una línea incompleta durante la migración de tipificaciones a PostgreSQL.");
+                    }
+                }
+            }
+        }
+
+        await _database.MarkImportCompletedAsync(importKey, cancellationToken);
+        _logger.LogInformation("Se migraron {DispositionCount} tipificaciones históricas a PostgreSQL.", imported);
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     /// <summary>
     /// Devuelve una fila por CLIENTE_UNICO que tenga tipificaciones, con la
-    /// disposición de mayor peso. El índice se deriva de los journals, por lo
-    /// que puede reconstruirse sin depender de una base de datos adicional.
+    /// disposición de mayor peso.
     /// </summary>
     public async Task<IReadOnlyList<ClientDispositionSummary>> GetHighestWeightSummariesAsync(
         CancellationToken cancellationToken = default)
     {
-        await EnsureSummaryIndexAsync(cancellationToken);
-
         await _summaryIndexGate.WaitAsync(cancellationToken);
         try
         {
             if (_summaryCache is not null) return _summaryCache;
 
-            var highestByClient = new Dictionary<string, StoredDispositionSummary>(StringComparer.OrdinalIgnoreCase);
-            var skippedMalformedLine = false;
-            await using var stream = new FileStream(
-                SummaryIndexPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite,
-                bufferSize: 8 * 1024,
-                useAsync: true);
-            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            var summaries = new List<ClientDispositionSummary>();
+            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+            await using var command = new NpgsqlCommand("""
+                SELECT DISTINCT ON (client_id)
+                       client_id, recorded_at, agent_id, agent_name,
+                       category, result, channel, phone
+                FROM call_dispositions
+                ORDER BY client_id, weight DESC, recorded_at DESC;
+                """, connection);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                StoredDispositionSummary? stored;
-                try
-                {
-                    stored = JsonSerializer.Deserialize<StoredDispositionSummary>(line, SerializerOptions);
-                }
-                catch (JsonException)
-                {
-                    skippedMalformedLine = true;
-                    continue;
-                }
-
-                if (stored is null || string.IsNullOrWhiteSpace(stored.ClientId)) continue;
-                if (!highestByClient.TryGetValue(stored.ClientId, out var current) || IsHigher(stored, current))
-                {
-                    highestByClient[stored.ClientId] = stored;
-                }
+                summaries.Add(new ClientDispositionSummary(
+                    reader.GetString(0),
+                    reader.GetFieldValue<DateTimeOffset>(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    reader.GetString(6),
+                    reader.GetString(7)));
             }
-
-            if (skippedMalformedLine)
-            {
-                _logger.LogWarning("Se ignoró una línea incompleta del índice de tipificaciones.");
-            }
-
-            _summaryCache = highestByClient.Values
+            _summaryCache = summaries
                 .OrderBy(summary => summary.ClientId, StringComparer.OrdinalIgnoreCase)
-                .Select(ToSummary)
                 .ToArray();
             return _summaryCache;
         }
@@ -256,27 +280,12 @@ public sealed class CallDispositionService
         await gate.WaitAsync(cancellationToken);
         try
         {
-            Directory.CreateDirectory(_storageDirectory);
-            var path = ClientPath(normalizedClientId);
-            await using var stream = new FileStream(
-                path,
-                FileMode.Append,
-                FileAccess.Write,
-                FileShare.Read,
-                bufferSize: 4 * 1024,
-                useAsync: true);
-            await using var writer = new StreamWriter(
-                stream,
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                bufferSize: 4 * 1024,
-                leaveOpen: true);
-            await writer.WriteLineAsync(JsonSerializer.Serialize(stored, SerializerOptions));
-            await writer.FlushAsync();
-            stream.Flush(flushToDisk: true);
+            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+            await InsertDispositionAsync(connection, stored, ignoreExisting: false, cancellationToken: cancellationToken);
         }
-        catch (IOException exception)
+        catch (Exception exception) when (exception is PostgresException or NpgsqlException or TimeoutException)
         {
-            _logger.LogError(exception, "No se pudo guardar una tipificación de llamada.");
+            _logger.LogError(exception, "No se pudo guardar una tipificación de llamada en PostgreSQL.");
             throw new InvalidOperationException("No se pudo guardar la tipificación. Intenta nuevamente.");
         }
         finally
@@ -284,26 +293,9 @@ public sealed class CallDispositionService
             gate.Release();
         }
 
-        try
-        {
-            await EnsureSummaryIndexAsync(cancellationToken);
-            await AppendSummaryEventAsync(stored, cancellationToken);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // El journal del cliente ya quedó persistido. Al borrar el índice
-            // parcial, la siguiente consulta de Gerencia lo reconstruirá desde
-            // esos journals sin perder la gestión recién registrada.
-            _logger.LogError(exception, "No se pudo actualizar el índice de tipificaciones; se reconstruirá automáticamente.");
-            try
-            {
-                await InvalidateSummaryIndexAsync();
-            }
-            catch (Exception invalidationException) when (invalidationException is IOException or UnauthorizedAccessException)
-            {
-                _logger.LogError(invalidationException, "No se pudo invalidar el índice de tipificaciones después de un error.");
-            }
-        }
+        await _summaryIndexGate.WaitAsync(cancellationToken);
+        try { _summaryCache = null; }
+        finally { _summaryIndexGate.Release(); }
 
         return await GetHistoryAsync(normalizedClientId, cancellationToken);
     }
@@ -312,111 +304,104 @@ public sealed class CallDispositionService
         string normalizedClientId,
         CancellationToken cancellationToken)
     {
-        var path = ClientPath(normalizedClientId);
-        if (!File.Exists(path)) return ClientDispositionHistory.Empty;
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
 
-        var recent = new Queue<CallDispositionEntry>(_historyDisplayLimit);
-        StoredCallDisposition? highest = null;
-        var totalEntries = 0;
-        var skippedMalformedLine = false;
+        await using var countCommand = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM call_dispositions WHERE client_id = @clientId;", connection);
+        countCommand.Parameters.AddWithValue("clientId", normalizedClientId);
+        var totalEntries = Convert.ToInt32(await countCommand.ExecuteScalarAsync(cancellationToken));
+        if (totalEntries == 0) return ClientDispositionHistory.Empty;
 
-        await using var stream = new FileStream(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite,
-            bufferSize: 4 * 1024,
-            useAsync: true);
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        var recent = new List<CallDispositionEntry>();
+        await using (var recentCommand = new NpgsqlCommand("""
+            SELECT id, recorded_at, client_id, agent_id, agent_name,
+                   category, result, channel, phone, comment
+            FROM call_dispositions
+            WHERE client_id = @clientId
+            ORDER BY recorded_at DESC
+            LIMIT @limit;
+            """, connection))
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
+            recentCommand.Parameters.AddWithValue("clientId", normalizedClientId);
+            recentCommand.Parameters.AddWithValue("limit", _historyDisplayLimit);
+            await using var reader = await recentCommand.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) recent.Add(ReadEntry(reader));
+        }
+        recent.Reverse();
 
-            StoredCallDisposition? stored;
-            try
-            {
-                stored = JsonSerializer.Deserialize<StoredCallDisposition>(line, SerializerOptions);
-            }
-            catch (JsonException)
-            {
-                // Un corte abrupto puede dejar incompleta sólo la última línea.
-                skippedMalformedLine = true;
-                continue;
-            }
-
-            if (stored is null || !stored.ClientId.Equals(normalizedClientId, StringComparison.OrdinalIgnoreCase)) continue;
-
-            totalEntries++;
-            if (highest is null
-                || stored.Weight > highest.Weight
-                || stored.Weight == highest.Weight && stored.RecordedAt > highest.RecordedAt)
-            {
-                highest = stored;
-            }
-
-            recent.Enqueue(ToEntry(stored));
-            while (recent.Count > _historyDisplayLimit) recent.Dequeue();
+        CallDispositionEntry? highest = null;
+        await using (var highestCommand = new NpgsqlCommand("""
+            SELECT id, recorded_at, client_id, agent_id, agent_name,
+                   category, result, channel, phone, comment
+            FROM call_dispositions
+            WHERE client_id = @clientId
+            ORDER BY weight DESC, recorded_at DESC
+            LIMIT 1;
+            """, connection))
+        {
+            highestCommand.Parameters.AddWithValue("clientId", normalizedClientId);
+            await using var reader = await highestCommand.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken)) highest = ReadEntry(reader);
         }
 
-        if (skippedMalformedLine)
-        {
-            _logger.LogWarning("Se ignoró una línea incompleta del historial de tipificaciones al consultar un cliente.");
-        }
-
-        return new ClientDispositionHistory(
-            recent.Reverse().ToArray(),
-            totalEntries,
-            highest is null ? null : ToEntry(highest));
+        return new ClientDispositionHistory(recent, totalEntries, highest);
     }
 
     private async Task<IReadOnlyList<CallDispositionEntry>> ReadFullHistoryLockedAsync(
         string normalizedClientId,
         CancellationToken cancellationToken)
     {
-        var path = ClientPath(normalizedClientId);
-        if (!File.Exists(path)) return [];
-
         var entries = new List<CallDispositionEntry>();
-        var skippedMalformedLine = false;
-        await using var stream = new FileStream(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite,
-            bufferSize: 8 * 1024,
-            useAsync: true);
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT id, recorded_at, client_id, agent_id, agent_name,
+                   category, result, channel, phone, comment
+            FROM call_dispositions
+            WHERE client_id = @clientId
+            ORDER BY recorded_at DESC;
+            """, connection);
+        command.Parameters.AddWithValue("clientId", normalizedClientId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-
-            try
-            {
-                var stored = JsonSerializer.Deserialize<StoredCallDisposition>(line, SerializerOptions);
-                if (stored is not null && stored.ClientId.Equals(normalizedClientId, StringComparison.OrdinalIgnoreCase))
-                {
-                    entries.Add(ToEntry(stored));
-                }
-            }
-            catch (JsonException)
-            {
-                skippedMalformedLine = true;
-            }
+            entries.Add(ReadEntry(reader));
         }
-
-        if (skippedMalformedLine)
-        {
-            _logger.LogWarning("Se ignoró una línea incompleta del historial íntegro de tipificaciones.");
-        }
-
-        return entries
-            .OrderByDescending(entry => entry.RecordedAt)
-            .ToArray();
+        return entries;
     }
 
     private string ClientPath(string normalizedClientId) => Path.Combine(
         _storageDirectory,
         $"{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedClientId))).ToLowerInvariant()}.jsonl");
+
+    private static async Task InsertDispositionAsync(
+        NpgsqlConnection connection,
+        StoredCallDisposition disposition,
+        bool ignoreExisting,
+        CancellationToken cancellationToken = default)
+    {
+        var conflictClause = ignoreExisting ? " ON CONFLICT (id) DO NOTHING" : string.Empty;
+        await using var command = new NpgsqlCommand($"""
+            INSERT INTO call_dispositions (
+                id, recorded_at, client_id, phone, agent_id, agent_name,
+                category, result, channel, code, weight, comment)
+            VALUES (
+                @id, @recordedAt, @clientId, @phone, @agentId, @agentName,
+                @category, @result, @channel, @code, @weight, @comment){conflictClause};
+            """, connection);
+        command.Parameters.AddWithValue("id", disposition.Id);
+        command.Parameters.AddWithValue("recordedAt", disposition.RecordedAt);
+        command.Parameters.AddWithValue("clientId", disposition.ClientId);
+        command.Parameters.AddWithValue("phone", disposition.Phone);
+        command.Parameters.AddWithValue("agentId", disposition.AgentId);
+        command.Parameters.AddWithValue("agentName", disposition.AgentName);
+        command.Parameters.AddWithValue("category", disposition.Category);
+        command.Parameters.AddWithValue("result", disposition.Result);
+        command.Parameters.AddWithValue("channel", disposition.Channel ?? "Sin canal");
+        command.Parameters.AddWithValue("code", disposition.Code);
+        command.Parameters.AddWithValue("weight", disposition.Weight);
+        command.Parameters.AddWithValue("comment", disposition.Comment ?? string.Empty);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
 
     private string SummaryIndexPath => Path.Combine(_storageDirectory, SummaryIndexFileName);
 
@@ -573,6 +558,18 @@ public sealed class CallDispositionService
         stored.Result,
         stored.Channel,
         stored.Phone);
+
+    private static CallDispositionEntry ReadEntry(NpgsqlDataReader reader) => new(
+        reader.GetGuid(0),
+        reader.GetFieldValue<DateTimeOffset>(1),
+        reader.GetString(2),
+        reader.GetString(3),
+        reader.GetString(4),
+        reader.GetString(5),
+        reader.GetString(6),
+        reader.GetString(7),
+        reader.GetString(8),
+        reader.GetString(9));
 
     private static bool IsSummaryIndexFile(string path) => Path.GetFileName(path)
         .StartsWith("summary-index", StringComparison.OrdinalIgnoreCase);

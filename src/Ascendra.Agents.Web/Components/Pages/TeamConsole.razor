@@ -439,8 +439,8 @@
         if (CurrentChatMode == ChatMode.Monitor) return;
         try
         {
-            if (CurrentChatMode == ChatMode.General) Chat.SendToEveryone(Participant, Draft, PendingAttachment);
-            else Chat.SendPrivate(Participant, SelectedRecipient, Draft, PendingAttachment);
+            if (CurrentChatMode == ChatMode.General) await Chat.SendToEveryoneAsync(Participant, Draft, PendingAttachment);
+            else await Chat.SendPrivateAsync(Participant, SelectedRecipient, Draft, PendingAttachment);
             Draft = string.Empty;
             IsEmojiPickerOpen = false;
             PendingAttachment = null;
