@@ -64,6 +64,9 @@ public sealed class CallDispositionService : IHostedService
     private readonly int _historyDisplayLimit;
     private IReadOnlyList<ClientDispositionSummary>? _summaryCache;
 
+    /// <summary>Notifica a los monitores abiertos que hay nueva gestión.</summary>
+    public event Action? Changed;
+
     public CallDispositionService(
         ExcelSnapshotStore snapshots,
         IOptions<CallDispositionOptions> options,
@@ -297,7 +300,19 @@ public sealed class CallDispositionService : IHostedService
         try { _summaryCache = null; }
         finally { _summaryIndexGate.Release(); }
 
+        NotifyChanged();
         return await GetHistoryAsync(normalizedClientId, cancellationToken);
+    }
+
+    private void NotifyChanged()
+    {
+        var handlers = Changed;
+        if (handlers is null) return;
+        foreach (var handler in handlers.GetInvocationList().Cast<Action>())
+        {
+            try { handler(); }
+            catch { /* Un monitor desconectado no bloquea al resto. */ }
+        }
     }
 
     private async Task<ClientDispositionHistory> ReadHistoryLockedAsync(

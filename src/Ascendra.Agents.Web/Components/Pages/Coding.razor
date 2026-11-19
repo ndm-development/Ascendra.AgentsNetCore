@@ -1,6 +1,7 @@
 @page "/codificacion"
 @attribute [Authorize(Roles = "Gerente,Supervisor")]
 @inject CallDispositionService Dispositions
+@implements IDisposable
 
 <section class="coding-console" aria-label="Monitor de codificación">
     <header class="coding-console__hero glass-card">
@@ -253,6 +254,12 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Dispositions.Changed += HandleDispositionChanged;
+        await ReloadSummariesAsync();
+    }
+
+    private async Task ReloadSummariesAsync()
+    {
         try
         {
             Summaries = await Dispositions.GetHighestWeightSummariesAsync();
@@ -266,6 +273,18 @@
             IsLoading = false;
         }
     }
+
+    private void HandleDispositionChanged() => _ = InvokeAsync(async () =>
+    {
+        await ReloadSummariesAsync();
+        if (IsHistoryView && HistoryClientId is not null)
+        {
+            ClientHistory = await Dispositions.GetFullHistoryAsync(HistoryClientId);
+        }
+        StateHasChanged();
+    });
+
+    public void Dispose() => Dispositions.Changed -= HandleDispositionChanged;
 
     private async Task OnClientQueryChangedAsync(ChangeEventArgs args)
     {
