@@ -262,7 +262,7 @@
     {
         try
         {
-            Summaries = await Dispositions.GetLatestSummariesAsync();
+            Summaries = await Dispositions.GetHighestWeightSummariesAsync();
         }
         catch (Exception)
         {

@@ -63,7 +63,6 @@ public sealed class CallDispositionService : IHostedService
     private readonly string _storageDirectory;
     private readonly int _historyDisplayLimit;
     private IReadOnlyList<ClientDispositionSummary>? _summaryCache;
-    private IReadOnlyList<ClientDispositionSummary>? _latestSummaryCache;
 
     /// <summary>Notifica a los monitores abiertos que hay nueva gestión.</summary>
     public event Action? Changed;
@@ -168,52 +167,6 @@ public sealed class CallDispositionService : IHostedService
                 .OrderBy(summary => summary.ClientId, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             return _summaryCache;
-        }
-        finally
-        {
-            _summaryIndexGate.Release();
-        }
-    }
-
-    /// <summary>
-    /// Devuelve la última gestión de cada cliente. El monitor de Gerencia usa
-    /// esta proyección para que una tipificación recién registrada nunca quede
-    /// oculta detrás de otra anterior con mayor peso.
-    /// </summary>
-    public async Task<IReadOnlyList<ClientDispositionSummary>> GetLatestSummariesAsync(
-        CancellationToken cancellationToken = default)
-    {
-        await _summaryIndexGate.WaitAsync(cancellationToken);
-        try
-        {
-            if (_latestSummaryCache is not null) return _latestSummaryCache;
-
-            var summaries = new List<ClientDispositionSummary>();
-            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
-            await using var command = new NpgsqlCommand("""
-                SELECT DISTINCT ON (client_id)
-                       client_id, recorded_at, agent_id, agent_name,
-                       category, result, channel, phone
-                FROM call_dispositions
-                ORDER BY client_id, recorded_at DESC;
-                """, connection);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                summaries.Add(new ClientDispositionSummary(
-                    reader.GetString(0),
-                    reader.GetFieldValue<DateTimeOffset>(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.GetString(4),
-                    reader.GetString(5),
-                    reader.GetString(6),
-                    reader.GetString(7)));
-            }
-            _latestSummaryCache = summaries
-                .OrderBy(summary => summary.ClientId, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            return _latestSummaryCache;
         }
         finally
         {
@@ -344,11 +297,7 @@ public sealed class CallDispositionService : IHostedService
         }
 
         await _summaryIndexGate.WaitAsync(cancellationToken);
-        try
-        {
-            _summaryCache = null;
-            _latestSummaryCache = null;
-        }
+        try { _summaryCache = null; }
         finally { _summaryIndexGate.Release(); }
 
         NotifyChanged();
