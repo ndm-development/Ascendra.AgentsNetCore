@@ -124,6 +124,10 @@
                                 <th>Tipificación</th>
                                 <th>Canal</th>
                                 <th>Teléfono</th>
+                                @if (IsHistoryView)
+                                {
+                                    <th>Comentario</th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -145,6 +149,10 @@
                                     </td>
                                     <td><span class="coding-console__channel">@row.Channel</span></td>
                                     <td class="coding-console__phone">@row.Phone</td>
+                                    @if (IsHistoryView)
+                                    {
+                                        <td>@(string.IsNullOrWhiteSpace(row.Comment) ? "Sin comentario" : row.Comment)</td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -187,10 +195,10 @@
     private IEnumerable<MonitorRow> SourceRows => IsHistoryView
         ? ClientHistory.Select(entry => new MonitorRow(
             entry.ClientId, entry.RecordedAt, entry.AgentId, entry.AgentName,
-            entry.Category, entry.Result, entry.Channel, entry.Phone))
+            entry.Category, entry.Result, entry.Channel, entry.Phone, entry.Comment))
         : Summaries.Select(summary => new MonitorRow(
             summary.ClientId, summary.RecordedAt, summary.AgentId, summary.AgentName,
-            summary.Category, summary.Result, summary.Channel, summary.Phone));
+            summary.Category, summary.Result, summary.Channel, summary.Phone, string.Empty));
 
     private MonitorRow[] FilteredRows => SourceRows
         .Where(row => (IsHistoryView || Contains(row.ClientId, ClientQuery))
@@ -338,7 +346,8 @@
         string Category,
         string Result,
         string Channel,
-        string Phone);
+        string Phone,
+        string Comment);
 
     private sealed record OutcomeOption(string Value, string Label);
 }
