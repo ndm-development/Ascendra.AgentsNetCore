@@ -87,7 +87,7 @@
                                         </div>
                                     </section>
 
-                                    <div class="chat-thread" aria-live="polite">
+                                    <div class="chat-thread" @ref="ChatThreadElement" aria-live="polite">
                                         @if (VisibleChatMessages.Count == 0)
                                         {
                                             <p class="chat-thread__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay mensajes. Saluda al equipo." : string.IsNullOrWhiteSpace(SelectedChatRecipient) ? "Elige una persona para abrir una conversación privada." : "Escribe tu primer mensaje a esta persona.")</p>
@@ -261,6 +261,8 @@
     private ChatAttachment? PendingChatAttachment { get; set; }
     private Guid ChatAttachmentInputKey { get; set; } = Guid.NewGuid();
     private string? ChatError { get; set; }
+    private ElementReference ChatThreadElement;
+    private bool ScrollChatThreadToBottom { get; set; }
     private static readonly (string Value, string Label)[] ChatEmojis =
     [
         ("👀", "Revisar"), ("✅", "Confirmado"), ("❤️", "Me gusta"), ("💵", "Pago"), ("🤑", "Cobrado"), ("💯", "Cien por ciento"),
@@ -376,6 +378,7 @@
         if (IsChatOpen)
         {
             FocusLatestPrivateMessage();
+            ScrollChatThreadToBottom = true;
             MarkVisibleChatMessagesRead();
         }
     }
@@ -393,6 +396,7 @@
         SelectedChatRecipient = string.Empty;
         ChatRecipientSearch = string.Empty;
         IsChatRecipientSuggestionsOpen = false;
+        ScrollChatThreadToBottom = true;
         ChatError = null;
         IsChatEmojiPickerOpen = false;
         MarkVisibleChatMessagesRead();
@@ -419,6 +423,7 @@
         SelectedChatRecipient = recipient.Username;
         ChatRecipientSearch = recipient.DisplayName;
         IsChatRecipientSuggestionsOpen = false;
+        ScrollChatThreadToBottom = true;
         ChatError = null;
         IsChatEmojiPickerOpen = false;
         MarkVisibleChatMessagesRead();
@@ -477,6 +482,7 @@
             IsChatEmojiPickerOpen = false;
             PendingChatAttachment = null;
             ChatAttachmentInputKey = Guid.NewGuid();
+            ScrollChatThreadToBottom = true;
             ChatError = null;
             MarkVisibleChatMessagesRead();
         }
@@ -646,6 +652,19 @@
             // El chat es común a todos los roles. La restricción de WhatsApp
             // para Supervisión y Gerencia no debe impedirles participar aquí.
             await StartChatAsync();
+        }
+
+        if (ScrollChatThreadToBottom && IsChatOpen)
+        {
+            ScrollChatThreadToBottom = false;
+            try
+            {
+                await JS.InvokeVoidAsync("ascendraChat.scrollToBottom", ChatThreadElement);
+            }
+            catch (JSDisconnectedException)
+            {
+                // El circuito puede cerrarse antes de completar el desplazamiento.
+            }
         }
 
         if (!RefreshChartsAfterRender) return;

@@ -98,7 +98,7 @@
                         <p class="team-chat__monitor-note">Consulta autorizada de conversaciones internas. Esta vista es sólo de lectura.</p>
                     }
 
-                    <div class="team-chat__messages" aria-live="polite">
+                    <div class="team-chat__messages" @ref="ChatMessagesElement" aria-live="polite">
                         @if (VisibleMessages.Count == 0)
                         {
                             <p class="team-chat__empty">@(CurrentChatMode == ChatMode.General ? "Aún no hay comunicados generales." : CurrentChatMode == ChatMode.Monitor ? "Aún no hay conversaciones disponibles para monitoreo." : string.IsNullOrWhiteSpace(SelectedRecipient) ? "Elige una persona para ver su conversación privada." : "Aún no hay mensajes con esta persona.")</p>
@@ -261,6 +261,8 @@
     private ChatAttachment? PendingAttachment { get; set; }
     private Guid AttachmentInputKey { get; set; } = Guid.NewGuid();
     private readonly HashSet<Guid> ReadMessages = [];
+    private ElementReference ChatMessagesElement;
+    private bool ScrollChatMessagesToBottom { get; set; }
     private static readonly (string Value, string Label)[] ChatEmojis =
     [
         ("👀", "Revisar"), ("✅", "Confirmado"), ("❤️", "Me gusta"), ("💵", "Pago"), ("🤑", "Cobrado"), ("💯", "Cien por ciento"),
@@ -369,6 +371,7 @@
     {
         if (mode == ChatMode.Monitor && !CanReviewPrivateMessages) return;
         CurrentChatMode = mode;
+        ScrollChatMessagesToBottom = true;
         ChatError = null;
         IsEmojiPickerOpen = false;
         MarkVisibleMessagesRead();
@@ -395,6 +398,7 @@
         SelectedRecipient = recipient.Username;
         RecipientSearch = recipient.DisplayName;
         IsPrivateRecipientSuggestionsOpen = false;
+        ScrollChatMessagesToBottom = true;
         ChatError = null;
         IsEmojiPickerOpen = false;
         MarkVisibleMessagesRead();
@@ -414,7 +418,11 @@
     {
         ActiveSection = section;
         IsEmojiPickerOpen = false;
-        if (section == TeamSection.Messages) MarkVisibleMessagesRead();
+        if (section == TeamSection.Messages)
+        {
+            ScrollChatMessagesToBottom = true;
+            MarkVisibleMessagesRead();
+        }
     }
 
     private void ToggleEmojiPicker() => IsEmojiPickerOpen = !IsEmojiPickerOpen;
@@ -437,6 +445,7 @@
             IsEmojiPickerOpen = false;
             PendingAttachment = null;
             AttachmentInputKey = Guid.NewGuid();
+            ScrollChatMessagesToBottom = true;
             ChatError = null;
             MarkVisibleMessagesRead();
         }
@@ -482,6 +491,7 @@
         ChatRegistered = true;
         Chat.Register(ConnectionId, Participant);
         ChatState = Chat.GetState(Participant);
+        ScrollChatMessagesToBottom = true;
         if (!hasPersistedReadState)
         {
             ReadMessages.UnionWith(ChatState.Messages.Select(message => message.Id));
@@ -588,8 +598,22 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        await StartChatAsync();
+        if (firstRender)
+        {
+            await StartChatAsync();
+            return;
+        }
+
+        if (!ScrollChatMessagesToBottom || ActiveSection != TeamSection.Messages) return;
+        ScrollChatMessagesToBottom = false;
+        try
+        {
+            await JS.InvokeVoidAsync("ascendraChat.scrollToBottom", ChatMessagesElement);
+        }
+        catch (JSDisconnectedException)
+        {
+            // El circuito puede cerrarse antes de completar el desplazamiento.
+        }
     }
 
     public ValueTask DisposeAsync()

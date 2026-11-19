@@ -132,6 +132,21 @@ window.ascendraChatRead = (() => {
     return { load, save };
 })();
 
+window.ascendraChat = (() => {
+    function scrollToBottom(element) {
+        if (!element) return;
+
+        const scroll = () => {
+            element.scrollTop = element.scrollHeight;
+        };
+
+        scroll();
+        window.requestAnimationFrame(scroll);
+    }
+
+    return { scrollToBottom };
+})();
+
 // Un despliegue sustituye el proceso que aloja el circuito interactivo. En vez
 // de mostrar el mensaje técnico de Blazor o recargar contra un 502, esperamos
 // a que la nueva instancia responda y recuperamos la vista automáticamente.
