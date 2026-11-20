@@ -235,14 +235,21 @@ public sealed class PromiseRegistrationService(
         var entry = _snapshots.Current.Promises
             .Where(promise => promise.ClientId.Equals(clientId, StringComparison.OrdinalIgnoreCase)
                 && promise.PromiseDate is not null
-                && promise.PromiseDate >= today)
+                && promise.PromiseDate >= today
+                && IsAwaitingPayment(promise.Status))
             .OrderBy(promise => promise.PromiseDate)
             .ThenBy(promise => promise.Id, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         return entry is null
             ? null
-            : new PromiseActiveLock(entry.Id, entry.PromiseDate!.Value, "corte vigente");
+            : new PromiseActiveLock(entry.Id, entry.PromiseDate!.Value, "corte · esperando pago");
     }
+
+    // Sólo el estatus original "Vigente" (mostrado como "Esperando pago")
+    // debe impedir una nueva promesa. El resto de estatus ya no representan
+    // un compromiso pendiente, aunque su fecha esté en el futuro.
+    private static bool IsAwaitingPayment(string? status) =>
+        TextNormalization.Normalize(status) is "vigente" or "esperando pago";
 
     private ClientMatch? FindClient(string clientId)
     {

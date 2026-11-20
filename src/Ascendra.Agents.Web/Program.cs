@@ -187,7 +187,10 @@ app.MapPost("/account/login", async (
         new ClaimsPrincipal(identity),
         new AuthenticationProperties { IsPersistent = false, AllowRefresh = true });
 
-    return Results.LocalRedirect(IsSafeReturnUrl(returnUrl) ? returnUrl : "/referencias");
+    // Los agentes comienzan en su actividad principal: registrar promesas.
+    // Gerencia y supervisión conservan la búsqueda de clientes como inicio.
+    var defaultDestination = user.HasFullAccess ? "/referencias" : "/registrar-promesa";
+    return Results.LocalRedirect(IsSafeReturnUrl(returnUrl) ? returnUrl : defaultDestination);
 }).RequireRateLimiting("login");
 
 app.MapPost("/account/logout", async (HttpContext context, IAntiforgery antiforgery) =>

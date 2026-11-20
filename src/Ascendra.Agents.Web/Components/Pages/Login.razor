@@ -34,5 +34,5 @@
     private bool IsStarting => Starting == "1";
     private string ReturnUrl => !string.IsNullOrWhiteSpace(RequestedReturnUrl) && RequestedReturnUrl.StartsWith('/') && !RequestedReturnUrl.StartsWith("//")
         ? RequestedReturnUrl
-        : "/referencias";
+        : string.Empty;
 }
