@@ -322,6 +322,24 @@ app.MapGet("/exports/team/promises", (
     return Results.File(content, ExcelExportService.ExcelContentType, "promesas_equipo.xlsx");
 }).RequireAuthorization();
 
+// Estas promesas aún no aparecen en el corte. El identificador técnico debe
+// conservarse durante el cruce para que el corte posterior las reemplace en
+// Mis promesas en vez de mostrarlas dos veces.
+app.MapGet("/exports/team/promise-registrations", async (
+    HttpContext context,
+    DashboardSession session,
+    PromiseRegistrationService registrations,
+    ExcelExportService exports,
+    CancellationToken cancellationToken) =>
+{
+    session.Apply(context.User);
+    if (!session.HasFullAccess) return Results.Forbid();
+
+    var pending = await registrations.GetPendingForTeamAsync(cancellationToken);
+    var content = exports.PendingPromiseRegistrations(pending);
+    return Results.File(content, ExcelExportService.ExcelContentType, "promesas_ascendra_pendientes.xlsx");
+}).RequireAuthorization();
+
 // Este consolidado contiene gestiones de todos los clientes; por ello la
 // autorización se valida también aquí, no sólo al ocultar la pestaña.
 app.MapGet("/exports/codificacion", async (

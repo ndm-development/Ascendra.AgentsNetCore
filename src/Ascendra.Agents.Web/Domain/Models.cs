@@ -43,7 +43,11 @@ public sealed record PromiseRecord(
     string Type,
     int? NumberOfWeeks,
     DateOnly? CreatedOn,
-    string Status);
+    string Status,
+    // Sólo se llena cuando el corte proviene de una promesa capturada en
+    // Ascendra. Permite reemplazar la vista provisional por el resultado del
+    // cruce sin depender de fechas, importes o nombres.
+    int? AscendraRegistrationId = null);
 
 /// <summary>
 /// Promesa capturada directamente por Ascendra. A diferencia del historial

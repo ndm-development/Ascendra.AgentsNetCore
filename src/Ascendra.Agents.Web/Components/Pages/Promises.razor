@@ -7,43 +7,63 @@
 
 @{
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
-    if (_week == 0) _week = Queries.CurrentWeek(scope);
-    var rows = DashboardQueries.FilterPromiseStatusGroup(
-        Queries.FilterPromises(scope, null, null, null, null, null, null, null, null, null, _week),
-        _metricStatus).ToArray();
+    var spreadsheetRows = Queries.FilterPromises(
+        scope, null, null, null, null, null, null, null, null, null);
+    var pendingRows = RegisteredPromises
+        .Select(ToPendingPromise)
+        .Where(row => string.IsNullOrWhiteSpace(ClientQuery)
+            || row.ClientId.Contains(ClientQuery.Trim(), StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+    var allPromiseRows = spreadsheetRows.Concat(pendingRows)
+        .OrderByDescending(row => row.PromiseDate)
+        .ThenByDescending(row => row.CreatedOn)
+        .ToArray();
+    var availableWeeks = allPromiseRows.Select(DashboardQueries.PromiseWeek)
+        .Where(week => week.HasValue)
+        .Select(week => week!.Value)
+        .Distinct()
+        .Order()
+        .ToArray();
+    if (_week == 0 || !availableWeeks.Contains(_week))
+    {
+        var currentWeek = System.Globalization.ISOWeek.GetWeekOfYear(DateTime.Today);
+        _week = availableWeeks.Where(week => week <= currentWeek).DefaultIfEmpty(availableWeeks.LastOrDefault()).Last();
+    }
+    var weekRows = allPromiseRows.Where(row => DashboardQueries.PromiseWeek(row) == _week).ToArray();
+    var rows = DashboardQueries.FilterPromiseStatusGroup(weekRows, _metricStatus).ToArray();
     var selectedPromiseRows = _selectedPromise is null
         ? rows
-        : Queries.PromiseChartDetail(scope, _week, _selectedPromise.Day, _selectedPromise.Status);
+        : Queries.PromiseChartDetail(weekRows, _week, _selectedPromise.Day, _selectedPromise.Status);
     var visible = selectedPromiseRows.Take(250).ToArray();
-    var summary = Queries.PersonalPromiseSummary(scope, _week);
+    var summary = Queries.PersonalPromiseSummary(allPromiseRows, _week);
     var selectedStatusLabel = _selectedPromise is null
         ? DashboardQueries.PromiseChartStatusLabel(_metricStatus)
         : DashboardQueries.PromiseChartStatusLabel(_selectedPromise.Status);
     var promiseExportUrl = BuildPromiseExportUrl(_week, ClientQuery, _metricStatus, _selectedPromise);
 }
 
-@if (IsLoadingRegistrations)
+@if (Session.HasFullAccess && IsLoadingRegistrations)
 {
     <section class="registered-promises glass-card">
         <p class="eyebrow">REGISTRO ASCENDRA</p>
         <p>Estamos cargando las promesas registradas.</p>
     </section>
 }
-else if (RegisteredPromises.Count > 0)
+else if (Session.HasFullAccess && RegisteredPromises.Count > 0)
 {
     <section class="registered-promises glass-card">
         <div class="registered-promises__heading">
             <div>
                 <p class="eyebrow">REGISTRO ASCENDRA</p>
-                <h2>@(Session.HasFullAccess ? "Promesas registradas por el equipo" : "Mis promesas registradas")</h2>
-                <p>Promesas guardadas directamente en Ascendra PostgreSQL.</p>
+                <h2>Promesas pendientes del equipo</h2>
+                <p>Ya se muestran a los agentes como Esperando pago. Descárgalas para incluirlas en el siguiente cruce.</p>
             </div>
-            <span class="registered-promises__count">@RegisteredPromises.Count registros</span>
+            <div class="collection-export-actions"><span class="registered-promises__count">@RegisteredPromises.Count registros</span><a class="secondary-button collection-export-button" href="/exports/team/promise-registrations" download title="Descargar promesas registradas para el cruce"><span aria-hidden="true">↓</span> Descargar para cruce</a></div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Id</th>@if (Session.HasFullAccess) { <th>Agente</th> }<th>Cliente único</th><th>Nombre</th><th>Número contactado</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Semanas</th><th>Tipo</th><th>Creación</th></tr></thead><tbody>
+        <div class="table-wrap"><table><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Nombre</th><th>Número contactado</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Semanas</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
             @foreach (var row in RegisteredPromises)
             {
-                <tr><td class="registered-promises__id">@row.IdPromise.ToString("D2")</td>@if (Session.HasFullAccess) { <td>@row.AgentName</td> }<td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td class="registered-promises__date">@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.NumberOfWeeks</td><td>@row.PromiseType</td><td class="registered-promises__date">@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td></tr>
+                <tr><td class="registered-promises__id">@row.IdPromise.ToString("D2")</td><td>@row.AgentName</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td class="registered-promises__date">@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.NumberOfWeeks</td><td>@row.PromiseType</td><td class="registered-promises__date">@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td><td><span class="promise-status promise-status--open">Esperando pago</span></td></tr>
             }
         </tbody></table></div>
     </section>
@@ -74,9 +94,9 @@ else
     <button type="button" class="secondary-button filter-reset" @onclick="Clear">Limpiar filtros</button>
 </section>
 
-@if (scope.Weeks.Count == 0)
+@if (availableWeeks.Length == 0)
 {
-    <section class="empty-state glass-card"><h2>Tu corte aún no tiene promesas</h2><p>Cuando se cargue el Excel de promesas, aquí aparecerá tu seguimiento semanal.</p></section>
+    <section class="empty-state glass-card"><h2>Aún no tienes promesas</h2><p>Las promesas que registres aparecerán aquí como Esperando pago.</p></section>
 }
 else
 {
@@ -95,7 +115,7 @@ else
 
     <section class="chart-card glass-card personal-chart-card">
         <div class="result-heading collection-chart-heading"><div><h2>Mis promesas por día</h2><p>Esperando pago, pagadas, no pagó, robada y duplicada.</p></div></div>
-        <PlotlyChart Id="personal-promises" Model="Queries.PromiseStatusChart(scope, _week)" AccessibleLabel="Mis promesas por día" OnPointSelected="SelectPromiseSegment" />
+        <PlotlyChart Id="personal-promises" Model="Queries.PromiseStatusChart(allPromiseRows, _week)" AccessibleLabel="Mis promesas por día" OnPointSelected="SelectPromiseSegment" />
     </section>
 
     <section class="table-card glass-card agent-promise-card" aria-live="polite">
@@ -140,10 +160,10 @@ else
     {
         var user = Session.User;
         RegisteredPromises = Session.HasFullAccess
-            ? await PromiseRegistrations.GetForTeamAsync()
+            ? await PromiseRegistrations.GetPendingForTeamAsync()
             : string.IsNullOrWhiteSpace(user?.Id)
                 ? []
-                : await PromiseRegistrations.GetForAgentAsync(user.Id);
+                : await PromiseRegistrations.GetPendingForAgentAsync(user.Id);
         IsLoadingRegistrations = false;
     }
 
@@ -183,6 +203,21 @@ else
         return InvokeAsync(StateHasChanged);
     }
     private sealed record PromiseSelection(string Day, string Status);
+    private static PromiseRecord ToPendingPromise(PromiseRegistrationEntry registration) => new(
+        registration.IdPromise.ToString("D2"),
+        registration.ClientId,
+        registration.ClientName,
+        registration.ClientNumber,
+        registration.AgentName,
+        registration.CreatedByAgentId,
+        registration.PromiseDate,
+        registration.InitialAmount ?? 0m,
+        registration.WeeklyAmount ?? 0m,
+        registration.PromiseType,
+        registration.NumberOfWeeks,
+        DateOnly.FromDateTime(registration.CreatedAt.LocalDateTime),
+        "Vigente",
+        registration.IdPromise);
     private static string ComplianceTone(decimal? rate) => rate switch { >= .60m => "compliance-score--positive", >= .45m => "compliance-score--caution", < .45m => "compliance-score--attention", _ => string.Empty };
     private static string StatusClass(string status) => TextNormalization.Normalize(status) switch { "robada" => "promise-status--stolen", "duplicada" => "promise-status--duplicate", "incumplida" => "promise-status--failed", "activa" or "cumplida" or "cumplido" => "promise-status--paid", "vigente" => "promise-status--open", _ => "promise-status--neutral" };
 }

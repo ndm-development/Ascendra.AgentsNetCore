@@ -41,6 +41,29 @@ public sealed class ExcelExportService
         return Create("Promesas", headers, rows, moneyColumns: new HashSet<int> { 8, 9 });
     }
 
+    /// <summary>
+    /// Fuente para el cruce externo de pagos. IdPromesa_Ascendra debe volver
+    /// intacto en promesas_estatus.xlsx; no sustituye el IdPromesa que use el
+    /// proceso de cruce, sólo identifica de forma inequívoca su origen.
+    /// </summary>
+    public byte[] PendingPromiseRegistrations(IReadOnlyList<PromiseRegistrationEntry> promises)
+    {
+        var headers = new[]
+        {
+            "IdPromesa_Ascendra", "Cliente_Unico", "Nombre_Cliente", "Agente", "Agente_ID",
+            "Numero_Cliente", "Fecha_Promesa", "Monto_Inicial", "Monto_Semanal",
+            "Tipo_Promesa", "Numero_Semanas", "Fecha_Creacion", "UsuAlta",
+        };
+        var rows = promises.Select(promise => new object?[]
+        {
+            promise.IdPromise, promise.ClientId, promise.ClientName, promise.AgentName,
+            promise.CreatedByAgentId, promise.ClientNumber, promise.PromiseDate,
+            promise.InitialAmount, promise.WeeklyAmount, promise.PromiseType,
+            promise.NumberOfWeeks, promise.CreatedAt, promise.CreatedByAgentId,
+        });
+        return Create("Promesas Ascendra", headers, rows, moneyColumns: new HashSet<int> { 8, 9 });
+    }
+
     public byte[] Coding(IReadOnlyList<ClientDispositionSummary> summaries)
     {
         var headers = new[]
@@ -116,6 +139,10 @@ public sealed class ExcelExportService
             case DateOnly date:
                 cell.Value = date.ToDateTime(TimeOnly.MinValue);
                 cell.Style.DateFormat.Format = "dd/MM/yyyy";
+                break;
+            case DateTimeOffset timestamp:
+                cell.Value = timestamp.LocalDateTime;
+                cell.Style.DateFormat.Format = "dd/MM/yyyy HH:mm";
                 break;
             case decimal amount:
                 cell.Value = amount;

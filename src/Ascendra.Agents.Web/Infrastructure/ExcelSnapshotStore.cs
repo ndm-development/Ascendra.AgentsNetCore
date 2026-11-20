@@ -143,7 +143,8 @@ public sealed class ExcelSnapshotStore(
             row.Date("Fecha_Promesa", "Fecha Promesa"), row.Decimal("Monto_Inicial", "Monto Inicial"),
             row.Decimal("Monto_Semanal", "Monto Semanal"), row.Text("Tipo_Promesa", "Tipo Promesa"),
             row.Integer("Numero_Semanas", "Número de semanas", "Numero Semanas"),
-            row.Date("Fecha_Creacion", "Fecha Creacion"), row.Text("Estatus")))
+            row.Date("Fecha_Creacion", "Fecha Creacion"), row.Text("Estatus"),
+            row.Integer("IdPromesa_Ascendra", "ID Promesa Ascendra", "AscendraPromiseId")))
         .ToArray();
 
     private static IReadOnlyList<PortfolioRecord> ReadPortfolio(string path) => WorkbookTable.Read(path).Rows

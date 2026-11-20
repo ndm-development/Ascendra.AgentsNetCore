@@ -148,14 +148,20 @@ public sealed class PromiseRegistrationService(
         }
     }
 
-    public Task<IReadOnlyList<PromiseRegistrationEntry>> GetForAgentAsync(
+    /// <summary>
+    /// Registros que todavía no vienen identificados en el corte de promesas.
+    /// Al estar presentes en el Excel con IdPromesa_Ascendra, el corte se
+    /// vuelve la única versión visible y esta fila deja de duplicarse.
+    /// </summary>
+    public async Task<IReadOnlyList<PromiseRegistrationEntry>> GetPendingForAgentAsync(
         string? agentId,
         CancellationToken cancellationToken = default) =>
-        GetEntriesAsync("WHERE usu_alta = @agentId", "agentId", NormalizeRequired(agentId, "Sin ID"), cancellationToken);
+        FilterReconciled(await GetEntriesAsync(
+            "WHERE usu_alta = @agentId", "agentId", NormalizeRequired(agentId, "Sin ID"), cancellationToken));
 
-    public Task<IReadOnlyList<PromiseRegistrationEntry>> GetForTeamAsync(
+    public async Task<IReadOnlyList<PromiseRegistrationEntry>> GetPendingForTeamAsync(
         CancellationToken cancellationToken = default) =>
-        GetEntriesAsync(string.Empty, null, null, cancellationToken);
+        FilterReconciled(await GetEntriesAsync(string.Empty, null, null, cancellationToken));
 
     private async Task<IReadOnlyList<PromiseRegistrationEntry>> GetEntriesAsync(
         string whereClause,
@@ -207,7 +213,7 @@ public sealed class PromiseRegistrationService(
         return await FindStoredActivePromiseAsync(clientId, connection, null, cancellationToken);
     }
 
-    private static async Task<PromiseActiveLock?> FindStoredActivePromiseAsync(
+    private async Task<PromiseActiveLock?> FindStoredActivePromiseAsync(
         string clientId,
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
@@ -224,9 +230,20 @@ public sealed class PromiseRegistrationService(
         command.Parameters.AddWithValue("clientId", clientId);
         command.Parameters.AddWithValue("today", today);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? new PromiseActiveLock(reader.GetInt32(0).ToString("D2"), reader.GetFieldValue<DateOnly>(1), "Ascendra")
-            : null;
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var registrationId = reader.GetInt32(0);
+            // Si el corte ya trae esta promesa, el estatus del corte es la
+            // autoridad. FindLegacyActivePromise la bloqueará sólo si sigue
+            // como Vigente / Esperando pago.
+            if (IsIncludedInCurrentCut(registrationId)) continue;
+
+            return new PromiseActiveLock(
+                registrationId.ToString("D2"),
+                reader.GetFieldValue<DateOnly>(1),
+                "Ascendra");
+        }
+        return null;
     }
 
     private PromiseActiveLock? FindLegacyActivePromise(string clientId)
@@ -250,6 +267,13 @@ public sealed class PromiseRegistrationService(
     // un compromiso pendiente, aunque su fecha esté en el futuro.
     private static bool IsAwaitingPayment(string? status) =>
         TextNormalization.Normalize(status) is "vigente" or "esperando pago";
+
+    private IReadOnlyList<PromiseRegistrationEntry> FilterReconciled(
+        IReadOnlyList<PromiseRegistrationEntry> entries) =>
+        entries.Where(entry => !IsIncludedInCurrentCut(entry.IdPromise)).ToArray();
+
+    private bool IsIncludedInCurrentCut(int registrationId) => _snapshots.Current.Promises
+        .Any(promise => promise.AscendraRegistrationId == registrationId);
 
     private ClientMatch? FindClient(string clientId)
     {

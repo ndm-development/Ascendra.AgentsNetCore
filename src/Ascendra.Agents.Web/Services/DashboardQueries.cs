@@ -355,8 +355,11 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     private sealed record RankingAgent(string Id, string MatchName, string DisplayName, bool IsCurrentUser);
 
     public PromiseComplianceSummary PersonalPromiseSummary(ScopedOperations scope, int week)
+        => PersonalPromiseSummary(scope.Promises, week);
+
+    public PromiseComplianceSummary PersonalPromiseSummary(IEnumerable<PromiseRecord> promises, int week)
     {
-        var records = scope.Promises.Where(x => PromiseWeek(x) == week).ToArray();
+        var records = promises.Where(x => PromiseWeek(x) == week).ToArray();
         var active = records.Count(x => IsStatus(x.Status, "activa", "cumplida", "cumplido"));
         var open = records.Count(x => IsStatus(x.Status, "vigente"));
         var failed = records.Count(x => IsStatus(x.Status, "incumplida"));
@@ -443,7 +446,11 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     }
 
     public ChartModel PromiseStatusChart(ScopedOperations scope, int week)
+        => PromiseStatusChart(scope.Promises, week);
+
+    public ChartModel PromiseStatusChart(IEnumerable<PromiseRecord> promises, int week)
     {
+        var records = promises.ToArray();
         var statuses = new[]
         {
             (Key: "vigente", Label: PromiseStatusLabel("vigente"), Color: "rgba(68, 139, 232, .93)", Border: "rgba(142, 190, 255, .92)"),
@@ -455,8 +462,8 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         var series = statuses.Select(status => (object)new
         {
             type = "bar", name = status.Label, x = Days,
-            y = Days.Select(day => scope.Promises.Count(x => PromiseWeek(x) == week && DayName(x.PromiseDate) == day && IsChartStatus(x.Status, status.Key))).ToArray(),
-            text = Days.Select(day => scope.Promises.Count(x => PromiseWeek(x) == week && DayName(x.PromiseDate) == day && IsChartStatus(x.Status, status.Key))).Select(x => x == 0 ? "" : x.ToString(CultureInfo.InvariantCulture)).ToArray(),
+            y = Days.Select(day => records.Count(x => PromiseWeek(x) == week && DayName(x.PromiseDate) == day && IsChartStatus(x.Status, status.Key))).ToArray(),
+            text = Days.Select(day => records.Count(x => PromiseWeek(x) == week && DayName(x.PromiseDate) == day && IsChartStatus(x.Status, status.Key))).Select(x => x == 0 ? "" : x.ToString(CultureInfo.InvariantCulture)).ToArray(),
             texttemplate = "%{text}", textposition = "inside", insidetextanchor = "middle", textfont = new { color = "#ffffff", size = 12 },
             marker = new { color = status.Color, line = new { color = status.Border, width = 1 }, cornerradius = 6 },
             hovertemplate = $"<b>%{{x}}</b><br><b>{status.Label}:</b> %{{y}}<extra></extra>",
@@ -467,11 +474,15 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     /// <summary>Devuelve las promesas del mismo día y estatus de una barra personal.</summary>
     public IReadOnlyList<PromiseRecord> PromiseChartDetail(
         ScopedOperations scope, int week, string? day, string? chartStatus)
+        => PromiseChartDetail(scope.Promises, week, day, chartStatus);
+
+    public IReadOnlyList<PromiseRecord> PromiseChartDetail(
+        IEnumerable<PromiseRecord> promises, int week, string? day, string? chartStatus)
     {
         if (!Days.Contains(day ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             || string.IsNullOrWhiteSpace(chartStatus)) return [];
 
-        return scope.Promises
+        return promises
             .Where(x => PromiseWeek(x) == week
                 && DayName(x.PromiseDate).Equals(day, StringComparison.OrdinalIgnoreCase)
                 && IsChartStatus(x.Status, chartStatus))
