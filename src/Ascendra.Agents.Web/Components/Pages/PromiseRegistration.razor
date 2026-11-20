@@ -1,0 +1,172 @@
+@page "/registrar-promesa"
+@attribute [Authorize]
+@inject DashboardSession Session
+@inject PromiseRegistrationService PromiseRegistrations
+
+@if (Session.HasFullAccess)
+{
+    <section class="empty-state glass-card">
+        <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
+        <h1>El registro de promesas corresponde a los agentes</h1>
+        <p>Puedes consultar las promesas registradas desde la sección Promesas.</p>
+        <a class="primary-button" href="/promesas">Ver promesas</a>
+    </section>
+}
+else
+{
+    <section class="promise-registration glass-card" aria-label="Registrar promesa">
+        <div class="promise-registration__heading">
+            <div>
+                <p class="eyebrow">REGISTRO DE PROMESA</p>
+                <h1>Registrar promesa</h1>
+                <p>Confirma los datos del cliente antes de guardar la promesa.</p>
+            </div>
+            <span class="promise-registration__agent">@Session.User?.DisplayName</span>
+        </div>
+
+        <form class="promise-registration__form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+            <div class="field">
+                <label for="promise-client-id">Cliente único</label>
+                <input id="promise-client-id" @bind="ClientId" @bind:after="LookupClientAsync" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
+            </div>
+            <div class="field">
+                <label for="promise-client-name">Nombre del cliente</label>
+                <input id="promise-client-name" value="@ClientName" readonly placeholder="Se completa al validar el cliente" aria-live="polite" />
+            </div>
+            <div class="field">
+                <label for="promise-contact-number">Número contactado</label>
+                <input id="promise-contact-number" @bind="ClientNumber" inputmode="numeric" maxlength="20" placeholder="10 dígitos" />
+            </div>
+            <div class="field">
+                <label for="promise-date">Fecha de promesa</label>
+                <input id="promise-date" type="date" @bind="PromiseDate" />
+            </div>
+            <div class="field">
+                <label for="promise-initial-amount">Monto inicial</label>
+                <input id="promise-initial-amount" type="number" @bind="InitialAmount" min="0" step="0.01" inputmode="decimal" placeholder="$0.00" />
+            </div>
+            <div class="field">
+                <label for="promise-weekly-amount">Monto semanal</label>
+                <input id="promise-weekly-amount" type="number" @bind="WeeklyAmount" min="0" step="0.01" inputmode="decimal" placeholder="$0.00" />
+            </div>
+            <div class="field">
+                <label for="promise-weeks">Número de semanas</label>
+                <input id="promise-weeks" type="number" @bind="NumberOfWeeks" min="1" max="255" step="1" inputmode="numeric" />
+            </div>
+            <div class="field">
+                <label for="promise-type">Tipo de promesa</label>
+                <select id="promise-type" @bind="PromiseType">
+                    <option value="">Selecciona un tipo</option>
+                    @foreach (var type in PromiseRegistrations.Types)
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select>
+            </div>
+
+            <div class="promise-registration__action">
+                <button type="submit" class="primary-button" disabled="@(!CanSave)">
+                    @(IsSaving ? "Guardando…" : "Registrar promesa")
+                </button>
+            </div>
+        </form>
+
+        @if (Lookup is { Exists: false } && !string.IsNullOrWhiteSpace(ClientId))
+        {
+            <p class="lookup-notice lookup-notice--error" role="status">No encontramos ese CLIENTE_UNICO en la cartera vigente.</p>
+        }
+        else if (Lookup?.ActivePromise is { } activePromise)
+        {
+            <p class="lookup-notice lookup-notice--attention" role="status">Este cliente ya tiene una promesa vigente (@activePromise.PromiseId) para el @activePromise.PromiseDate.ToString("dd/MM/yyyy").</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(Notice))
+        {
+            <p class="lookup-notice @(Saved ? "lookup-notice--success" : "lookup-notice--error")" role="status">@Notice</p>
+        }
+    </section>
+
+    <section class="promise-registration__whatsapp" aria-label="Mensajes de WhatsApp">
+        <WhatsApp />
+    </section>
+}
+
+@code {
+    private string ClientId { get; set; } = string.Empty;
+    private string ClientNumber { get; set; } = string.Empty;
+    private DateOnly? PromiseDate { get; set; } = OperationalClock.Date(DateTimeOffset.UtcNow);
+    private decimal? InitialAmount { get; set; }
+    private decimal? WeeklyAmount { get; set; }
+    private int NumberOfWeeks { get; set; } = 1;
+    private string PromiseType { get; set; } = string.Empty;
+    private PromiseClientLookup? Lookup { get; set; }
+    private string? Notice { get; set; }
+    private bool Saved { get; set; }
+    private bool IsSaving { get; set; }
+
+    private string ClientName => Lookup is { Exists: true } ? Lookup.ClientName : string.Empty;
+    private bool CanSave => !IsSaving
+        && Lookup is { Exists: true, ActivePromise: null }
+        && TextNormalization.Phone(ClientNumber).Length == 10
+        && PromiseDate is not null
+        && InitialAmount is not null && InitialAmount >= 0
+        && WeeklyAmount is not null && WeeklyAmount >= 0
+        && NumberOfWeeks is >= 1 and <= 255
+        && PromiseRegistrations.Types.Contains(PromiseType, StringComparer.OrdinalIgnoreCase);
+
+    private async Task LookupClientAsync()
+    {
+        Notice = null;
+        Saved = false;
+        Lookup = await PromiseRegistrations.LookupClientAsync(ClientId);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (IsSaving) return;
+
+        IsSaving = true;
+        Notice = null;
+        Saved = false;
+        try
+        {
+            // Se valida otra vez al guardar: la cartera o una promesa vigente
+            // pueden haber cambiado mientras el formulario estaba abierto.
+            Lookup = await PromiseRegistrations.LookupClientAsync(ClientId);
+            if (!CanSave) return;
+
+            var entry = await PromiseRegistrations.RegisterAsync(
+                ClientId,
+                ClientNumber,
+                PromiseDate,
+                InitialAmount,
+                WeeklyAmount,
+                NumberOfWeeks,
+                PromiseType,
+                Session.User?.DisplayName,
+                Session.User?.Id);
+            Notice = $"Promesa {entry.IdPromise:D2} registrada correctamente para {entry.ClientName}.";
+            Saved = true;
+            ClearForm();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Notice = exception.Message;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private void ClearForm()
+    {
+        ClientId = string.Empty;
+        ClientNumber = string.Empty;
+        PromiseDate = OperationalClock.Date(DateTimeOffset.UtcNow);
+        InitialAmount = null;
+        WeeklyAmount = null;
+        NumberOfWeeks = 1;
+        PromiseType = string.Empty;
+        Lookup = null;
+    }
+}

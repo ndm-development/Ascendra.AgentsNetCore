@@ -45,6 +45,36 @@ public sealed record PromiseRecord(
     DateOnly? CreatedOn,
     string Status);
 
+/// <summary>
+/// Promesa capturada directamente por Ascendra. A diferencia del historial
+/// importado desde Excel, estos registros viven en PostgreSQL.
+/// </summary>
+public sealed record PromiseRegistrationEntry(
+    int IdPromise,
+    string ClientId,
+    string ClientName,
+    string AgentName,
+    string ClientNumber,
+    DateOnly PromiseDate,
+    decimal? InitialAmount,
+    decimal? WeeklyAmount,
+    string PromiseType,
+    int NumberOfWeeks,
+    DateTimeOffset CreatedAt,
+    string CreatedByAgentId);
+
+public sealed record PromiseActiveLock(
+    string PromiseId,
+    DateOnly PromiseDate,
+    string Source);
+
+public sealed record PromiseClientLookup(
+    string ClientId,
+    string ClientName,
+    bool Exists,
+    PromiseActiveLock? ActivePromise)
+{ }
+
 public sealed record PortfolioRecord(
     string ClientId,
     string ClientName,

@@ -210,18 +210,17 @@
                 </header>
 
                 <nav class="main-tabs glass-card" aria-label="Módulos principales">
-                    <NavLink href="/referencias" class="nav-tab">Búsqueda clientes</NavLink>
-                    @if (!Session.HasFullAccess)
-                    {
-                        <NavLink href="/whatsapp" class="nav-tab">WhatsApp</NavLink>
-                    }
                     @if (Session.HasFullAccess)
                     {
+                        <NavLink href="/referencias" class="nav-tab">Búsqueda clientes</NavLink>
                         <NavLink href="/equipo" class="nav-tab">Equipo</NavLink>
                         <NavLink href="/codificacion" class="nav-tab">Codificación</NavLink>
+                        <NavLink href="/promesas" class="nav-tab">Promesas</NavLink>
                     }
                     else
                     {
+                        <NavLink href="/registrar-promesa" class="nav-tab">Registrar promesa</NavLink>
+                        <NavLink href="/referencias" class="nav-tab">Búsqueda clientes</NavLink>
                         <NavLink href="/" Match="NavLinkMatch.All" class="nav-tab">Mi recuperación</NavLink>
                         <NavLink href="/promesas" class="nav-tab">Mis promesas</NavLink>
                     }

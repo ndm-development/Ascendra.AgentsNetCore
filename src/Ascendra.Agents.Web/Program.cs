@@ -88,6 +88,7 @@ builder.Services.AddSingleton<PostgresDatabase>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresDatabase>());
 builder.Services.AddSingleton<EphemeralChatService>();
 builder.Services.AddSingleton<CallDispositionService>();
+builder.Services.AddSingleton<PromiseRegistrationService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<EphemeralChatService>());
 builder.Services.AddHostedService(provider => provider.GetRequiredService<CallDispositionService>());
 

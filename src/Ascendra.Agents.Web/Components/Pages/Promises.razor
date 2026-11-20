@@ -1,7 +1,9 @@
 @page "/promesas"
 @attribute [Authorize]
+@implements IDisposable
 @inject DashboardQueries Queries
 @inject DashboardSession Session
+@inject PromiseRegistrationService PromiseRegistrations
 
 @{
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
@@ -20,14 +22,43 @@
     var promiseExportUrl = BuildPromiseExportUrl(_week, ClientQuery, _metricStatus, _selectedPromise);
 }
 
+@if (IsLoadingRegistrations)
+{
+    <section class="registered-promises glass-card">
+        <p class="eyebrow">REGISTRO ASCENDRA</p>
+        <p>Estamos cargando las promesas registradas.</p>
+    </section>
+}
+else if (RegisteredPromises.Count > 0)
+{
+    <section class="registered-promises glass-card">
+        <div class="registered-promises__heading">
+            <div>
+                <p class="eyebrow">REGISTRO ASCENDRA</p>
+                <h2>@(Session.HasFullAccess ? "Promesas registradas por el equipo" : "Mis promesas registradas")</h2>
+                <p>Promesas guardadas directamente en Ascendra PostgreSQL.</p>
+            </div>
+            <span class="registered-promises__count">@RegisteredPromises.Count registros</span>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Id</th>@if (Session.HasFullAccess) { <th>Agente</th> }<th>Cliente único</th><th>Nombre</th><th>Número contactado</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Semanas</th><th>Tipo</th><th>Creación</th></tr></thead><tbody>
+            @foreach (var row in RegisteredPromises)
+            {
+                <tr><td class="registered-promises__id">@row.IdPromise.ToString("D2")</td>@if (Session.HasFullAccess) { <td>@row.AgentName</td> }<td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td class="registered-promises__date">@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.NumberOfWeeks</td><td>@row.PromiseType</td><td class="registered-promises__date">@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td></tr>
+            }
+        </tbody></table></div>
+    </section>
+}
+
 @if (Session.HasFullAccess)
 {
-    <section class="empty-state glass-card">
-        <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
-        <h1>Las promesas están en tu consola de equipo</h1>
-        <p>Ahí puedes revisar el seguimiento de cada agente junto con los pagos y la comunicación interna.</p>
-        <a class="primary-button" href="/equipo">Abrir promesas del equipo</a>
-    </section>
+    @if (!IsLoadingRegistrations && RegisteredPromises.Count == 0)
+    {
+        <section class="empty-state glass-card">
+            <p class="eyebrow">REGISTRO ASCENDRA</p>
+            <h1>Aún no hay promesas registradas</h1>
+            <p>Las promesas capturadas por los agentes aparecerán aquí automáticamente.</p>
+        </section>
+    }
 }
 else
 {
@@ -90,6 +121,40 @@ else
     private string? _metricStatus;
     private int _week;
     private PromiseSelection? _selectedPromise;
+    private IReadOnlyList<PromiseRegistrationEntry> RegisteredPromises { get; set; } = [];
+    private bool IsLoadingRegistrations { get; set; } = true;
+
+    protected override void OnInitialized()
+    {
+        PromiseRegistrations.Changed += HandlePromiseRegistrationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await ReloadRegisteredPromisesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ReloadRegisteredPromisesAsync()
+    {
+        var user = Session.User;
+        RegisteredPromises = Session.HasFullAccess
+            ? await PromiseRegistrations.GetForTeamAsync()
+            : string.IsNullOrWhiteSpace(user?.Id)
+                ? []
+                : await PromiseRegistrations.GetForAgentAsync(user.Id);
+        IsLoadingRegistrations = false;
+    }
+
+    private void HandlePromiseRegistrationChanged() => _ = InvokeAsync(async () =>
+    {
+        await ReloadRegisteredPromisesAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => PromiseRegistrations.Changed -= HandlePromiseRegistrationChanged;
+
     private void Clear() { ClientQuery = string.Empty; _metricStatus = null; _selectedPromise = null; }
     private void ClearSelectedPromise() => _selectedPromise = null;
     private void ClearPromiseDetail() { _metricStatus = null; _selectedPromise = null; }
