@@ -104,14 +104,14 @@ else
     private bool IsSaving { get; set; }
 
     private string ClientName => Lookup is { Exists: true } ? Lookup.ClientName : string.Empty;
-    private bool CanSave => !IsSaving
-        && Lookup is { Exists: true, ActivePromise: null }
+    private bool HasValidPromiseData => Lookup is { Exists: true, ActivePromise: null }
         && TextNormalization.Phone(ClientNumber).Length == 10
         && PromiseDate is not null
         && InitialAmount is not null && InitialAmount >= 0
         && WeeklyAmount is not null && WeeklyAmount >= 0
         && NumberOfWeeks is >= 1 and <= 255
         && PromiseRegistrations.Types.Contains(PromiseType, StringComparer.OrdinalIgnoreCase);
+    private bool CanSave => !IsSaving && HasValidPromiseData;
 
     private async Task LookupClientAsync()
     {
@@ -132,7 +132,11 @@ else
             // Se valida otra vez al guardar: la cartera o una promesa vigente
             // pueden haber cambiado mientras el formulario estaba abierto.
             Lookup = await PromiseRegistrations.LookupClientAsync(ClientId);
-            if (!CanSave) return;
+            if (!HasValidPromiseData)
+            {
+                Notice = "Revisa los datos requeridos antes de registrar la promesa.";
+                return;
+            }
 
             var entry = await PromiseRegistrations.RegisterAsync(
                 ClientId,
