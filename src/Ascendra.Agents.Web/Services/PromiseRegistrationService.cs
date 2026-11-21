@@ -260,7 +260,7 @@ public sealed class PromiseRegistrationService(
     {
         var today = OperationalClock.Date(DateTimeOffset.UtcNow);
         await using var command = new NpgsqlCommand("""
-            SELECT id_promesa, fecha_promesa
+            SELECT id_promesa, fecha_promesa, estatus
             FROM promesas
             WHERE origen = 'Ascendra' AND cliente_unico = @clientId AND fecha_promesa >= @today
             ORDER BY fecha_promesa ASC, id_promesa ASC
@@ -272,15 +272,16 @@ public sealed class PromiseRegistrationService(
         while (await reader.ReadAsync(cancellationToken))
         {
             var registrationId = reader.GetInt32(0);
+            var status = reader.IsDBNull(2) ? "Pendiente de pago" : reader.GetString(2);
             // Si el corte ya trae esta promesa, el estatus del corte es la
-            // autoridad. FindLegacyActivePromise la bloqueará sólo si sigue
-            // como Vigente / Esperando pago.
+            // autoridad. Las capturas todavía pendientes permiten otra alta.
             if (IsIncludedInCurrentCut(registrationId)) continue;
+            if (!BlocksNewRegistration(status)) continue;
 
             return new PromiseActiveLock(
                 registrationId.ToString("D2"),
                 reader.GetFieldValue<DateOnly>(1),
-                "Ascendra");
+                "Ascendra · revisar estatus");
         }
         return null;
     }
@@ -292,20 +293,22 @@ public sealed class PromiseRegistrationService(
             .Where(promise => promise.ClientId.Equals(clientId, StringComparison.OrdinalIgnoreCase)
                 && promise.PromiseDate is not null
                 && promise.PromiseDate >= today
-                && IsAwaitingPayment(promise.Status))
+                && BlocksNewRegistration(promise.Status))
             .OrderBy(promise => promise.PromiseDate)
             .ThenBy(promise => promise.Id, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         return entry is null
             ? null
-            : new PromiseActiveLock(entry.Id, entry.PromiseDate!.Value, "corte · esperando pago");
+            : new PromiseActiveLock(entry.Id, entry.PromiseDate!.Value, "corte · revisar estatus");
     }
 
-    // Sólo el estatus original "Vigente" (mostrado como "Esperando pago")
-    // debe impedir una nueva promesa. El resto de estatus ya no representan
-    // un compromiso pendiente, aunque su fecha esté en el futuro.
-    private static bool IsAwaitingPayment(string? status) =>
-        TextNormalization.Normalize(status) is "vigente" or "esperando pago";
+    // Activa y Vigente (mostrada como Esperando pago) permiten una nueva
+    // captura. Los estatus conocidos que ya cerraron la promesa tampoco
+    // bloquean; sólo un estatus futuro no reconocido queda protegido.
+    private static bool BlocksNewRegistration(string? status) =>
+        TextNormalization.Normalize(status) is not (
+            "activa" or "vigente" or "esperando pago" or "pendiente de pago"
+            or "incumplida" or "duplicada" or "robada");
 
     private IReadOnlyList<PromiseRegistrationEntry> FilterReconciled(
         IReadOnlyList<PromiseRegistrationEntry> entries) =>
