@@ -121,7 +121,7 @@ window.ascendraCharts = {
       return { ink: '#fff4e5', axis: '#fff4e5', muted: '#e3c7a6', grid: 'rgba(234, 189, 132, .18)', hoverBackground: 'rgba(38, 28, 23, .96)', hoverBorder: 'rgba(255, 206, 144, .45)', hoverInk: '#fff9f0' };
     }
     if (shell?.classList.contains('theme-kintsugi')) {
-      return { ink: '#2b2119', axis: '#382713', muted: '#6e5b45', grid: 'rgba(139, 91, 8, .22)', hoverBackground: 'rgba(44, 31, 17, .97)', hoverBorder: 'rgba(255, 212, 105, .78)', hoverInk: '#fff8e4' };
+      return { ink: '#fbf3df', axis: '#fff0c9', muted: '#cbb98f', grid: 'rgba(231, 185, 70, .20)', hoverBackground: 'rgba(12, 10, 8, .97)', hoverBorder: 'rgba(255, 215, 112, .72)', hoverInk: '#fff8e8' };
     }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
@@ -133,11 +133,12 @@ window.ascendraCharts = {
     const isAmbar = Boolean(target.closest('.theme-ambar'));
     const isKintsugi = Boolean(target.closest('.theme-kintsugi'));
     const palette = isKintsugi ? {
-      status: { 'Esperando pago': '#d99a14', Pagada: '#328a72', 'No pagó': '#c65b58', Robada: '#b96f19', Duplicada: '#7560a8' },
-      recovery: { '#1f9b72': '#328a72', '#c38d25': '#d99a14', '#c74857': '#c65b58', 'rgba(124,145,169,.48)': 'rgba(132, 101, 52, .43)' },
-      line: 'rgba(255, 247, 219, .92)',
-      externalText: '#2b2119',
-      heatmap: [[0, '#fff8e6'], [.28, '#f6da8a'], [.57, '#e0ad36'], [.78, '#b8730c'], [1, '#704311']]
+      status: { 'Esperando pago': '#f2d98a', Pagada: '#d9aa39', 'No pagó': '#a96b25', Robada: '#8c5e25', Duplicada: '#ead9b2' },
+      recovery: { '#1f9b72': '#f0c75e', '#c38d25': '#d79b26', '#c74857': '#9a5b16', 'rgba(124,145,169,.48)': 'rgba(147,96,27,.46)' },
+      recoveryFallback: ['#f4d77a', '#d89b29', '#a86416', '#7d4610'],
+      line: 'rgba(255, 239, 183, .88)',
+      externalText: '#fff2cf',
+      heatmap: [[0, '#201912'], [.26, '#4e3513'], [.55, '#956715'], [.77, '#dca93d'], [1, '#ffdf83']]
     } : isAmbar ? {
       status: { 'Esperando pago': '#dca45d', Pagada: '#d1a264', 'No pagó': '#c8776b', Robada: '#e1b360', Duplicada: '#b796c8' },
       recovery: { '#1f9b72': '#d1a264', '#c38d25': '#e1b360', '#c74857': '#c8776b', 'rgba(124,145,169,.48)': 'rgba(185, 139, 105, .43)' },
@@ -165,6 +166,15 @@ window.ascendraCharts = {
       externalText: '#f0fdff'
     } : null;
     if (!palette) return data;
+    const normalizeColorKey = value => String(value ?? '').replace(/\s+/g, '').toLowerCase();
+    const metallicRecoveryColor = (value, largest) => {
+      const amount = Math.max(0, Number(value) || 0);
+      const ratio = largest > 0 ? amount / largest : 0;
+      if (ratio >= .8) return '#f4d77a';
+      if (ratio >= .55) return '#d89b29';
+      if (ratio > .2) return '#a86416';
+      return amount > 0 ? '#7d4610' : 'rgba(115, 77, 20, .42)';
+    };
     return data.map(trace => {
       if (trace?.type === 'heatmap' && palette.heatmap) {
         return {
@@ -175,11 +185,15 @@ window.ascendraCharts = {
       }
       if (trace?.type !== 'bar' || !trace.marker) return trace;
       const statusColor = palette.status[trace.name];
+      const recoveryValues = Array.isArray(trace.y) ? trace.y.map(value => Number(value) || 0) : [];
+      const recoveryMaximum = Math.max(0, ...recoveryValues);
       const color = statusColor
         ? statusColor
-        : Array.isArray(trace.marker.color)
-          ? trace.marker.color.map(value => palette.recovery[value] ?? value)
-          : trace.marker.color;
+        : isKintsugi && Array.isArray(trace.marker.color) && recoveryValues.length === trace.marker.color.length
+          ? recoveryValues.map(value => metallicRecoveryColor(value, recoveryMaximum))
+          : Array.isArray(trace.marker.color)
+            ? trace.marker.color.map((value, index) => palette.recovery[normalizeColorKey(value)] ?? palette.recoveryFallback?.[index % palette.recoveryFallback.length] ?? value)
+            : trace.marker.color;
       return {
         ...trace,
         ...(trace.textposition === 'outside' ? { textfont: { ...(trace.textfont || {}), color: palette.externalText } } : {}),

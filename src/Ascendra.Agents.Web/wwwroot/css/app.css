@@ -146,24 +146,23 @@ button { cursor: pointer; }
   --table-row: rgba(63, 45, 34, .23);
 }
 
-/* Kintsugi: cerámica luminosa, laca profunda y un oro vivo. El fondo conserva
-   los destellos de la pieza y las superficies claras evitan que se confunda
-   con Ámbar. */
+/* Kintsugi: laca negra reparada con vetas de oro. El oro sólo ilumina bordes,
+   acciones y reflejos para conservar el contraste con Ámbar. */
 .theme-kintsugi {
   --background-image: var(--ascendra-kintsugi-background, url("/assets/kintsugi.jpg"));
-  --background-wash: radial-gradient(circle at 79% 13%, rgba(255, 215, 103, .34), transparent 23%), radial-gradient(circle at 15% 84%, rgba(230, 167, 35, .20), transparent 29%), linear-gradient(125deg, rgba(11, 9, 8, .36), rgba(105, 71, 17, .08) 52%, rgba(8, 7, 7, .42));
-  --ink: #2b2119;
-  --ink-muted: #6e5b45;
-  --accent: #ca8b09;
-  --accent-strong: #875700;
-  --accent-soft: rgba(230, 174, 43, .30);
-  --glass-top: rgba(255, 251, 239, .88);
-  --glass-bottom: rgba(246, 230, 189, .74);
-  --glass-control: rgba(255, 246, 221, .88);
-  --glass-border: rgba(255, 237, 181, .81);
-  --line: rgba(122, 82, 17, .26);
-  --shadow: 0 22px 54px rgba(8, 7, 6, .42), 0 3px 10px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(255, 255, 248, .86);
-  --table-row: rgba(247, 220, 158, .30);
+  --background-wash: radial-gradient(circle at 79% 13%, rgba(247, 202, 78, .18), transparent 20%), radial-gradient(circle at 15% 84%, rgba(181, 116, 19, .13), transparent 26%), linear-gradient(125deg, rgba(2, 2, 2, .70), rgba(30, 20, 7, .28) 51%, rgba(0, 0, 0, .76));
+  --ink: #fbf3df;
+  --ink-muted: #c8b68b;
+  --accent: #d9aa36;
+  --accent-strong: #ffe4a1;
+  --accent-soft: rgba(225, 174, 52, .25);
+  --glass-top: rgba(29, 26, 22, .89);
+  --glass-bottom: rgba(8, 8, 7, .83);
+  --glass-control: rgba(37, 32, 25, .86);
+  --glass-border: rgba(236, 192, 76, .40);
+  --line: rgba(232, 189, 76, .24);
+  --shadow: 0 24px 56px rgba(0, 0, 0, .59), 0 3px 12px rgba(0, 0, 0, .30), inset 0 1px 0 rgba(255, 232, 163, .11);
+  --table-row: rgba(105, 74, 19, .18);
 }
 
 .app-shell, .login-shell {
@@ -187,7 +186,7 @@ button { cursor: pointer; }
 .theme-aurora::before { background: radial-gradient(circle at 82% 10%, rgba(119, 232, 208, .18), transparent 27%), radial-gradient(circle at 12% 88%, rgba(128, 137, 255, .16), transparent 27%); }
 .theme-oceano::before { background: radial-gradient(circle at 86% 8%, rgba(102, 226, 224, .15), transparent 26%), radial-gradient(circle at 16% 92%, rgba(58, 129, 191, .15), transparent 25%); }
 .theme-ambar::before { background: radial-gradient(circle at 86% 9%, rgba(225, 164, 81, .15), transparent 27%), radial-gradient(circle at 15% 90%, rgba(156, 76, 47, .12), transparent 25%); }
-.theme-kintsugi::before { background: radial-gradient(circle at 84% 10%, rgba(255, 220, 116, .31), transparent 24%), radial-gradient(circle at 12% 88%, rgba(231, 174, 43, .20), transparent 23%); }
+.theme-kintsugi::before { background: radial-gradient(circle at 84% 10%, rgba(255, 218, 109, .17), transparent 22%), radial-gradient(circle at 12% 88%, rgba(218, 151, 30, .12), transparent 24%); }
 
 /* Superficies de interacción: Claro, Pink y Sierra se tiñen con el propio
    tema. Evitamos blancos planos en controles sin restar contraste al texto. */
@@ -197,7 +196,7 @@ button { cursor: pointer; }
 .theme-aurora .appearance-menu { background:linear-gradient(145deg,rgba(20,48,79,.88),rgba(8,29,55,.76)); }
 .theme-oceano .appearance-menu { background:linear-gradient(145deg,rgba(12,67,91,.88),rgba(5,35,60,.77)); }
 .theme-ambar .appearance-menu { background:linear-gradient(145deg,rgba(67,54,44,.90),rgba(31,25,23,.80)); }
-.theme-kintsugi .appearance-menu { background:linear-gradient(145deg,rgba(70,58,47,.92),rgba(25,21,19,.86)); }
+.theme-kintsugi .appearance-menu { background:linear-gradient(145deg,rgba(37,31,24,.94),rgba(8,8,7,.91)); }
 .theme-light .nav-tab.active { background:linear-gradient(145deg,rgba(229,240,250,.68),rgba(203,220,237,.38)); border-color:rgba(238,247,255,.62); }
 .theme-dark .nav-tab:hover:not(.active) { color:#f4f7ff; background:linear-gradient(145deg,rgba(86,108,179,.28),rgba(29,44,78,.32)); box-shadow:inset 0 1px rgba(218,231,255,.12),0 5px 14px rgba(4,11,29,.18); }
 .theme-dark .nav-tab.active { color:#f4f7ff; background:linear-gradient(145deg,rgba(83,107,178,.52),rgba(25,37,67,.78)); border-color:rgba(176,200,255,.46); box-shadow:0 7px 18px rgba(2,8,20,.36),inset 0 1px rgba(230,238,255,.20); }
@@ -745,27 +744,30 @@ th, td { padding: 10px 12px; }
 .promise-registration__client-input { display:flex; align-items:center; gap:7px; }.promise-registration__client-input input { flex:1 1 auto; width:auto; min-width:0; }.promise-registration__client-search { display:grid; flex:0 0 43px; width:43px; height:43px; place-items:center; padding:0; border:1px solid color-mix(in srgb,var(--accent) 44%,var(--line)); border-radius:12px; color:var(--accent-strong); background:color-mix(in srgb,var(--accent-soft) 44%,var(--glass-control)); box-shadow:inset 0 1px rgba(255,255,255,.52); cursor:pointer; transition:transform .18s ease,border-color .18s ease,background .18s ease; }.promise-registration__client-search:hover { border-color:var(--accent); background:color-mix(in srgb,var(--accent-soft) 68%,var(--glass-control)); transform:translateY(-1px); }.promise-registration__client-search:focus-visible { outline:0; border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent),inset 0 1px rgba(255,255,255,.52); }.promise-registration__client-search svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; }
 .field-hint { display:block; margin-top:5px; color:var(--ink-muted); font-size:11px; font-weight:580; line-height:1.35; }
 
-/* Kintsugi se separa de Ámbar con porcelana luminosa, un dorado más limpio y
-   puntos de luz que siguen presentes en tarjetas, acciones y métricas. */
-.theme-kintsugi .appearance-trigger__glow { background:linear-gradient(135deg,#fff0a7,#d49308 58%,#714100); box-shadow:0 0 0 4px rgba(230,174,43,.18),0 0 15px rgba(235,182,53,.22); }
-.theme-kintsugi .appearance-menu { background:linear-gradient(145deg,rgba(255,252,242,.98),rgba(244,224,174,.96)); box-shadow:0 20px 44px rgba(8,7,5,.36),inset 0 1px rgba(255,255,255,.94); }
-.theme-kintsugi .appearance-option { background:linear-gradient(145deg,rgba(255,251,238,.86),rgba(248,229,185,.70)); box-shadow:inset 0 1px rgba(255,255,255,.84); }
-.theme-kintsugi .appearance-option:hover,.theme-kintsugi .appearance-option--selected { background:linear-gradient(135deg,rgba(255,244,198,.92),rgba(244,208,117,.62)); }
-.theme-kintsugi select option { background:#fff7df; color:#2b2119; }
-.theme-kintsugi .brand-logo-frame { background:linear-gradient(145deg,rgba(255,255,252,.96),rgba(251,224,157,.82)); border-color:rgba(255,238,183,.94); box-shadow:0 12px 26px rgba(20,13,5,.20),inset 0 1px rgba(255,255,255,.96); }
-.theme-kintsugi .primary-button { border-color:rgba(255,229,139,.88); background:linear-gradient(135deg,#f3c94d,#ce8b08 55%,#995600); color:#fffdf4; box-shadow:0 12px 25px rgba(87,49,0,.31),inset 0 1px rgba(255,249,213,.52); }
-.theme-kintsugi .secondary-button { color:#744900; border-color:rgba(192,128,6,.45); background:rgba(255,247,219,.79); }
-.theme-kintsugi .progress-track { background:rgba(144,98,20,.15); box-shadow:inset 0 1px 2px rgba(92,54,5,.13); }
-.theme-kintsugi .progress-track span { background:linear-gradient(90deg,#a96500,#e4aa1d 52%,#ffe390); box-shadow:0 0 10px rgba(225,168,34,.28); }
-.theme-kintsugi .metric-card--positive::after { background:#328a72; }.theme-kintsugi .metric-card--warning::after { background:#d99a14; }.theme-kintsugi .metric-card--danger::after { background:#c65b58; }.theme-kintsugi .metric-card--stolen::after { background:#b96f19; }.theme-kintsugi .metric-card--duplicate::after { background:#7560a8; }
-.theme-kintsugi .weekly-pulse,.theme-kintsugi .compliance-summary { background:radial-gradient(circle at 94% 0,rgba(255,213,103,.53),transparent 30%),linear-gradient(135deg,rgba(255,253,243,.88),rgba(246,224,168,.67)); }
-.theme-kintsugi .weekly-pulse__bonus { border-left-color:rgba(151,101,14,.24); }
-.theme-kintsugi .compliance-score { --compliance-track:rgba(139,91,8,.16); border-color:rgba(193,128,6,.38); background:radial-gradient(circle at 32% 24%,rgba(255,235,166,.74),transparent 48%),rgba(255,247,220,.67); }
-.theme-kintsugi .compliance-score::after { border-color:rgba(187,121,5,.23); background:linear-gradient(145deg,rgba(255,252,241,.94),rgba(248,226,175,.68)); box-shadow:inset 0 1px rgba(255,255,255,.90); }
-.theme-kintsugi .compliance-metric { background:rgba(255,249,229,.66); border-color:rgba(137,89,9,.20); }.theme-kintsugi .compliance-metric--active { border-color:rgba(50,138,114,.42); background:rgba(50,138,114,.12); }.theme-kintsugi .compliance-metric--open { border-color:rgba(217,154,20,.47); background:rgba(217,154,20,.14); }.theme-kintsugi .compliance-metric--failed { border-color:rgba(198,91,88,.40); background:rgba(198,91,88,.12); }.theme-kintsugi .compliance-metric--stolen { border-color:rgba(185,111,25,.44); background:rgba(185,111,25,.14); }.theme-kintsugi .compliance-metric--duplicate { border-color:rgba(117,96,168,.39); background:rgba(117,96,168,.11); }
-.theme-kintsugi .agent-ranking__row { background:rgba(255,249,229,.52); box-shadow:inset 0 1px rgba(255,255,255,.76); }.theme-kintsugi .agent-ranking__row--current { background:linear-gradient(135deg,rgba(255,229,151,.76),rgba(246,211,119,.43)); }.theme-kintsugi .table-wrap { background:rgba(255,249,229,.27); }.theme-kintsugi th { background:rgba(252,229,169,.35); }
-.theme-kintsugi .chat-panel { background:radial-gradient(circle at 94% 0,rgba(255,213,103,.52),transparent 30%),linear-gradient(145deg,rgba(255,253,244,.98),rgba(247,228,180,.94)); box-shadow:0 22px 46px rgba(8,7,5,.40),inset 0 1px rgba(255,255,255,.94); }.theme-kintsugi .chat-thread { background:rgba(142,97,20,.10); }.theme-kintsugi .chat-message { background:rgba(255,251,239,.84); }.theme-kintsugi .chat-message--own { background:linear-gradient(145deg,rgba(255,234,165,.92),rgba(247,211,111,.72)); }.theme-kintsugi .chat-recipient select,.theme-kintsugi .chat-composer textarea { background:rgba(255,249,229,.88); }
-.theme-kintsugi .reconnect-card { background:linear-gradient(145deg,rgba(255,253,244,.97),rgba(247,227,178,.93)); box-shadow:0 22px 55px rgba(10,7,4,.35),inset 0 1px rgba(255,255,255,.92); }.theme-kintsugi .field input::placeholder,.theme-kintsugi .lookup-input-row input::placeholder,.theme-kintsugi .lookup-search-input::placeholder,.theme-kintsugi textarea::placeholder { color:#86745e; opacity:1; }
+/* Kintsugi: laca negra, vetas doradas y reflejos metálicos. Ninguna superficie
+   principal usa crema para que el resultado no se confunda con Ámbar. */
+.theme-kintsugi .appearance-trigger__glow { background:linear-gradient(135deg,#fff0af,#d99f27 56%,#70420a); box-shadow:0 0 0 4px rgba(226,177,53,.16),0 0 18px rgba(238,186,56,.28); }
+.theme-kintsugi .appearance-menu { background:linear-gradient(145deg,rgba(39,33,25,.98),rgba(8,8,7,.97)); box-shadow:0 20px 44px rgba(0,0,0,.62),inset 0 1px rgba(255,234,167,.12); }
+.theme-kintsugi .appearance-option { background:linear-gradient(145deg,rgba(56,46,32,.72),rgba(17,15,12,.84)); box-shadow:inset 0 1px rgba(255,237,181,.08); }
+.theme-kintsugi .appearance-option:hover,.theme-kintsugi .appearance-option--selected { background:linear-gradient(135deg,rgba(186,128,21,.39),rgba(52,34,10,.76)); }
+.theme-kintsugi select option { background:#1c1712; color:#fff3d1; }
+.theme-kintsugi .brand-logo-frame { background:linear-gradient(145deg,rgba(59,48,31,.93),rgba(11,10,8,.96)); border-color:rgba(255,215,113,.60); box-shadow:0 12px 26px rgba(0,0,0,.43),inset 0 1px rgba(255,239,184,.16); }
+.theme-kintsugi .brand-logo-frame img { filter:brightness(0) invert(1) sepia(.22) saturate(.78) hue-rotate(346deg); }
+.theme-kintsugi .primary-button { border-color:rgba(255,225,143,.80); background:linear-gradient(135deg,#f4d36c,#c98a19 54%,#744008); color:#fff9e8; box-shadow:0 12px 25px rgba(42,24,2,.52),inset 0 1px rgba(255,249,213,.52); }
+.theme-kintsugi .secondary-button { color:#ffe5a3; border-color:rgba(215,162,49,.48); background:linear-gradient(145deg,rgba(48,39,27,.92),rgba(20,17,13,.90)); box-shadow:inset 0 1px rgba(255,236,177,.08); }
+.theme-kintsugi .tier-badge { color:#ffe2a0; border-color:rgba(233,186,70,.42); background:rgba(205,145,26,.18); }
+.theme-kintsugi .progress-track { background:rgba(118,82,22,.34); box-shadow:inset 0 1px 2px rgba(0,0,0,.42); }
+.theme-kintsugi .progress-track span { background:linear-gradient(90deg,#75440b,#c98a1e 48%,#ffe09a); box-shadow:0 0 12px rgba(231,178,54,.33); }
+.theme-kintsugi .metric-card--positive::after { background:#f0c75e; }.theme-kintsugi .metric-card--warning::after { background:#d79b26; }.theme-kintsugi .metric-card--danger::after { background:#a86416; }.theme-kintsugi .metric-card--stolen::after { background:#845016; }.theme-kintsugi .metric-card--duplicate::after { background:#d9c08b; }
+.theme-kintsugi .weekly-pulse,.theme-kintsugi .compliance-summary { background:radial-gradient(circle at 94% 0,rgba(244,197,80,.20),transparent 30%),linear-gradient(135deg,rgba(44,37,27,.89),rgba(10,10,8,.79)); }
+.theme-kintsugi .weekly-pulse__bonus { border-left-color:rgba(239,193,82,.26); }
+.theme-kintsugi .compliance-score { --compliance-track:rgba(173,119,26,.33); border-color:rgba(222,171,55,.43); background:radial-gradient(circle at 32% 24%,rgba(255,218,124,.17),transparent 48%),rgba(25,21,16,.72); }
+.theme-kintsugi .compliance-score::after { border-color:rgba(224,175,64,.24); background:linear-gradient(145deg,rgba(58,48,33,.92),rgba(13,12,10,.88)); box-shadow:inset 0 1px rgba(255,238,183,.11); }
+.theme-kintsugi .compliance-metric { background:rgba(38,32,24,.72); border-color:rgba(224,177,65,.21); }.theme-kintsugi .compliance-metric--active { border-color:rgba(240,199,94,.45); background:rgba(240,199,94,.12); }.theme-kintsugi .compliance-metric--open { border-color:rgba(215,155,38,.48); background:rgba(215,155,38,.13); }.theme-kintsugi .compliance-metric--failed { border-color:rgba(168,100,22,.48); background:rgba(168,100,22,.13); }.theme-kintsugi .compliance-metric--stolen { border-color:rgba(132,80,22,.48); background:rgba(132,80,22,.15); }.theme-kintsugi .compliance-metric--duplicate { border-color:rgba(217,192,139,.40); background:rgba(217,192,139,.10); }
+.theme-kintsugi .agent-ranking__row { background:rgba(35,30,23,.72); box-shadow:inset 0 1px rgba(255,236,180,.08); }.theme-kintsugi .agent-ranking__row--current { background:linear-gradient(135deg,rgba(193,132,24,.35),rgba(37,28,15,.82)); }.theme-kintsugi .agent-ranking__position { background:rgba(241,205,117,.15); color:#ffe3a3; }.theme-kintsugi .table-wrap { background:rgba(9,9,7,.43); }.theme-kintsugi th { background:rgba(132,88,17,.20); }
+.theme-kintsugi .promise-status--open { color:#ffe1a2; background:rgba(217,170,57,.16); }.theme-kintsugi .promise-status--paid { color:#f3d27b; background:rgba(240,199,94,.15); }.theme-kintsugi .promise-status--failed { color:#d9ad67; background:rgba(168,100,22,.17); }.theme-kintsugi .promise-status--stolen { color:#c98e4c; background:rgba(132,80,22,.18); }.theme-kintsugi .promise-status--duplicate { color:#f0dfba; background:rgba(217,192,139,.14); }
+.theme-kintsugi .chat-panel { background:radial-gradient(circle at 94% 0,rgba(246,198,78,.18),transparent 31%),linear-gradient(145deg,rgba(38,32,24,.97),rgba(8,8,7,.96)); box-shadow:0 22px 46px rgba(0,0,0,.62),inset 0 1px rgba(255,236,178,.12); }.theme-kintsugi .chat-thread { background:rgba(0,0,0,.27); }.theme-kintsugi .chat-message { background:rgba(44,37,27,.89); }.theme-kintsugi .chat-message--own { background:linear-gradient(145deg,rgba(181,123,21,.50),rgba(64,42,11,.83)); }.theme-kintsugi .chat-recipient select,.theme-kintsugi .chat-composer textarea { background:rgba(31,27,21,.91); }.theme-kintsugi .team-chat__feed,.theme-kintsugi .team-chat__composer { background:rgba(0,0,0,.25); }.theme-kintsugi .team-chat__message { background:rgba(44,37,27,.89); }.theme-kintsugi .team-chat__message--own { background:linear-gradient(145deg,rgba(181,123,21,.50),rgba(64,42,11,.83)); }
+.theme-kintsugi .reconnect-card { background:linear-gradient(145deg,rgba(42,35,26,.98),rgba(8,8,7,.96)); box-shadow:0 22px 55px rgba(0,0,0,.64),inset 0 1px rgba(255,235,177,.12); }.theme-kintsugi .field input::placeholder,.theme-kintsugi .lookup-input-row input::placeholder,.theme-kintsugi .lookup-search-input::placeholder,.theme-kintsugi textarea::placeholder { color:#bca77c; opacity:1; }.theme-kintsugi .chat-composer__error,.theme-kintsugi .team-chat__error { color:#f0c75e; }
 .promise-registration__action { grid-column:4; }
 @media (max-width:1120px) { .promise-registration__action { grid-column:2; } }
 @media (max-width:640px) { .promise-registration__action { grid-column:auto; } }
