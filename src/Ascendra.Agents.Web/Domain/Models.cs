@@ -96,8 +96,13 @@ public sealed record PromiseClientLookup(
     string ClientId,
     string ClientName,
     bool Exists,
-    PromiseActiveLock? ActivePromise)
+    PromiseActiveLock? ActivePromise,
+    IReadOnlyList<PromiseContactNumber> ContactNumbers)
 { }
+
+public sealed record PromiseContactNumber(
+    string Number,
+    string Source);
 
 public sealed record PortfolioRecord(
     string ClientId,

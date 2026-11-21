@@ -28,7 +28,7 @@ else
             <div class="field">
                 <label for="promise-client-id">Cliente único</label>
                 <div class="promise-registration__client-input">
-                    <input id="promise-client-id" @bind="ClientId" @bind:event="oninput" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
+                    <input id="promise-client-id" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
                     <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" aria-label="Buscar cliente único" title="Buscar cliente">
                         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
                     </button>
@@ -40,7 +40,17 @@ else
             </div>
             <div class="field">
                 <label for="promise-contact-number">Número contactado</label>
-                <input id="promise-contact-number" @bind="ClientNumber" inputmode="numeric" maxlength="20" placeholder="10 dígitos" />
+                <input id="promise-contact-number" @bind="ClientNumber" list="promise-client-phone-options" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Selecciona o escribe 10 dígitos" aria-describedby="promise-contact-number-help" />
+                @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0)
+                {
+                    <datalist id="promise-client-phone-options">
+                        @foreach (var phone in Lookup.ContactNumbers)
+                        {
+                            <option value="@phone.Number" label="@phone.Source"></option>
+                        }
+                    </datalist>
+                    <span id="promise-contact-number-help" class="field-hint">@Lookup.ContactNumbers.Count número(s) asociado(s) al cliente. También puedes escribir otro.</span>
+                }
             </div>
             <div class="field">
                 <label for="promise-date">Fecha de promesa</label>
@@ -120,9 +130,23 @@ else
 
     private async Task LookupClientAsync()
     {
+        var previousClientId = Lookup?.ClientId;
         Notice = null;
         Saved = false;
         Lookup = await PromiseRegistrations.LookupClientAsync(ClientId);
+        if (!string.Equals(previousClientId, Lookup.ClientId, StringComparison.OrdinalIgnoreCase))
+        {
+            ClientNumber = string.Empty;
+        }
+    }
+
+    private void ClearClientLookupWhenChanged()
+    {
+        if (Lookup is null || string.Equals(Lookup.ClientId, ClientId.Trim(), StringComparison.OrdinalIgnoreCase)) return;
+        Lookup = null;
+        ClientNumber = string.Empty;
+        Notice = null;
+        Saved = false;
     }
 
     private async Task SaveAsync()

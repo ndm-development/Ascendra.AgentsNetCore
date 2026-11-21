@@ -33,12 +33,12 @@ public sealed class PromiseRegistrationService(
         var client = FindClient(normalizedClientId);
         if (client is null)
         {
-            return new PromiseClientLookup(normalizedClientId, string.Empty, false, null);
+            return new PromiseClientLookup(normalizedClientId, string.Empty, false, null, []);
         }
 
         var activePromise = FindLegacyActivePromise(normalizedClientId)
             ?? await FindStoredActivePromiseAsync(normalizedClientId, cancellationToken);
-        return new PromiseClientLookup(normalizedClientId, client.Name, true, activePromise);
+        return new PromiseClientLookup(normalizedClientId, client.Name, true, activePromise, client.ContactNumbers);
     }
 
     public async Task<PromiseRegistrationEntry> RegisterAsync(
@@ -321,16 +321,50 @@ public sealed class PromiseRegistrationService(
     {
         if (string.IsNullOrWhiteSpace(clientId)) return null;
 
-        var matches = _snapshots.Current.Contacts
+        var contacts = _snapshots.Current.Contacts
             .Where(contact => contact.ClientId.Equals(clientId, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (matches.Length == 0) return null;
+        var portfolio = _snapshots.Current.Portfolio
+            .FirstOrDefault(record => record.ClientId.Equals(clientId, StringComparison.OrdinalIgnoreCase));
+        if (contacts.Length == 0 && portfolio is null) return null;
 
-        var name = matches
+        var name = contacts
             .Select(contact => contact.ClientName)
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-            ?.Trim();
-        return new ClientMatch(string.IsNullOrWhiteSpace(name) ? "Nombre no disponible en cartera vigente" : name);
+            ?.Trim() ?? portfolio?.ClientName?.Trim();
+
+        var sourcesByPhone = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        void AddPhone(string? phone, string source)
+        {
+            var normalized = TextNormalization.Phone(phone);
+            if (normalized.Length != 10) return;
+            if (!sourcesByPhone.TryGetValue(normalized, out var sources))
+            {
+                sources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                sourcesByPhone[normalized] = sources;
+            }
+            sources.Add(source);
+        }
+
+        foreach (var phone in portfolio?.Phones ?? []) AddPhone(phone, "Cartera");
+        foreach (var contact in contacts)
+        {
+            var source = string.IsNullOrWhiteSpace(contact.ReferenceName)
+                ? "Cartera"
+                : "Referencia";
+            AddPhone(contact.Phone, source);
+        }
+
+        var contactNumbers = sourcesByPhone
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => new PromiseContactNumber(
+                pair.Key,
+                string.Join(" · ", pair.Value.OrderBy(source => source, StringComparer.OrdinalIgnoreCase))))
+            .ToArray();
+
+        return new ClientMatch(
+            string.IsNullOrWhiteSpace(name) ? "Nombre no disponible en cartera vigente" : name,
+            contactNumbers);
     }
 
     private static string NormalizeClientId(string? value) => (value ?? string.Empty).Trim();
@@ -350,5 +384,7 @@ public sealed class PromiseRegistrationService(
         }
     }
 
-    private sealed record ClientMatch(string Name);
+    private sealed record ClientMatch(
+        string Name,
+        IReadOnlyList<PromiseContactNumber> ContactNumbers);
 }
