@@ -120,6 +120,9 @@ window.ascendraCharts = {
     if (shell?.classList.contains('theme-ambar')) {
       return { ink: '#fff4e5', axis: '#fff4e5', muted: '#e3c7a6', grid: 'rgba(234, 189, 132, .18)', hoverBackground: 'rgba(38, 28, 23, .96)', hoverBorder: 'rgba(255, 206, 144, .45)', hoverInk: '#fff9f0' };
     }
+    if (shell?.classList.contains('theme-kintsugi')) {
+      return { ink: '#2b2119', axis: '#382713', muted: '#6e5b45', grid: 'rgba(139, 91, 8, .22)', hoverBackground: 'rgba(44, 31, 17, .97)', hoverBorder: 'rgba(255, 212, 105, .78)', hoverInk: '#fff8e4' };
+    }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
   dataForTheme: (data, target) => {
@@ -128,34 +131,48 @@ window.ascendraCharts = {
     const isAurora = Boolean(target.closest('.theme-aurora'));
     const isOceano = Boolean(target.closest('.theme-oceano'));
     const isAmbar = Boolean(target.closest('.theme-ambar'));
-    const palette = isAmbar ? {
-      status: { Vigentes: '#dca45d', Activas: '#d1a264', Incumplidas: '#c8776b', Robadas: '#e1b360', Duplicadas: '#b796c8' },
+    const isKintsugi = Boolean(target.closest('.theme-kintsugi'));
+    const palette = isKintsugi ? {
+      status: { 'Esperando pago': '#d99a14', Pagada: '#328a72', 'No pagó': '#c65b58', Robada: '#b96f19', Duplicada: '#7560a8' },
+      recovery: { '#1f9b72': '#328a72', '#c38d25': '#d99a14', '#c74857': '#c65b58', 'rgba(124,145,169,.48)': 'rgba(132, 101, 52, .43)' },
+      line: 'rgba(255, 247, 219, .92)',
+      externalText: '#2b2119',
+      heatmap: [[0, '#fff8e6'], [.28, '#f6da8a'], [.57, '#e0ad36'], [.78, '#b8730c'], [1, '#704311']]
+    } : isAmbar ? {
+      status: { 'Esperando pago': '#dca45d', Pagada: '#d1a264', 'No pagó': '#c8776b', Robada: '#e1b360', Duplicada: '#b796c8' },
       recovery: { '#1f9b72': '#d1a264', '#c38d25': '#e1b360', '#c74857': '#c8776b', 'rgba(124,145,169,.48)': 'rgba(185, 139, 105, .43)' },
       line: 'rgba(255, 239, 214, .68)',
       externalText: '#fff3e2'
     } : isSierra ? {
-      status: { Vigentes: '#6d9ed4', Activas: '#67ad8d', Incumplidas: '#b97878', Robadas: '#d2a449', Duplicadas: '#9981be' },
+      status: { 'Esperando pago': '#6d9ed4', Pagada: '#67ad8d', 'No pagó': '#b97878', Robada: '#d2a449', Duplicada: '#9981be' },
       recovery: { '#1f9b72': '#67ad8d', '#c38d25': '#d2a449', '#c74857': '#b97878', 'rgba(124,145,169,.48)': 'rgba(119, 143, 132, .46)' },
       line: 'rgba(255,250,239,.70)',
       externalText: '#20362f'
     } : isPink ? {
-      status: { Vigentes: '#99bbed', Activas: '#8ecba7', Incumplidas: '#ae90dc', Robadas: '#e2bd47', Duplicadas: '#9c86cf' },
+      status: { 'Esperando pago': '#99bbed', Pagada: '#8ecba7', 'No pagó': '#ae90dc', Robada: '#e2bd47', Duplicada: '#9c86cf' },
       recovery: { '#1f9b72': '#8ecba7', '#c38d25': '#e2bd47', '#c74857': '#ae90dc', 'rgba(124,145,169,.48)': 'rgba(161, 151, 180, .45)' },
       line: 'rgba(255,255,255,.72)',
       externalText: '#281735'
     } : isAurora ? {
-      status: { Vigentes: '#7bbdf4', Activas: '#65d9c1', Incumplidas: '#bf8bd7', Robadas: '#9e97e5', Duplicadas: '#89a5e2' },
+      status: { 'Esperando pago': '#7bbdf4', Pagada: '#65d9c1', 'No pagó': '#bf8bd7', Robada: '#9e97e5', Duplicada: '#89a5e2' },
       recovery: { '#1f9b72': '#65d9c1', '#c38d25': '#8da8f5', '#c74857': '#bf8bd7', 'rgba(124,145,169,.48)': 'rgba(130, 160, 198, .42)' },
       line: 'rgba(218,253,252,.64)',
       externalText: '#effdff'
     } : isOceano ? {
-      status: { Vigentes: '#62bddd', Activas: '#55c9b7', Incumplidas: '#6b93c5', Robadas: '#78a8d1', Duplicadas: '#789dd4' },
+      status: { 'Esperando pago': '#62bddd', Pagada: '#55c9b7', 'No pagó': '#6b93c5', Robada: '#78a8d1', Duplicada: '#789dd4' },
       recovery: { '#1f9b72': '#55c9b7', '#c38d25': '#4fa6cf', '#c74857': '#678bc3', 'rgba(124,145,169,.48)': 'rgba(120, 176, 195, .38)' },
       line: 'rgba(220,253,255,.62)',
       externalText: '#f0fdff'
     } : null;
     if (!palette) return data;
     return data.map(trace => {
+      if (trace?.type === 'heatmap' && palette.heatmap) {
+        return {
+          ...trace,
+          colorscale: palette.heatmap,
+          colorbar: { ...(trace.colorbar || {}), tickfont: { ...((trace.colorbar || {}).tickfont || {}), color: palette.externalText } }
+        };
+      }
       if (trace?.type !== 'bar' || !trace.marker) return trace;
       const statusColor = palette.status[trace.name];
       const color = statusColor

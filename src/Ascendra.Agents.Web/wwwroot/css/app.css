@@ -146,23 +146,24 @@ button { cursor: pointer; }
   --table-row: rgba(63, 45, 34, .23);
 }
 
-/* Kintsugi: laca profunda, cerámica cálida y un acento de oro. El fondo
-   conserva los destellos de la pieza sin restar legibilidad al trabajo diario. */
+/* Kintsugi: cerámica luminosa, laca profunda y un oro vivo. El fondo conserva
+   los destellos de la pieza y las superficies claras evitan que se confunda
+   con Ámbar. */
 .theme-kintsugi {
   --background-image: var(--ascendra-kintsugi-background, url("/assets/kintsugi.jpg"));
-  --background-wash: radial-gradient(circle at 78% 14%, rgba(245, 188, 42, .18), transparent 24%), radial-gradient(circle at 16% 82%, rgba(182, 122, 27, .11), transparent 28%), linear-gradient(125deg, rgba(6, 6, 8, .59), rgba(30, 22, 18, .24) 52%, rgba(7, 7, 9, .58));
-  --ink: #fff6df;
-  --ink-muted: #ddcdaa;
-  --accent: #dba52c;
-  --accent-strong: #ffe093;
-  --accent-soft: rgba(219, 165, 44, .23);
-  --glass-top: rgba(49, 41, 35, .78);
-  --glass-bottom: rgba(22, 19, 18, .68);
-  --glass-control: rgba(55, 46, 38, .80);
-  --glass-border: rgba(255, 220, 137, .30);
-  --line: rgba(239, 202, 122, .25);
-  --shadow: 0 26px 58px rgba(0, 0, 0, .49), 0 3px 10px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 241, 203, .12);
-  --table-row: rgba(53, 43, 33, .31);
+  --background-wash: radial-gradient(circle at 79% 13%, rgba(255, 215, 103, .34), transparent 23%), radial-gradient(circle at 15% 84%, rgba(230, 167, 35, .20), transparent 29%), linear-gradient(125deg, rgba(11, 9, 8, .36), rgba(105, 71, 17, .08) 52%, rgba(8, 7, 7, .42));
+  --ink: #2b2119;
+  --ink-muted: #6e5b45;
+  --accent: #ca8b09;
+  --accent-strong: #875700;
+  --accent-soft: rgba(230, 174, 43, .30);
+  --glass-top: rgba(255, 251, 239, .88);
+  --glass-bottom: rgba(246, 230, 189, .74);
+  --glass-control: rgba(255, 246, 221, .88);
+  --glass-border: rgba(255, 237, 181, .81);
+  --line: rgba(122, 82, 17, .26);
+  --shadow: 0 22px 54px rgba(8, 7, 6, .42), 0 3px 10px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(255, 255, 248, .86);
+  --table-row: rgba(247, 220, 158, .30);
 }
 
 .app-shell, .login-shell {
@@ -186,7 +187,7 @@ button { cursor: pointer; }
 .theme-aurora::before { background: radial-gradient(circle at 82% 10%, rgba(119, 232, 208, .18), transparent 27%), radial-gradient(circle at 12% 88%, rgba(128, 137, 255, .16), transparent 27%); }
 .theme-oceano::before { background: radial-gradient(circle at 86% 8%, rgba(102, 226, 224, .15), transparent 26%), radial-gradient(circle at 16% 92%, rgba(58, 129, 191, .15), transparent 25%); }
 .theme-ambar::before { background: radial-gradient(circle at 86% 9%, rgba(225, 164, 81, .15), transparent 27%), radial-gradient(circle at 15% 90%, rgba(156, 76, 47, .12), transparent 25%); }
-.theme-kintsugi::before { background: radial-gradient(circle at 84% 10%, rgba(255, 203, 66, .18), transparent 25%), radial-gradient(circle at 12% 88%, rgba(193, 132, 35, .13), transparent 24%); }
+.theme-kintsugi::before { background: radial-gradient(circle at 84% 10%, rgba(255, 220, 116, .31), transparent 24%), radial-gradient(circle at 12% 88%, rgba(231, 174, 43, .20), transparent 23%); }
 
 /* Superficies de interacción: Claro, Pink y Sierra se tiñen con el propio
    tema. Evitamos blancos planos en controles sin restar contraste al texto. */
@@ -743,6 +744,28 @@ th, td { padding: 10px 12px; }
 @media (max-width: 1120px) { .lookup-shell,.whatsapp-hero { grid-template-columns:1fr; }.lookup-controls { grid-template-columns:minmax(160px,.7fr) minmax(0,1.3fr) auto auto; } }
 .promise-registration__client-input { display:flex; align-items:center; gap:7px; }.promise-registration__client-input input { flex:1 1 auto; width:auto; min-width:0; }.promise-registration__client-search { display:grid; flex:0 0 43px; width:43px; height:43px; place-items:center; padding:0; border:1px solid color-mix(in srgb,var(--accent) 44%,var(--line)); border-radius:12px; color:var(--accent-strong); background:color-mix(in srgb,var(--accent-soft) 44%,var(--glass-control)); box-shadow:inset 0 1px rgba(255,255,255,.52); cursor:pointer; transition:transform .18s ease,border-color .18s ease,background .18s ease; }.promise-registration__client-search:hover { border-color:var(--accent); background:color-mix(in srgb,var(--accent-soft) 68%,var(--glass-control)); transform:translateY(-1px); }.promise-registration__client-search:focus-visible { outline:0; border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent),inset 0 1px rgba(255,255,255,.52); }.promise-registration__client-search svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; }
 .field-hint { display:block; margin-top:5px; color:var(--ink-muted); font-size:11px; font-weight:580; line-height:1.35; }
+
+/* Kintsugi se separa de Ámbar con porcelana luminosa, un dorado más limpio y
+   puntos de luz que siguen presentes en tarjetas, acciones y métricas. */
+.theme-kintsugi .appearance-trigger__glow { background:linear-gradient(135deg,#fff0a7,#d49308 58%,#714100); box-shadow:0 0 0 4px rgba(230,174,43,.18),0 0 15px rgba(235,182,53,.22); }
+.theme-kintsugi .appearance-menu { background:linear-gradient(145deg,rgba(255,252,242,.98),rgba(244,224,174,.96)); box-shadow:0 20px 44px rgba(8,7,5,.36),inset 0 1px rgba(255,255,255,.94); }
+.theme-kintsugi .appearance-option { background:linear-gradient(145deg,rgba(255,251,238,.86),rgba(248,229,185,.70)); box-shadow:inset 0 1px rgba(255,255,255,.84); }
+.theme-kintsugi .appearance-option:hover,.theme-kintsugi .appearance-option--selected { background:linear-gradient(135deg,rgba(255,244,198,.92),rgba(244,208,117,.62)); }
+.theme-kintsugi select option { background:#fff7df; color:#2b2119; }
+.theme-kintsugi .brand-logo-frame { background:linear-gradient(145deg,rgba(255,255,252,.96),rgba(251,224,157,.82)); border-color:rgba(255,238,183,.94); box-shadow:0 12px 26px rgba(20,13,5,.20),inset 0 1px rgba(255,255,255,.96); }
+.theme-kintsugi .primary-button { border-color:rgba(255,229,139,.88); background:linear-gradient(135deg,#f3c94d,#ce8b08 55%,#995600); color:#fffdf4; box-shadow:0 12px 25px rgba(87,49,0,.31),inset 0 1px rgba(255,249,213,.52); }
+.theme-kintsugi .secondary-button { color:#744900; border-color:rgba(192,128,6,.45); background:rgba(255,247,219,.79); }
+.theme-kintsugi .progress-track { background:rgba(144,98,20,.15); box-shadow:inset 0 1px 2px rgba(92,54,5,.13); }
+.theme-kintsugi .progress-track span { background:linear-gradient(90deg,#a96500,#e4aa1d 52%,#ffe390); box-shadow:0 0 10px rgba(225,168,34,.28); }
+.theme-kintsugi .metric-card--positive::after { background:#328a72; }.theme-kintsugi .metric-card--warning::after { background:#d99a14; }.theme-kintsugi .metric-card--danger::after { background:#c65b58; }.theme-kintsugi .metric-card--stolen::after { background:#b96f19; }.theme-kintsugi .metric-card--duplicate::after { background:#7560a8; }
+.theme-kintsugi .weekly-pulse,.theme-kintsugi .compliance-summary { background:radial-gradient(circle at 94% 0,rgba(255,213,103,.53),transparent 30%),linear-gradient(135deg,rgba(255,253,243,.88),rgba(246,224,168,.67)); }
+.theme-kintsugi .weekly-pulse__bonus { border-left-color:rgba(151,101,14,.24); }
+.theme-kintsugi .compliance-score { --compliance-track:rgba(139,91,8,.16); border-color:rgba(193,128,6,.38); background:radial-gradient(circle at 32% 24%,rgba(255,235,166,.74),transparent 48%),rgba(255,247,220,.67); }
+.theme-kintsugi .compliance-score::after { border-color:rgba(187,121,5,.23); background:linear-gradient(145deg,rgba(255,252,241,.94),rgba(248,226,175,.68)); box-shadow:inset 0 1px rgba(255,255,255,.90); }
+.theme-kintsugi .compliance-metric { background:rgba(255,249,229,.66); border-color:rgba(137,89,9,.20); }.theme-kintsugi .compliance-metric--active { border-color:rgba(50,138,114,.42); background:rgba(50,138,114,.12); }.theme-kintsugi .compliance-metric--open { border-color:rgba(217,154,20,.47); background:rgba(217,154,20,.14); }.theme-kintsugi .compliance-metric--failed { border-color:rgba(198,91,88,.40); background:rgba(198,91,88,.12); }.theme-kintsugi .compliance-metric--stolen { border-color:rgba(185,111,25,.44); background:rgba(185,111,25,.14); }.theme-kintsugi .compliance-metric--duplicate { border-color:rgba(117,96,168,.39); background:rgba(117,96,168,.11); }
+.theme-kintsugi .agent-ranking__row { background:rgba(255,249,229,.52); box-shadow:inset 0 1px rgba(255,255,255,.76); }.theme-kintsugi .agent-ranking__row--current { background:linear-gradient(135deg,rgba(255,229,151,.76),rgba(246,211,119,.43)); }.theme-kintsugi .table-wrap { background:rgba(255,249,229,.27); }.theme-kintsugi th { background:rgba(252,229,169,.35); }
+.theme-kintsugi .chat-panel { background:radial-gradient(circle at 94% 0,rgba(255,213,103,.52),transparent 30%),linear-gradient(145deg,rgba(255,253,244,.98),rgba(247,228,180,.94)); box-shadow:0 22px 46px rgba(8,7,5,.40),inset 0 1px rgba(255,255,255,.94); }.theme-kintsugi .chat-thread { background:rgba(142,97,20,.10); }.theme-kintsugi .chat-message { background:rgba(255,251,239,.84); }.theme-kintsugi .chat-message--own { background:linear-gradient(145deg,rgba(255,234,165,.92),rgba(247,211,111,.72)); }.theme-kintsugi .chat-recipient select,.theme-kintsugi .chat-composer textarea { background:rgba(255,249,229,.88); }
+.theme-kintsugi .reconnect-card { background:linear-gradient(145deg,rgba(255,253,244,.97),rgba(247,227,178,.93)); box-shadow:0 22px 55px rgba(10,7,4,.35),inset 0 1px rgba(255,255,255,.92); }.theme-kintsugi .field input::placeholder,.theme-kintsugi .lookup-input-row input::placeholder,.theme-kintsugi .lookup-search-input::placeholder,.theme-kintsugi textarea::placeholder { color:#86745e; opacity:1; }
 .promise-registration__action { grid-column:4; }
 @media (max-width:1120px) { .promise-registration__action { grid-column:2; } }
 @media (max-width:640px) { .promise-registration__action { grid-column:auto; } }
