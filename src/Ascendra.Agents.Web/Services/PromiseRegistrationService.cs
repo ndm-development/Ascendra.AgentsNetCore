@@ -69,9 +69,9 @@ public sealed class PromiseRegistrationService(
         {
             throw new InvalidOperationException("Captura montos válidos iguales o mayores a cero.");
         }
-        if (numberOfWeeks is < 1 or > 255)
+        if (numberOfWeeks is < 0 or > 255)
         {
-            throw new InvalidOperationException("El número de semanas debe estar entre 1 y 255.");
+            throw new InvalidOperationException("El número de semanas debe estar entre 0 y 255.");
         }
 
         var normalizedType = AvailablePromiseTypes.FirstOrDefault(type =>

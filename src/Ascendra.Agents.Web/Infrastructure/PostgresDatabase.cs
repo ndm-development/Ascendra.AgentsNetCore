@@ -197,7 +197,7 @@ public sealed class PostgresDatabase(
             usu_alta varchar(20) NULL,
             origen varchar(20) NOT NULL DEFAULT 'Ascendra',
             id_promesa_origen varchar(100) NULL,
-            CONSTRAINT ck_promesas_numero_semanas CHECK (numero_semanas BETWEEN 1 AND 255),
+            CONSTRAINT ck_promesas_numero_semanas CHECK (numero_semanas BETWEEN 0 AND 255),
             CONSTRAINT ck_promesas_montos CHECK (
                 (monto_inicial IS NULL OR monto_inicial >= 0)
                 AND (monto_semanal IS NULL OR monto_semanal >= 0))
@@ -207,6 +207,9 @@ public sealed class PostgresDatabase(
         ALTER TABLE promesas ALTER COLUMN agente DROP NOT NULL;
         ALTER TABLE promesas ALTER COLUMN tipo_promesa DROP NOT NULL;
         ALTER TABLE promesas ALTER COLUMN usu_alta DROP NOT NULL;
+        ALTER TABLE promesas DROP CONSTRAINT IF EXISTS ck_promesas_numero_semanas;
+        ALTER TABLE promesas ADD CONSTRAINT ck_promesas_numero_semanas
+            CHECK (numero_semanas BETWEEN 0 AND 255);
         CREATE INDEX IF NOT EXISTS ix_promesas_cliente_fecha ON promesas (cliente_unico, fecha_promesa DESC);
         CREATE INDEX IF NOT EXISTS ix_promesas_agente_creacion ON promesas (usu_alta, fecha_creacion DESC);
         CREATE UNIQUE INDEX IF NOT EXISTS ux_promesas_origen_externo
