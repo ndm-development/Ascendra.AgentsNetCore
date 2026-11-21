@@ -40,7 +40,7 @@ else
             </div>
             <div class="field">
                 <label for="promise-contact-number">Número contactado</label>
-                <input id="promise-contact-number" @bind="ClientNumber" list="promise-client-phone-options" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Selecciona o escribe 10 dígitos" aria-describedby="promise-contact-number-help" />
+                <input id="promise-contact-number" @bind="ClientNumber" list="promise-client-phone-options" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Selecciona o escribe 10 dígitos" />
                 @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0)
                 {
                     <datalist id="promise-client-phone-options">
@@ -49,7 +49,6 @@ else
                             <option value="@phone.Number" label="@phone.Source"></option>
                         }
                     </datalist>
-                    <span id="promise-contact-number-help" class="field-hint">@Lookup.ContactNumbers.Count número(s) asociado(s) al cliente. También puedes escribir otro.</span>
                 }
             </div>
             <div class="field">
