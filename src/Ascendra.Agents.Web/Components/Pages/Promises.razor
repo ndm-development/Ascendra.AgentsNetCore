@@ -58,7 +58,7 @@ else if (Session.HasFullAccess && RegisteredPromises.Count > 0)
                 <h2>Promesas pendientes del equipo</h2>
                 <p>Ya se muestran a los agentes como Esperando pago. Descárgalas para incluirlas en el siguiente cruce.</p>
             </div>
-            <div class="collection-export-actions"><span class="registered-promises__count">@RegisteredPromises.Count registros</span><a class="secondary-button collection-export-button" href="/exports/team/promise-registrations" download title="Descargar promesas registradas para el cruce"><span aria-hidden="true">↓</span> Descargar para cruce</a></div>
+            <div class="collection-export-actions"><span class="registered-promises__count">@RegisteredPromises.Count registros</span><a class="secondary-button collection-export-button" href="/exports/team/promises-source" download title="Descargar la fuente completa de promesas para el cruce"><span aria-hidden="true">↓</span> Descargar fuente para cruce</a></div>
         </div>
         <div class="table-wrap"><table><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Nombre</th><th>Número contactado</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Semanas</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
             @foreach (var row in RegisteredPromises)

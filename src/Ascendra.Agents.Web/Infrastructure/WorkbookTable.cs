@@ -63,7 +63,27 @@ internal sealed class WorkbookRow(IReadOnlyDictionary<string, object?> values)
         return null;
     }
 
+    /// <summary>
+    /// Lee una fecha con hora cuando la fuente la conserva. Se usa para los
+    /// registros históricos, cuyo instante de creación es relevante para el
+    /// orden de los cruces.
+    /// </summary>
+    public DateTime? Timestamp(params string[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (!values.TryGetValue(TextNormalization.Header(candidate), out var value) || value is null) continue;
+            if (value is DateTime dateTime) return dateTime;
+            if (DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), new CultureInfo("es-MX"), DateTimeStyles.AllowWhiteSpaces, out var parsed))
+                return parsed;
+        }
+        return null;
+    }
+
     public decimal Decimal(params string[] candidates)
+        => OptionalDecimal(candidates) ?? 0m;
+
+    public decimal? OptionalDecimal(params string[] candidates)
     {
         foreach (var candidate in candidates)
         {
@@ -71,11 +91,12 @@ internal sealed class WorkbookRow(IReadOnlyDictionary<string, object?> values)
             if (value is decimal number) return number;
             if (value is double doubleNumber) return Convert.ToDecimal(doubleNumber);
             var text = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(text)) continue;
             text = text.Replace("$", string.Empty).Replace(",", string.Empty);
             if (decimal.TryParse(text, NumberStyles.Number | NumberStyles.AllowCurrencySymbol, CultureInfo.InvariantCulture, out var parsed)) return parsed;
             if (decimal.TryParse(text, NumberStyles.Number | NumberStyles.AllowCurrencySymbol, new CultureInfo("es-MX"), out parsed)) return parsed;
         }
-        return 0m;
+        return null;
     }
 
     public int? Integer(params string[] candidates)

@@ -67,6 +67,26 @@ public sealed record PromiseRegistrationEntry(
     DateTimeOffset CreatedAt,
     string CreatedByAgentId);
 
+/// <summary>
+/// Fila de la fuente que consume el cruce externo. Las promesas históricas
+/// conservan su IdPromesa original; las nuevas usan un identificador visible
+/// de Ascendra más el rastreo técnico para poder regresar al corte sin
+/// duplicarse en la aplicación.
+/// </summary>
+public sealed record PromiseCrossSourceEntry(
+    string PromiseId,
+    int? AscendraRegistrationId,
+    string ClientId,
+    string ClientNumber,
+    string AgentName,
+    string? AgentId,
+    DateOnly PromiseDate,
+    decimal? InitialAmount,
+    decimal? WeeklyAmount,
+    string? PromiseType,
+    int NumberOfWeeks,
+    DateTimeOffset CreatedAt);
+
 public sealed record PromiseActiveLock(
     string PromiseId,
     DateOnly PromiseDate,

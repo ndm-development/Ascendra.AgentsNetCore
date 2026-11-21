@@ -17,6 +17,13 @@ public static class OperationalClock
     public static DateOnly Date(DateTimeOffset instant) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, MexicoCityTimeZone).DateTime);
 
+    /// <summary>Interpreta una fecha sin zona de las fuentes operativas como hora de Ciudad de México.</summary>
+    public static DateTimeOffset FromMexicoCityLocal(DateTime value)
+    {
+        var local = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, MexicoCityTimeZone.GetUtcOffset(local));
+    }
+
     private static TimeZoneInfo ResolveMexicoCityTimeZone()
     {
         try

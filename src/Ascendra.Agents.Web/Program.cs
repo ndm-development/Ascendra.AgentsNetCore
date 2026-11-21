@@ -89,6 +89,7 @@ builder.Services.AddHostedService(provider => provider.GetRequiredService<Postgr
 builder.Services.AddSingleton<EphemeralChatService>();
 builder.Services.AddSingleton<CallDispositionService>();
 builder.Services.AddSingleton<PromiseRegistrationService>();
+builder.Services.AddHostedService<HistoricalPromiseImportService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<EphemeralChatService>());
 builder.Services.AddHostedService(provider => provider.GetRequiredService<CallDispositionService>());
 
@@ -338,6 +339,23 @@ app.MapGet("/exports/team/promise-registrations", async (
     var pending = await registrations.GetPendingForTeamAsync(cancellationToken);
     var content = exports.PendingPromiseRegistrations(pending);
     return Results.File(content, ExcelExportService.ExcelContentType, "promesas_ascendra_pendientes.xlsx");
+}).RequireAuthorization();
+
+// Fuente única para el proceso de cruce: histórico migrado más promesas
+// creadas en Ascendra. No contiene estatus porque el notebook los calcula.
+app.MapGet("/exports/team/promises-source", async (
+    HttpContext context,
+    DashboardSession session,
+    PromiseRegistrationService registrations,
+    ExcelExportService exports,
+    CancellationToken cancellationToken) =>
+{
+    session.Apply(context.User);
+    if (!session.HasFullAccess) return Results.Forbid();
+
+    var source = await registrations.GetCrossSourceAsync(cancellationToken);
+    var content = exports.PromiseCrossSource(source);
+    return Results.File(content, ExcelExportService.ExcelContentType, "promesas_ascendra_para_cruce.xlsx");
 }).RequireAuthorization();
 
 // Este consolidado contiene gestiones de todos los clientes; por ello la

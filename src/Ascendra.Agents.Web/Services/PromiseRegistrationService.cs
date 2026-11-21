@@ -157,11 +157,50 @@ public sealed class PromiseRegistrationService(
         string? agentId,
         CancellationToken cancellationToken = default) =>
         FilterReconciled(await GetEntriesAsync(
-            "WHERE usu_alta = @agentId", "agentId", NormalizeRequired(agentId, "Sin ID"), cancellationToken));
+            "WHERE origen = 'Ascendra' AND usu_alta = @agentId", "agentId", NormalizeRequired(agentId, "Sin ID"), cancellationToken));
 
     public async Task<IReadOnlyList<PromiseRegistrationEntry>> GetPendingForTeamAsync(
         CancellationToken cancellationToken = default) =>
-        FilterReconciled(await GetEntriesAsync(string.Empty, null, null, cancellationToken));
+        FilterReconciled(await GetEntriesAsync("WHERE origen = 'Ascendra'", null, null, cancellationToken));
+
+    public async Task<IReadOnlyList<PromiseCrossSourceEntry>> GetCrossSourceAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var entries = new List<PromiseCrossSourceEntry>();
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT id_promesa, id_promesa_origen, origen, cliente_unico,
+                   numero_cliente, agente, usu_alta, fecha_promesa,
+                   monto_inicial, monto_semanal, tipo_promesa, numero_semanas,
+                   fecha_creacion
+            FROM promesas
+            ORDER BY fecha_creacion, id_promesa;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var registrationId = reader.GetInt32(0);
+            var origin = reader.IsDBNull(2) ? "Ascendra" : reader.GetString(2);
+            var historicalId = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var isAscendra = origin.Equals("Ascendra", StringComparison.OrdinalIgnoreCase);
+            entries.Add(new PromiseCrossSourceEntry(
+                !isAscendra && !string.IsNullOrWhiteSpace(historicalId)
+                    ? historicalId
+                    : $"ASC-{registrationId:D6}",
+                isAscendra ? registrationId : null,
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.GetFieldValue<DateOnly>(7),
+                reader.IsDBNull(8) ? null : reader.GetDecimal(8),
+                reader.IsDBNull(9) ? null : reader.GetDecimal(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.GetInt16(11),
+                reader.GetFieldValue<DateTimeOffset>(12)));
+        }
+        return entries;
+    }
 
     private async Task<IReadOnlyList<PromiseRegistrationEntry>> GetEntriesAsync(
         string whereClause,
@@ -223,7 +262,7 @@ public sealed class PromiseRegistrationService(
         await using var command = new NpgsqlCommand("""
             SELECT id_promesa, fecha_promesa
             FROM promesas
-            WHERE cliente_unico = @clientId AND fecha_promesa >= @today
+            WHERE origen = 'Ascendra' AND cliente_unico = @clientId AND fecha_promesa >= @today
             ORDER BY fecha_promesa ASC, id_promesa ASC
             LIMIT 1;
             """, connection, transaction);

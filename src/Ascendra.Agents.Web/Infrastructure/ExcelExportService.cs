@@ -64,6 +64,29 @@ public sealed class ExcelExportService
         return Create("Promesas Ascendra", headers, rows, moneyColumns: new HashSet<int> { 8, 9 });
     }
 
+    /// <summary>
+    /// Fuente completa que sustituye la consulta a la base anterior. La
+    /// columna IdPromesa_Ascendra sólo identifica registros creados en la
+    /// aplicación y debe conservarse hasta el archivo de estatus final.
+    /// </summary>
+    public byte[] PromiseCrossSource(IReadOnlyList<PromiseCrossSourceEntry> promises)
+    {
+        var headers = new[]
+        {
+            "IdPromesa", "IdPromesa_Ascendra", "Cliente_Unico", "Numero_Cliente",
+            "Agente", "Agente_ID", "Fecha_Promesa", "Monto_Inicial",
+            "Monto_Semanal", "Tipo_Promesa", "Numero_Semanas", "Fecha_Creacion",
+        };
+        var rows = promises.Select(promise => new object?[]
+        {
+            promise.PromiseId, promise.AscendraRegistrationId, promise.ClientId,
+            promise.ClientNumber, promise.AgentName, promise.AgentId,
+            promise.PromiseDate, promise.InitialAmount, promise.WeeklyAmount,
+            promise.PromiseType, promise.NumberOfWeeks, promise.CreatedAt,
+        });
+        return Create("Promesas para cruce", headers, rows, moneyColumns: new HashSet<int> { 8, 9 });
+    }
+
     public byte[] Coding(IReadOnlyList<ClientDispositionSummary> summaries)
     {
         var headers = new[]
