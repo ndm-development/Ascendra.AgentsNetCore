@@ -137,11 +137,17 @@ if (operationalAssets is not null)
 }
 app.UseStaticFiles(new StaticFileOptions
 {
-    // CSS, JavaScript y la infraestructura Blazor se revalidan en cada carga.
-    // Las URLs propias también llevan versión, por lo que este ajuste es una
-    // segunda defensa cuando se despliega una corrección urgente.
+    // Los CSS y JavaScript propios llevan versión en su URL. El navegador puede
+    // reutilizarlos durante un año y recibe automáticamente una versión nueva
+    // cuando se despliega un cambio. El resto conserva revalidación prudente.
     OnPrepareResponse = context =>
-        context.Context.Response.Headers.CacheControl = "no-cache, max-age=0, must-revalidate",
+    {
+        var path = context.Context.Request.Path;
+        context.Context.Response.Headers.CacheControl =
+            path.StartsWithSegments("/css") || path.StartsWithSegments("/js")
+                ? "public, max-age=31536000, immutable"
+                : "no-cache, max-age=0, must-revalidate";
+    },
 });
 app.UseAuthentication();
 app.UseAuthorization();

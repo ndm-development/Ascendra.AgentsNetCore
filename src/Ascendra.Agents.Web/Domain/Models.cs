@@ -195,6 +195,43 @@ public sealed record AgentDataSnapshot(
     IReadOnlyList<AgentDirectoryRecord> AgentDirectory,
     IReadOnlyList<string> Warnings)
 {
+    // Los índices se crean una sola vez al cargar el corte. Evitan recorrer
+    // decenas de miles de contactos cada vez que un agente consulta, registra
+    // una promesa o tipifica una llamada.
+    public IReadOnlyDictionary<string, PortfolioRecord> PortfolioByClientId { get; } = Portfolio
+        .GroupBy(record => record.ClientId, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, IReadOnlyList<ContactRecord>> ContactsByClientId { get; } = Contacts
+        .GroupBy(record => record.ClientId, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => (IReadOnlyList<ContactRecord>)group.ToArray(), StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, IReadOnlyList<ContactRecord>> ContactsByPhone { get; } = Contacts
+        .GroupBy(record => record.Phone, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => (IReadOnlyList<ContactRecord>)group.ToArray(), StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, IReadOnlyList<PromiseRecord>> PromisesByClientId { get; } = Promises
+        .Where(record => !string.IsNullOrWhiteSpace(record.ClientId))
+        .GroupBy(record => record.ClientId, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => (IReadOnlyList<PromiseRecord>)group.ToArray(), StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, PromiseRecord> LatestPromiseByClientId { get; } = Promises
+        .Where(record => !string.IsNullOrWhiteSpace(record.ClientId))
+        .GroupBy(record => record.ClientId, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(
+            group => group.Key,
+            group => group
+                .OrderByDescending(record => record.CreatedOn ?? DateOnly.MinValue)
+                .ThenByDescending(record => record.PromiseDate ?? DateOnly.MinValue)
+                .ThenByDescending(record => record.Id, StringComparer.OrdinalIgnoreCase)
+                .First(),
+            StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlySet<int> AscendraRegistrationIds { get; } = Promises
+        .Where(record => record.AscendraRegistrationId is not null)
+        .Select(record => record.AscendraRegistrationId!.Value)
+        .ToHashSet();
+
     public static AgentDataSnapshot Empty { get; } = new(
         "pending",
         DateTimeOffset.MinValue,

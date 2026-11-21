@@ -25,38 +25,54 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         ("Legendario", 200_000m, 15_800m),
     ];
 
+    // El servicio vive durante la sesión del usuario. Conservamos los alcances
+    // ya calculados mientras el corte no cambie para no volver a recorrer todos
+    // los pagos y promesas al actualizar un filtro o una gráfica.
+    private string? _cachedSnapshotVersion;
+    private string? _scopeCacheKey;
+    private ScopedOperations? _scopeCache;
+    private string? _teamScopeCacheKey;
+    private ScopedOperations? _teamScopeCache;
+    private readonly Dictionary<(int Week, int TopCount), IReadOnlyList<WeeklyAgentRecoveryRank>> _rankingCache = [];
+
     public AgentDataSnapshot Snapshot => snapshots.Current;
 
     public ScopedOperations Scope()
     {
+        var snapshot = Snapshot;
+        EnsureSnapshotCaches(snapshot.Version);
         var user = session.User;
         if (user is null) return new ScopedOperations([], [], [], []);
 
-        bool Owns(string sourceAgent, string sourceId) =>
-            (!string.IsNullOrWhiteSpace(sourceId) && sourceId == user.Id)
-            || (string.IsNullOrWhiteSpace(sourceId) && MatchesAgentAlias(sourceAgent, user));
+        var cacheKey = $"{user.Id}\u001f{user.Username}\u001f{user.DisplayName}";
+        if (_scopeCache is not null && string.Equals(_scopeCacheKey, cacheKey, StringComparison.Ordinal))
+        {
+            return _scopeCache;
+        }
 
-        var payments = Snapshot.Payments.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
-        var promises = Snapshot.Promises.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
-        var allowedClients = payments.Select(x => x.ClientId).Concat(promises.Select(x => x.ClientId))
-            .Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return BuildScope(payments, promises, Snapshot.Portfolio.Where(x => allowedClients.Contains(x.ClientId)).ToArray());
-    }
-
-    /// <summary>
-    /// Algunos cortes históricos no contienen Agente_ID. En ese caso se usa el
-    /// nombre visible y, si éste contiene el apellido materno, también el
-    /// nombre operativo de agentes_activos.xlsx asociado al mismo ID.
-    /// </summary>
-    private bool MatchesAgentAlias(string sourceAgent, AgentUser user)
-    {
-        if (TextNormalization.AgentNameMatches(sourceAgent, user.DisplayName)) return true;
-
-        return Snapshot.AgentDirectory
+        var aliases = snapshot.AgentDirectory
             .Where(directory => TextNormalization.AgentId(directory.Id)
                 .Equals(user.Id, StringComparison.OrdinalIgnoreCase))
             .Select(directory => $"{directory.FirstName} {directory.PaternalSurname}".Trim())
-            .Any(alias => TextNormalization.AgentNameMatches(sourceAgent, alias));
+            .Where(alias => !string.IsNullOrWhiteSpace(alias))
+            .ToArray();
+
+        bool Owns(string sourceAgent, string sourceId) =>
+            (!string.IsNullOrWhiteSpace(sourceId) && sourceId == user.Id)
+            || (string.IsNullOrWhiteSpace(sourceId)
+                && (TextNormalization.AgentNameMatches(sourceAgent, user.DisplayName)
+                    || aliases.Any(alias => TextNormalization.AgentNameMatches(sourceAgent, alias))));
+
+        var payments = snapshot.Payments.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
+        var promises = snapshot.Promises.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
+        var allowedClients = payments.Select(x => x.ClientId).Concat(promises.Select(x => x.ClientId))
+            .Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var portfolio = allowedClients
+            .Select(clientId => snapshot.PortfolioByClientId.TryGetValue(clientId, out var record) ? record : null)
+            .OfType<PortfolioRecord>()
+            .ToArray();
+        _scopeCacheKey = cacheKey;
+        return _scopeCache = BuildScope(payments, promises, portfolio);
     }
 
     /// <summary>
@@ -68,14 +84,23 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     {
         if (!session.HasFullAccess) return new ScopedOperations([], [], [], []);
 
+        var snapshot = Snapshot;
+        EnsureSnapshotCaches(snapshot.Version);
+        var cacheKey = session.IsSupervisor ? "supervisor" : "manager";
+        if (_teamScopeCache is not null && string.Equals(_teamScopeCacheKey, cacheKey, StringComparison.Ordinal))
+        {
+            return _teamScopeCache;
+        }
+
         // El orgánico no pertenece a la cartera de un agente. Supervisión
         // trabaja sólo con la cobranza asignada; Gerencia conserva la vista
         // íntegra para sus revisiones operativas y exportaciones.
         var payments = session.IsSupervisor
-            ? Snapshot.Payments
-            : Snapshot.Payments.Concat(Snapshot.OrganicPayments).ToArray();
+            ? snapshot.Payments
+            : snapshot.Payments.Concat(snapshot.OrganicPayments).ToArray();
 
-        return BuildScope(payments, Snapshot.Promises, Snapshot.Portfolio);
+        _teamScopeCacheKey = cacheKey;
+        return _teamScopeCache = BuildScope(payments, snapshot.Promises, snapshot.Portfolio);
     }
 
     /// <summary>Aplica el buscador de cliente que comparten Mi recuperación y Mis promesas.</summary>
@@ -126,8 +151,15 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     public ScopedOperations FilterAgentStatus(ScopedOperations scope, string? status)
     {
         if (string.IsNullOrWhiteSpace(status)) return scope;
-        bool IsActive(string agent) => Snapshot.AgentDirectory.Any(directory =>
-            TextNormalization.AgentNameMatches(agent, $"{directory.FirstName} {directory.PaternalSurname}"));
+        var activeByAgent = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        bool IsActive(string agent)
+        {
+            if (activeByAgent.TryGetValue(agent, out var isActive)) return isActive;
+            isActive = Snapshot.AgentDirectory.Any(directory =>
+                TextNormalization.AgentNameMatches(agent, $"{directory.FirstName} {directory.PaternalSurname}"));
+            activeByAgent[agent] = isActive;
+            return isActive;
+        }
         var wantActive = status.Equals("Activo", StringComparison.OrdinalIgnoreCase);
         var payments = scope.Payments.Where(x => IsActive(x.Agent) == wantActive).ToArray();
         var promises = scope.Promises.Where(x => IsActive(x.Agent) == wantActive).ToArray();
@@ -142,34 +174,31 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     public IReadOnlyList<ReferenceLookupResult> FindContacts(string query, bool byPhone)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];
+        var snapshot = Snapshot;
         IReadOnlyList<ContactRecord> contacts;
         if (byPhone)
         {
             var phone = TextNormalization.Phone(query);
-            var clientIds = Snapshot.Contacts.Where(x => x.Phone == phone).Select(x => x.ClientId)
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            contacts = Snapshot.Contacts.Where(x => clientIds.Contains(x.ClientId)).OrderBy(x => x.ClientId).ToArray();
+            if (!snapshot.ContactsByPhone.TryGetValue(phone, out var phoneContacts)) return [];
+            contacts = phoneContacts
+                .Select(contact => contact.ClientId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .SelectMany(clientId => snapshot.ContactsByClientId.TryGetValue(clientId, out var clientContacts)
+                    ? clientContacts
+                    : [])
+                .OrderBy(contact => contact.ClientId)
+                .ToArray();
         }
         else
         {
-            contacts = Snapshot.Contacts.Where(x => x.ClientId.Equals(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
+            contacts = snapshot.ContactsByClientId.TryGetValue(query.Trim(), out var clientContacts)
+                ? clientContacts
+                : [];
         }
-
-        var latestPromiseByClient = Snapshot.Promises
-            .Where(x => !string.IsNullOrWhiteSpace(x.ClientId))
-            .GroupBy(x => x.ClientId, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => group
-                    .OrderByDescending(x => x.CreatedOn ?? DateOnly.MinValue)
-                    .ThenByDescending(x => x.PromiseDate ?? DateOnly.MinValue)
-                    .ThenByDescending(x => x.Id, StringComparer.OrdinalIgnoreCase)
-                    .First(),
-                StringComparer.OrdinalIgnoreCase);
 
         return contacts.Select(contact =>
         {
-            latestPromiseByClient.TryGetValue(contact.ClientId, out var promise);
+            snapshot.LatestPromiseByClientId.TryGetValue(contact.ClientId, out var promise);
             return new ReferenceLookupResult(
                 contact,
                 promise?.Agent ?? string.Empty,
@@ -177,12 +206,16 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         }).ToArray();
     }
 
-    public IReadOnlyList<ContactRecord> FindWhatsAppCandidates(string phone) => Snapshot.Contacts
-        .Where(x => x.Phone == TextNormalization.Phone(phone))
+    public IReadOnlyList<ContactRecord> FindWhatsAppCandidates(string phone)
+    {
+        var normalizedPhone = TextNormalization.Phone(phone);
+        if (!Snapshot.ContactsByPhone.TryGetValue(normalizedPhone, out var contacts)) return [];
+        return contacts
         .GroupBy(x => x.ClientId, StringComparer.OrdinalIgnoreCase)
         .Select(group => group.OrderByDescending(x => x.Status.Equals("Activo", StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.ClientName)).First())
         .OrderBy(x => x.ClientName).ToArray();
+    }
 
     public string GreetingForWeek(int week)
     {
@@ -228,10 +261,15 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     {
         if (week <= 0) return [];
 
+        var snapshot = Snapshot;
+        EnsureSnapshotCaches(snapshot.Version);
+        var cacheKey = (week, Math.Max(1, topCount));
+        if (_rankingCache.TryGetValue(cacheKey, out var cached)) return cached;
+
         var roster = ActiveRankingRoster();
         if (roster.Count == 0) return [];
 
-        var payments = Snapshot.Payments
+        var payments = snapshot.Payments
             .Where(payment => payment.Week == week && payment.Recovery > 0m)
             .ToArray();
 
@@ -265,7 +303,18 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             // Conserva el Top 4 y agrega la fila personal al final si quedó fuera.
             visible.Add(current);
         }
-        return visible;
+        return _rankingCache[cacheKey] = visible;
+    }
+
+    private void EnsureSnapshotCaches(string version)
+    {
+        if (string.Equals(_cachedSnapshotVersion, version, StringComparison.Ordinal)) return;
+        _cachedSnapshotVersion = version;
+        _scopeCacheKey = null;
+        _scopeCache = null;
+        _teamScopeCacheKey = null;
+        _teamScopeCache = null;
+        _rankingCache.Clear();
     }
 
     private IReadOnlyList<RankingAgent> ActiveRankingRoster()

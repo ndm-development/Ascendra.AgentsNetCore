@@ -289,7 +289,10 @@ public sealed class PromiseRegistrationService(
     private PromiseActiveLock? FindLegacyActivePromise(string clientId)
     {
         var today = OperationalClock.Date(DateTimeOffset.UtcNow);
-        var entry = _snapshots.Current.Promises
+        var promises = _snapshots.Current.PromisesByClientId.TryGetValue(clientId, out var entries)
+            ? entries
+            : [];
+        var entry = promises
             .Where(promise => promise.ClientId.Equals(clientId, StringComparison.OrdinalIgnoreCase)
                 && promise.PromiseDate is not null
                 && promise.PromiseDate >= today
@@ -314,19 +317,21 @@ public sealed class PromiseRegistrationService(
         IReadOnlyList<PromiseRegistrationEntry> entries) =>
         entries.Where(entry => !IsIncludedInCurrentCut(entry.IdPromise)).ToArray();
 
-    private bool IsIncludedInCurrentCut(int registrationId) => _snapshots.Current.Promises
-        .Any(promise => promise.AscendraRegistrationId == registrationId);
+    private bool IsIncludedInCurrentCut(int registrationId) =>
+        _snapshots.Current.AscendraRegistrationIds.Contains(registrationId);
 
     private ClientMatch? FindClient(string clientId)
     {
         if (string.IsNullOrWhiteSpace(clientId)) return null;
 
-        var contacts = _snapshots.Current.Contacts
-            .Where(contact => contact.ClientId.Equals(clientId, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-        var portfolio = _snapshots.Current.Portfolio
-            .FirstOrDefault(record => record.ClientId.Equals(clientId, StringComparison.OrdinalIgnoreCase));
-        if (contacts.Length == 0 && portfolio is null) return null;
+        var snapshot = _snapshots.Current;
+        var contacts = snapshot.ContactsByClientId.TryGetValue(clientId, out var matchedContacts)
+            ? matchedContacts
+            : [];
+        var portfolio = snapshot.PortfolioByClientId.TryGetValue(clientId, out var portfolioRecord)
+            ? portfolioRecord
+            : null;
+        if (contacts.Count == 0 && portfolio is null) return null;
 
         var name = contacts
             .Select(contact => contact.ClientName)

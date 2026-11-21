@@ -177,6 +177,9 @@ button { cursor: pointer; }
   color: var(--ink);
   isolation: isolate;
 }
+@media (max-width: 960px), (prefers-reduced-motion: reduce) {
+  .app-shell, .login-shell { background-attachment: scroll; }
+}
 .app-shell::before, .login-shell::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background: radial-gradient(circle at 84% 8%, rgba(145, 202, 255, .18), transparent 26%), radial-gradient(circle at 14% 90%, rgba(127, 234, 199, .1), transparent 24%);

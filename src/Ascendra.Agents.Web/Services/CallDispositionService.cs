@@ -256,9 +256,9 @@ public sealed class CallDispositionService : IHostedService
             throw new InvalidOperationException("El comentario puede tener hasta 100 palabras.");
         }
 
-        var snapshotHasPhone = _snapshots.Current.Contacts.Any(contact =>
-            contact.ClientId.Equals(normalizedClientId, StringComparison.OrdinalIgnoreCase)
-            && contact.Phone.Equals(normalizedPhone, StringComparison.Ordinal));
+        var snapshotHasPhone = _snapshots.Current.ContactsByClientId
+            .TryGetValue(normalizedClientId, out var clientContacts)
+            && clientContacts.Any(contact => contact.Phone.Equals(normalizedPhone, StringComparison.Ordinal));
         if (!snapshotHasPhone)
         {
             throw new InvalidOperationException("El teléfono ya no está asociado a ese CLIENTE_UNICO en el corte actual.");
