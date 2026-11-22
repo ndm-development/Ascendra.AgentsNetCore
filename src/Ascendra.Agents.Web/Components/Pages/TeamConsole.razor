@@ -316,6 +316,23 @@
     private DateOnly? EndDate { get; set; }
     private IReadOnlyList<DatabasePromiseEntry> TeamPromises { get; set; } = [];
     private bool AreTeamPromisesLoaded { get; set; }
+    private PromiseEditDraft? EditingPromise { get; set; }
+    private string? PromiseEditError { get; set; }
+    private string? PromiseEditNotice { get; set; }
+    private bool IsSavingPromiseEdit { get; set; }
+
+    private IReadOnlyList<AgentUser> AssignableAgents => Queries.Snapshot.Users
+        .Where(user => user.IsActive && user.IsAgent)
+        .OrderBy(user => user.DisplayName, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    private IReadOnlyList<string> EditablePromiseTypes => EditingPromise is null
+        ? PromiseRegistrations.Types
+        : PromiseRegistrations.Types
+            .Append(EditingPromise.PromiseType)
+            .Where(type => !string.IsNullOrWhiteSpace(type))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private IReadOnlyList<string> TeamPromiseAgents => TeamPromises
         .Select(promise => promise.AgentName)
@@ -501,6 +518,65 @@
         AreTeamPromisesLoaded = true;
     }
 
+    private void OpenPromiseEditor(DatabasePromiseEntry promise)
+    {
+        EditingPromise = new PromiseEditDraft(
+            promise.IdPromise,
+            promise.ClientId,
+            promise.ClientNumber,
+            promise.PromiseDate,
+            promise.InitialAmount,
+            promise.WeeklyAmount,
+            promise.PromiseType,
+            promise.NumberOfWeeks,
+            OperationalClock.LocalDateTime(promise.CreatedAt),
+            promise.AgentId,
+            promise.AgentName);
+        PromiseEditError = null;
+        PromiseEditNotice = null;
+    }
+
+    private void ClosePromiseEditor()
+    {
+        if (IsSavingPromiseEdit) return;
+        EditingPromise = null;
+        PromiseEditError = null;
+    }
+
+    private async Task SavePromiseEditAsync()
+    {
+        if (EditingPromise is null || IsSavingPromiseEdit || Session.User is null) return;
+
+        IsSavingPromiseEdit = true;
+        PromiseEditError = null;
+        try
+        {
+            var draft = EditingPromise;
+            var updated = await PromiseRegistrations.UpdateAsync(new PromiseEditRequest(
+                draft.IdPromise,
+                draft.ClientId,
+                draft.ClientNumber,
+                draft.PromiseDate,
+                draft.InitialAmount,
+                draft.WeeklyAmount,
+                draft.PromiseType,
+                draft.NumberOfWeeks,
+                draft.CreatedAtLocal,
+                draft.AssignedAgentId), Session.User);
+            await ReloadTeamPromisesAsync();
+            EditingPromise = null;
+            PromiseEditNotice = $"Promesa {updated.IdPromise:D2} actualizada. Modificado por: {Session.User.DisplayName}.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            PromiseEditError = exception.Message;
+        }
+        finally
+        {
+            IsSavingPromiseEdit = false;
+        }
+    }
+
     private void HandlePromiseRegistrationChanged() => _ = InvokeAsync(async () =>
     {
         if (IsDisposed || !AreTeamPromisesLoaded) return;
@@ -683,6 +759,32 @@
 
     private static bool IsOrganicPayment(PaymentRecord payment) =>
         TextNormalization.IsOrganic(payment.Agent) || TextNormalization.IsOrganic(payment.AssignmentType);
+
+    private sealed class PromiseEditDraft(
+        int idPromise,
+        string clientId,
+        string clientNumber,
+        DateOnly promiseDate,
+        decimal? initialAmount,
+        decimal? weeklyAmount,
+        string promiseType,
+        int numberOfWeeks,
+        DateTime createdAtLocal,
+        string assignedAgentId,
+        string agentName)
+    {
+        public int IdPromise { get; } = idPromise;
+        public string ClientId { get; set; } = clientId;
+        public string ClientNumber { get; set; } = clientNumber;
+        public DateOnly PromiseDate { get; set; } = promiseDate;
+        public decimal? InitialAmount { get; set; } = initialAmount;
+        public decimal? WeeklyAmount { get; set; } = weeklyAmount;
+        public string PromiseType { get; set; } = promiseType;
+        public int NumberOfWeeks { get; set; } = numberOfWeeks;
+        public DateTime CreatedAtLocal { get; set; } = createdAtLocal;
+        public string AssignedAgentId { get; set; } = assignedAgentId;
+        public string AgentName { get; } = agentName;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

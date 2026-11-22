@@ -49,13 +49,14 @@ public sealed class ExcelExportService
             "Id de promesa", "Cliente único", "Nombre del cliente", "Teléfono contactado",
             "Agente", "ID de agente", "Fecha de promesa", "Monto inicial", "Monto semanal",
             "Tipo de promesa", "Número de semanas", "Fecha de creación", "Estatus", "Origen",
+            "Modificado por", "Fecha de modificación",
         };
         var rows = promises.Select(promise => new object?[]
         {
             promise.IdPromise, promise.ClientId, promise.ClientName, promise.ClientNumber,
             promise.AgentName, promise.AgentId, promise.PromiseDate, promise.InitialAmount,
             promise.WeeklyAmount, promise.PromiseType, promise.NumberOfWeeks, promise.CreatedAt,
-            promise.Status, promise.Origin,
+            promise.Status, promise.Origin, promise.ModifiedBy, promise.ModifiedAt,
         });
         return Create("Promesas PostgreSQL", headers, rows, moneyColumns: new HashSet<int> { 8, 9 });
     }
