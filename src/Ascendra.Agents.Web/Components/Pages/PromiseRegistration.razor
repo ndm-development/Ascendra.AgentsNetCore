@@ -54,20 +54,25 @@ else
             </div>
             <div class="field">
                 <label for="promise-contact-number">Número contactado</label>
-                <input id="promise-contact-number" @ref="ClientNumberInput" @bind="ClientNumber" list="promise-client-phone-options" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Selecciona o escribe 10 dígitos" />
-                @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0)
+                @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0 && !IsUsingCustomPhoneNumber)
                 {
-                    <datalist id="promise-client-phone-options">
+                    <select id="promise-contact-number" @ref="ClientNumberSelect" @bind="SelectedPhoneNumber" autocomplete="tel">
+                        <option value="">Selecciona un número</option>
                         @foreach (var phone in Lookup.ContactNumbers)
                         {
-                            <option value="@phone.Number" label="@phone.Source"></option>
+                            <option value="@phone.Number">@phone.Number · @phone.Source</option>
                         }
-                    </datalist>
-                    <div class="promise-registration__phone-options" aria-label="Números asociados al cliente">
-                        @foreach (var phone in Lookup.ContactNumbers)
+                        <option value="@CustomPhoneOption">Otro número…</option>
+                    </select>
+                }
+                else
+                {
+                    <div class="promise-registration__phone-input">
+                        <input id="promise-contact-number" @ref="ClientNumberInput" @bind="ClientNumber" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Escribe 10 dígitos" />
+                        @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0)
                         {
-                            <button type="button" class="@(ClientNumber == phone.Number ? "is-selected" : string.Empty)" @onclick="() => SelectContactNumber(phone.Number)" aria-pressed="@(ClientNumber == phone.Number)">
-                                <strong>@phone.Number</strong><small>@phone.Source</small>
+                            <button type="button" class="promise-registration__phone-picker" @onclick="ShowKnownPhoneNumbers" aria-label="Ver números asociados" title="Ver números asociados">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 9 5 5 5-5" /></svg>
                             </button>
                         }
                     </div>
@@ -139,10 +144,15 @@ else
     private bool Saved { get; set; }
     private bool IsSaving { get; set; }
     private bool IsLookingUp { get; set; }
+    private bool IsUsingCustomPhoneNumber { get; set; }
     private ElementReference ClientIdInput;
     private ElementReference ClientNumberInput;
+    private ElementReference ClientNumberSelect;
     private bool FocusClientId { get; set; }
     private bool FocusClientNumber { get; set; }
+    private bool FocusClientNumberSelect { get; set; }
+
+    private const string CustomPhoneOption = "__custom_phone__";
 
     private string ClientName => Lookup is { Exists: true } ? Lookup.ClientName : string.Empty;
     private string SaveButtonLabel => IsSaving ? "Guardando…"
@@ -157,6 +167,23 @@ else
         && NumberOfWeeks is >= 0 and <= 255
         && PromiseRegistrations.Types.Contains(PromiseType, StringComparer.OrdinalIgnoreCase);
     private bool CanSave => !IsSaving && HasValidPromiseData;
+    private string SelectedPhoneNumber
+    {
+        get => IsUsingCustomPhoneNumber ? CustomPhoneOption : ClientNumber;
+        set
+        {
+            if (value == CustomPhoneOption)
+            {
+                ClientNumber = string.Empty;
+                IsUsingCustomPhoneNumber = true;
+                FocusClientNumber = true;
+                return;
+            }
+
+            ClientNumber = value;
+            IsUsingCustomPhoneNumber = false;
+        }
+    }
 
     private async Task LookupClientAsync()
     {
@@ -172,8 +199,12 @@ else
             if (!string.Equals(previousClientId, Lookup.ClientId, StringComparison.OrdinalIgnoreCase))
             {
                 ClientNumber = string.Empty;
+                IsUsingCustomPhoneNumber = false;
             }
-            FocusClientNumber = Lookup.Exists && Lookup.ActivePromise is null;
+            FocusClientNumber = Lookup.Exists && Lookup.ActivePromise is null
+                && (Lookup.ContactNumbers.Count == 0 || IsUsingCustomPhoneNumber);
+            FocusClientNumberSelect = Lookup.Exists && Lookup.ActivePromise is null
+                && Lookup.ContactNumbers.Count > 0 && !IsUsingCustomPhoneNumber;
             FocusClientId = !Lookup.Exists;
         }
         catch (InvalidOperationException exception)
@@ -196,11 +227,17 @@ else
         if (Lookup is null || string.Equals(Lookup.ClientId, ClientId.Trim(), StringComparison.OrdinalIgnoreCase)) return;
         Lookup = null;
         ClientNumber = string.Empty;
+        IsUsingCustomPhoneNumber = false;
         Notice = null;
         Saved = false;
     }
 
-    private void SelectContactNumber(string number) => ClientNumber = number;
+    private void ShowKnownPhoneNumbers()
+    {
+        ClientNumber = string.Empty;
+        IsUsingCustomPhoneNumber = false;
+        FocusClientNumberSelect = true;
+    }
 
     private async Task SaveAsync()
     {
@@ -249,6 +286,7 @@ else
     {
         ClientId = string.Empty;
         ClientNumber = string.Empty;
+        IsUsingCustomPhoneNumber = false;
         PromiseDate = OperationalClock.Date(DateTimeOffset.UtcNow);
         InitialAmount = null;
         WeeklyAmount = null;
@@ -263,6 +301,11 @@ else
         {
             FocusClientNumber = false;
             await ClientNumberInput.FocusAsync();
+        }
+        else if (FocusClientNumberSelect)
+        {
+            FocusClientNumberSelect = false;
+            await ClientNumberSelect.FocusAsync();
         }
         else if (FocusClientId)
         {
