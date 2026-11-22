@@ -4,42 +4,27 @@
 @inject DashboardSession Session
 @inject DashboardQueries Queries
 @inject EphemeralChatService Chat
+@inject PromiseRegistrationService PromiseRegistrations
 @inject IJSRuntime JS
 
 @{
     var scope = Queries.FilterByClient(Queries.TeamScope(), ClientQuery);
     if (_week == 0) _week = Queries.CurrentWeek(scope);
+    if (_week == 0) _week = System.Globalization.ISOWeek.GetWeekOfYear(DateTime.Today);
     var teamPayments = FilterPayments(scope).ToArray();
-    var teamPromises = FilterPromises(scope).ToArray();
+    var teamPromises = FilterDatabasePromises().ToArray();
     var totalRecovery = teamPayments.Sum(payment => payment.Recovery);
     var promisesExportUrl = TeamExportUrl("promises");
     var paymentsExportUrl = TeamExportUrl("payments");
-    var activeAgents = scope.Payments.Where(payment => !IsOrganicPayment(payment)).Select(payment => payment.Agent)
-        .Concat(scope.Promises.Select(promise => promise.Agent))
-        .Where(agent => !string.IsNullOrWhiteSpace(agent))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Count();
 }
 
 <section class="team-console" aria-label="Consola de equipo">
-    <header class="team-console__hero glass-card">
-        <div>
-            <p class="eyebrow">OPERACIÓN DE EQUIPO</p>
-            <h1>Centro de coordinación</h1>
-        </div>
-        <div class="team-console__summary" aria-label="Resumen de la semana">
-            <span><strong>@activeAgents</strong> agentes</span>
-            <span><strong>@teamPayments.Length</strong> pagos</span>
-            <span><strong>@DashboardQueries.Currency(totalRecovery)</strong> recuperados</span>
-        </div>
-    </header>
-
     <nav class="team-console__tabs glass-card" role="tablist" aria-label="Secciones de la consola">
-        <button type="button" class="@TabClass(TeamSection.Messages)" role="tab" aria-selected="@(ActiveSection == TeamSection.Messages)" @onclick="() => SelectSection(TeamSection.Messages)">
+        <button type="button" class="@TabClass(TeamSection.Messages)" role="tab" aria-selected="@(ActiveSection == TeamSection.Messages)" @onclick="() => SelectSectionAsync(TeamSection.Messages)">
             Mensajes @if (UnreadMessageCount > 0) { <span>@UnreadMessageCount</span> }
         </button>
-        <button type="button" class="@TabClass(TeamSection.Promises)" role="tab" aria-selected="@(ActiveSection == TeamSection.Promises)" @onclick="() => SelectSection(TeamSection.Promises)">Promesas <span>@teamPromises.Length</span></button>
-        <button type="button" class="@TabClass(TeamSection.Payments)" role="tab" aria-selected="@(ActiveSection == TeamSection.Payments)" @onclick="() => SelectSection(TeamSection.Payments)">Pagos <span>@teamPayments.Length</span></button>
+        <button type="button" class="@TabClass(TeamSection.Promises)" role="tab" aria-selected="@(ActiveSection == TeamSection.Promises)" @onclick="() => SelectSectionAsync(TeamSection.Promises)">Promesas @if (AreTeamPromisesLoaded) { <span>@teamPromises.Length</span> }</button>
+        <button type="button" class="@TabClass(TeamSection.Payments)" role="tab" aria-selected="@(ActiveSection == TeamSection.Payments)" @onclick="() => SelectSectionAsync(TeamSection.Payments)">Pagos <span>@teamPayments.Length</span></button>
     </nav>
 
     @if (ActiveSection == TeamSection.Messages)
@@ -182,7 +167,7 @@
                 <label for="team-agent">Agente</label>
                 <select id="team-agent" @bind="SelectedAgent">
                     <option value="">Todo el equipo</option>
-                    @foreach (var agent in Queries.AgentNames(scope)) { <option value="@agent">@agent</option> }
+                    @foreach (var agent in ActiveSection == TeamSection.Promises ? TeamPromiseAgents : Queries.AgentNames(scope)) { <option value="@agent">@agent</option> }
                 </select>
             </div>
             <div class="field client-query-field">
@@ -203,7 +188,14 @@
                     <label for="team-status">Estatus</label>
                     <select id="team-status" @bind="SelectedStatus">
                         <option value="">Todos los estatus</option>
-                        @foreach (var status in Queries.PromiseStatuses(scope)) { <option value="@status">@DashboardQueries.PromiseStatusLabel(status)</option> }
+                        @foreach (var status in TeamPromiseStatuses) { <option value="@status">@DashboardQueries.PromiseStatusLabel(status)</option> }
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="team-promise-type">Tipo de promesa</label>
+                    <select id="team-promise-type" @bind="SelectedPromiseType">
+                        <option value="">Todos los tipos</option>
+                        @foreach (var type in TeamPromiseTypes) { <option value="@type">@type</option> }
                     </select>
                 </div>
             }
@@ -223,13 +215,20 @@
 
         @if (ActiveSection == TeamSection.Promises)
         {
-            <section class="table-card glass-card team-console__table">
-                <div class="result-heading"><div><p class="eyebrow">SEGUIMIENTO DEL EQUIPO</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros visibles</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
-                <div class="table-wrap"><table class="promise-table"><thead><tr><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Estatus</th></tr></thead><tbody>
-                    @foreach (var row in teamPromises.Take(400))
-                    { <tr><td>@row.Agent</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td></tr> }
-                </tbody></table></div>
-            </section>
+            @if (!AreTeamPromisesLoaded)
+            {
+                <section class="empty-state glass-card"><p class="eyebrow">PROMESAS</p><p>Cargando promesas desde PostgreSQL…</p></section>
+            }
+            else
+            {
+                <section class="table-card glass-card team-console__table">
+                    <div class="result-heading"><div><p class="eyebrow">PROMESAS EN POSTGRESQL</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros visibles</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
+                    <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
+                        @foreach (var row in teamPromises.Take(400))
+                        { <tr><td>@row.IdPromise.ToString("D2")</td><td>@row.AgentName</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.PromiseType</td><td>@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td></tr> }
+                    </tbody></table></div>
+                </section>
+            }
         }
         else
         {
@@ -277,8 +276,35 @@
     private string SelectedAgent { get; set; } = string.Empty;
     private string SelectedStatus { get; set; } = string.Empty;
     private string SelectedPaymentOrigin { get; set; } = string.Empty;
+    private string SelectedPromiseType { get; set; } = string.Empty;
     private DateOnly? StartDate { get; set; }
     private DateOnly? EndDate { get; set; }
+    private IReadOnlyList<DatabasePromiseEntry> TeamPromises { get; set; } = [];
+    private bool AreTeamPromisesLoaded { get; set; }
+
+    private IReadOnlyList<string> TeamPromiseAgents => TeamPromises
+        .Select(promise => promise.AgentName)
+        .Where(agent => !string.IsNullOrWhiteSpace(agent))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    private IReadOnlyList<string> TeamPromiseStatuses => TeamPromises
+        .Select(promise => promise.Status)
+        .Where(status => !string.IsNullOrWhiteSpace(status))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    private IReadOnlyList<string> TeamPromiseTypes => TeamPromises
+        .Select(promise => promise.PromiseType)
+        .Where(type => !string.IsNullOrWhiteSpace(type))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    protected override void OnInitialized()
+    {
+        PromiseRegistrations.Changed += HandlePromiseRegistrationChanged;
+    }
 
     private IReadOnlyList<ChatParticipant> OnlineUsers => ChatState.ConnectedUsers;
     private IReadOnlyList<ChatParticipant> AvailableRecipients => Participant is null ? [] : Chat.PrivateRecipients(Participant);
@@ -353,9 +379,14 @@
         && (string.IsNullOrWhiteSpace(SelectedPaymentOrigin)
             || SelectedPaymentOrigin == "organico" && IsOrganicPayment(payment)
             || SelectedPaymentOrigin == "equipo" && !IsOrganicPayment(payment)));
-    private IEnumerable<PromiseRecord> FilterPromises(ScopedOperations scope) => Queries.FilterPromises(
-        scope, null, null, SelectedAgent, null, SelectedStatus, StartDate, EndDate, null, null,
-        HasDateRange ? null : _week);
+    private IEnumerable<DatabasePromiseEntry> FilterDatabasePromises() => TeamPromises.Where(promise =>
+        (string.IsNullOrWhiteSpace(ClientQuery) || promise.ClientId.Contains(ClientQuery.Trim(), StringComparison.OrdinalIgnoreCase))
+        && (HasDateRange || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == _week)
+        && (StartDate is null || promise.PromiseDate >= StartDate)
+        && (EndDate is null || promise.PromiseDate <= EndDate)
+        && (string.IsNullOrWhiteSpace(SelectedAgent) || promise.AgentName.Equals(SelectedAgent, StringComparison.OrdinalIgnoreCase))
+        && (string.IsNullOrWhiteSpace(SelectedStatus) || promise.Status.Equals(SelectedStatus, StringComparison.OrdinalIgnoreCase))
+        && (string.IsNullOrWhiteSpace(SelectedPromiseType) || promise.PromiseType.Equals(SelectedPromiseType, StringComparison.OrdinalIgnoreCase)));
     private string TabClass(TeamSection section) => ActiveSection == section ? "is-selected" : string.Empty;
     private string MessageModeClass(ChatMode mode) => CurrentChatMode == mode ? "is-selected" : string.Empty;
     private string TeamChatModeClass => CurrentChatMode switch
@@ -414,16 +445,33 @@
         TextNormalization.Normalize(user.DisplayName).Contains(normalizedSearch, StringComparison.Ordinal)
         || TextNormalization.Normalize(user.Username).Contains(normalizedSearch, StringComparison.Ordinal);
 
-    private void SelectSection(TeamSection section)
+    private async Task SelectSectionAsync(TeamSection section)
     {
         ActiveSection = section;
         IsEmojiPickerOpen = false;
+        if (section == TeamSection.Promises && !AreTeamPromisesLoaded)
+        {
+            await ReloadTeamPromisesAsync();
+        }
         if (section == TeamSection.Messages)
         {
             ScrollChatMessagesToBottom = true;
             MarkVisibleMessagesRead();
         }
     }
+
+    private async Task ReloadTeamPromisesAsync()
+    {
+        TeamPromises = await PromiseRegistrations.GetAllForTeamAsync();
+        AreTeamPromisesLoaded = true;
+    }
+
+    private void HandlePromiseRegistrationChanged() => _ = InvokeAsync(async () =>
+    {
+        if (IsDisposed || !AreTeamPromisesLoaded) return;
+        await ReloadTeamPromisesAsync();
+        StateHasChanged();
+    });
 
     private void ToggleEmojiPicker() => IsEmojiPickerOpen = !IsEmojiPickerOpen;
 
@@ -574,6 +622,7 @@
         SelectedAgent = string.Empty;
         SelectedStatus = string.Empty;
         SelectedPaymentOrigin = string.Empty;
+        SelectedPromiseType = string.Empty;
         StartDate = null;
         EndDate = null;
     }
@@ -588,7 +637,11 @@
         };
         if (StartDate is not null) query.Add($"start={StartDate:yyyy-MM-dd}");
         if (EndDate is not null) query.Add($"end={EndDate:yyyy-MM-dd}");
-        if (kind == "promises") query.Add($"status={Uri.EscapeDataString(SelectedStatus)}");
+        if (kind == "promises")
+        {
+            query.Add($"status={Uri.EscapeDataString(SelectedStatus)}");
+            query.Add($"promiseType={Uri.EscapeDataString(SelectedPromiseType)}");
+        }
         else query.Add($"origin={Uri.EscapeDataString(SelectedPaymentOrigin)}");
         return $"/exports/team/{kind}?{string.Join('&', query)}";
     }
@@ -619,6 +672,7 @@
     public ValueTask DisposeAsync()
     {
         IsDisposed = true;
+        PromiseRegistrations.Changed -= HandlePromiseRegistrationChanged;
         RemoveAttachment();
         if (ChatRegistered)
         {
@@ -634,7 +688,7 @@
         "duplicada" => "promise-status--duplicate",
         "incumplida" => "promise-status--failed",
         "activa" or "cumplida" or "cumplido" => "promise-status--paid",
-        "vigente" => "promise-status--open",
+        "vigente" or "pendiente de pago" or "esperando pago" => "promise-status--open",
         _ => "promise-status--neutral",
     };
 

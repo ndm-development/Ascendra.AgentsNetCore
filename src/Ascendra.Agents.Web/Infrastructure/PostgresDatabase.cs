@@ -168,6 +168,7 @@ public sealed class PostgresDatabase(
         );
         CREATE INDEX IF NOT EXISTS ix_call_dispositions_client_recorded ON call_dispositions (client_id, recorded_at DESC);
         CREATE INDEX IF NOT EXISTS ix_call_dispositions_client_weight ON call_dispositions (client_id, weight DESC, recorded_at DESC);
+        CREATE INDEX IF NOT EXISTS ix_call_dispositions_monitoring ON call_dispositions (recorded_at DESC, agent_name, category, channel);
 
         CREATE TABLE IF NOT EXISTS promise_registrations (
             id uuid PRIMARY KEY,
@@ -214,6 +215,7 @@ public sealed class PostgresDatabase(
             CHECK (numero_semanas BETWEEN 0 AND 255);
         CREATE INDEX IF NOT EXISTS ix_promesas_cliente_fecha ON promesas (cliente_unico, fecha_promesa DESC);
         CREATE INDEX IF NOT EXISTS ix_promesas_agente_creacion ON promesas (usu_alta, fecha_creacion DESC);
+        CREATE INDEX IF NOT EXISTS ix_promesas_monitoring ON promesas (fecha_creacion DESC, agente, tipo_promesa, estatus);
         CREATE UNIQUE INDEX IF NOT EXISTS ux_promesas_origen_externo
             ON promesas (origen, id_promesa_origen)
             WHERE id_promesa_origen IS NOT NULL;

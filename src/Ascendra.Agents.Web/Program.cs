@@ -89,6 +89,7 @@ builder.Services.AddHostedService(provider => provider.GetRequiredService<Postgr
 builder.Services.AddSingleton<EphemeralChatService>();
 builder.Services.AddSingleton<CallDispositionService>();
 builder.Services.AddSingleton<PromiseRegistrationService>();
+builder.Services.AddSingleton<MonitoringService>();
 builder.Services.AddHostedService<HistoricalPromiseImportService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<EphemeralChatService>());
 builder.Services.AddHostedService(provider => provider.GetRequiredService<CallDispositionService>());
@@ -302,30 +303,38 @@ app.MapGet("/exports/team/payments", (
     return Results.File(content, ExcelExportService.ExcelContentType, "pagos_equipo.xlsx");
 }).RequireAuthorization();
 
-app.MapGet("/exports/team/promises", (
+app.MapGet("/exports/team/promises", async (
     HttpContext context,
     DashboardSession session,
-    DashboardQueries queries,
+    PromiseRegistrationService registrations,
     ExcelExportService exports,
     int? week,
     string? client,
     string? agent,
     string? status,
+    string? promiseType,
     DateOnly? start,
-    DateOnly? end) =>
+    DateOnly? end,
+    CancellationToken cancellationToken) =>
 {
     session.Apply(context.User);
     if (!session.HasFullAccess) return Results.Forbid();
     if (start is not null && end is not null && start > end)
         return Results.BadRequest("La fecha inicial no puede ser posterior a la fecha final.");
 
-    var scope = queries.FilterByClient(queries.TeamScope(), client);
     var useDateRange = start is not null || end is not null;
-    var selectedWeek = week is > 0 ? week.Value : queries.CurrentWeek(scope);
-    var promises = queries.FilterPromises(
-        scope, null, null, agent, null, status, start, end, null, null,
-        useDateRange ? null : selectedWeek);
-    var content = exports.Promises(promises);
+    var selectedWeek = week is > 0 ? week.Value : System.Globalization.ISOWeek.GetWeekOfYear(DateTime.Today);
+    var promises = (await registrations.GetAllForTeamAsync(cancellationToken))
+        .Where(promise =>
+            (string.IsNullOrWhiteSpace(client) || promise.ClientId.Contains(client.Trim(), StringComparison.OrdinalIgnoreCase))
+            && (useDateRange || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == selectedWeek)
+            && (start is null || promise.PromiseDate >= start)
+            && (end is null || promise.PromiseDate <= end)
+            && (string.IsNullOrWhiteSpace(agent) || promise.AgentName.Equals(agent, StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(status) || promise.Status.Equals(status, StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(promiseType) || promise.PromiseType.Equals(promiseType, StringComparison.OrdinalIgnoreCase)))
+        .ToArray();
+    var content = exports.DatabasePromises(promises);
     return Results.File(content, ExcelExportService.ExcelContentType, "promesas_equipo.xlsx");
 }).RequireAuthorization();
 

@@ -144,7 +144,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         "robada" => "Robada",
         "activa" or "cumplida" or "cumplido" => "Pagada",
         "incumplida" => "No pagó",
-        "vigente" => "Esperando pago",
+        "vigente" or "pendiente de pago" or "esperando pago" => "Esperando pago",
         _ => string.IsNullOrWhiteSpace(status) ? "Sin estatus" : status.Trim(),
     };
 

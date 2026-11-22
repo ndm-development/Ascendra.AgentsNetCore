@@ -163,6 +163,46 @@ public sealed class PromiseRegistrationService(
         CancellationToken cancellationToken = default) =>
         FilterReconciled(await GetEntriesAsync("WHERE origen = 'Ascendra'", null, null, cancellationToken));
 
+    /// <summary>
+    /// Fuente de la pestaña Equipo → Promesas. No depende del corte Excel:
+    /// muestra lo que vive actualmente en PostgreSQL, incluyendo el estatus
+    /// calculado por el proceso de cruces cuando ya fue actualizado.
+    /// </summary>
+    public async Task<IReadOnlyList<DatabasePromiseEntry>> GetAllForTeamAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var entries = new List<DatabasePromiseEntry>();
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT id_promesa, cliente_unico, agente, usu_alta, numero_cliente,
+                   fecha_promesa, monto_inicial, monto_semanal, tipo_promesa,
+                   numero_semanas, fecha_creacion, estatus, origen
+            FROM promesas
+            ORDER BY fecha_creacion DESC, id_promesa DESC;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var clientId = reader.GetString(1);
+            entries.Add(new DatabasePromiseEntry(
+                reader.GetInt32(0),
+                clientId,
+                FindClient(clientId)?.Name ?? "Nombre no disponible en cartera vigente",
+                reader.IsDBNull(2) ? "Sin agente" : reader.GetString(2),
+                reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                reader.GetString(4),
+                reader.GetFieldValue<DateOnly>(5),
+                reader.IsDBNull(6) ? null : reader.GetDecimal(6),
+                reader.IsDBNull(7) ? null : reader.GetDecimal(7),
+                reader.IsDBNull(8) ? "Sin tipo" : reader.GetString(8),
+                reader.GetInt16(9),
+                reader.GetFieldValue<DateTimeOffset>(10),
+                reader.IsDBNull(11) ? "Pendiente de pago" : reader.GetString(11),
+                reader.IsDBNull(12) ? "Ascendra" : reader.GetString(12)));
+        }
+        return entries;
+    }
+
     public async Task<IReadOnlyList<PromiseCrossSourceEntry>> GetCrossSourceAsync(
         CancellationToken cancellationToken = default)
     {

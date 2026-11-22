@@ -1,0 +1,207 @@
+@page "/monitoreo"
+@attribute [Authorize(Roles = "Gerente,Supervisor")]
+@implements IDisposable
+@inject MonitoringService MonitorService
+@inject CallDispositionService Dispositions
+@inject PromiseRegistrationService PromiseRegistrations
+
+@if (Snapshot is null)
+{
+    <section class="empty-state glass-card" aria-live="polite">
+        <p class="eyebrow">MONITOREO OPERATIVO</p>
+        <h1>Cargando monitoreo</h1>
+        <p>Estamos reuniendo las gestiones y promesas registradas.</p>
+    </section>
+}
+else
+{
+    <section class="monitoring-hero glass-card">
+        <div>
+            <p class="eyebrow">MONITOREO OPERATIVO</p>
+            <h1>Gestiones y promesas</h1>
+            <p>Consulta los registros realizados por agente directamente desde Ascendra.</p>
+        </div>
+        <div class="monitoring-hero__totals" aria-label="Totales de la selección">
+            <span><strong>@Snapshot.DispositionCount</strong> gestiones</span>
+            <span><strong>@Snapshot.PromiseCount</strong> promesas</span>
+            <span><strong>@ActiveAgents</strong> agentes</span>
+        </div>
+    </section>
+
+    <section class="monitoring-filters glass-card" aria-label="Filtros de monitoreo">
+        <div class="field">
+            <label for="monitoring-start">Fecha inicial</label>
+            <input id="monitoring-start" type="date" @bind="StartDate" />
+        </div>
+        <div class="field">
+            <label for="monitoring-end">Fecha final</label>
+            <input id="monitoring-end" type="date" @bind="EndDate" />
+        </div>
+        <div class="field">
+            <label for="monitoring-agent">Agente</label>
+            <select id="monitoring-agent" @bind="SelectedAgent">
+                <option value="">Todos los agentes</option>
+                @foreach (var agent in Snapshot.Agents) { <option value="@agent">@agent</option> }
+            </select>
+        </div>
+        <div class="field">
+            <label for="monitoring-promise-type">Tipo de promesa</label>
+            <select id="monitoring-promise-type" @bind="SelectedPromiseType">
+                <option value="">Todos los tipos</option>
+                @foreach (var type in Snapshot.PromiseTypes) { <option value="@type">@type</option> }
+            </select>
+        </div>
+        <div class="field">
+            <label for="monitoring-promise-status">Estatus de promesa</label>
+            <select id="monitoring-promise-status" @bind="SelectedPromiseStatus">
+                <option value="">Todos los estatus</option>
+                @foreach (var status in Snapshot.PromiseStatuses) { <option value="@status">@DashboardQueries.PromiseStatusLabel(status)</option> }
+            </select>
+        </div>
+        <div class="field">
+            <label for="monitoring-category">Tipo de gestión</label>
+            <select id="monitoring-category" @bind="SelectedDispositionCategory">
+                <option value="">Todas las gestiones</option>
+                @foreach (var category in Snapshot.DispositionCategories) { <option value="@category">@category</option> }
+            </select>
+        </div>
+        <div class="field">
+            <label for="monitoring-channel">Canal</label>
+            <select id="monitoring-channel" @bind="SelectedDispositionChannel">
+                <option value="">Todos los canales</option>
+                @foreach (var channel in Snapshot.DispositionChannels) { <option value="@channel">@channel</option> }
+            </select>
+        </div>
+        <div class="monitoring-filters__actions">
+            <button type="button" class="primary-button" @onclick="ApplyFiltersAsync">Aplicar filtros</button>
+            <button type="button" class="secondary-button" @onclick="ClearFiltersAsync">Limpiar</button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Notice))
+        {
+            <p class="monitoring-filters__notice" role="status">@Notice</p>
+        }
+    </section>
+
+    <section class="monitoring-charts" aria-label="Gráficas de monitoreo">
+        <article class="chart-card glass-card">
+            <div class="chart-heading">
+                <div>
+                    <p class="eyebrow">GESTIONES</p>
+                    <h2>Gestiones realizadas por agente</h2>
+                    <p>Tipificaciones registradas durante el periodo seleccionado.</p>
+                </div>
+            </div>
+            @if (Snapshot.DispositionsByAgent.Count == 0)
+            {
+                <p class="monitoring-empty">No hay gestiones con los filtros seleccionados.</p>
+            }
+            else
+            {
+                <PlotlyChart Id="monitoring-dispositions" Model='@(MonitorService.AgentCountChart(Snapshot.DispositionsByAgent, "Gestiones realizadas por agente", "Gestiones", "#1f9b72"))' AccessibleLabel="Gestiones realizadas por agente" />
+            }
+        </article>
+        <article class="chart-card glass-card">
+            <div class="chart-heading">
+                <div>
+                    <p class="eyebrow">PROMESAS</p>
+                    <h2>Promesas registradas por agente</h2>
+                    <p>Altas almacenadas en la tabla de promesas de PostgreSQL.</p>
+                </div>
+            </div>
+            @if (Snapshot.PromisesByAgent.Count == 0)
+            {
+                <p class="monitoring-empty">No hay promesas con los filtros seleccionados.</p>
+            }
+            else
+            {
+                <PlotlyChart Id="monitoring-promises" Model='@(MonitorService.AgentCountChart(Snapshot.PromisesByAgent, "Promesas registradas por agente", "Promesas", "#c38d25"))' AccessibleLabel="Promesas registradas por agente" />
+            }
+        </article>
+    </section>
+}
+
+@code {
+    private MonitoringSnapshot? Snapshot { get; set; }
+    private bool IsDisposed { get; set; }
+    private DateOnly? StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddDays(-6));
+    private DateOnly? EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    private string SelectedAgent { get; set; } = string.Empty;
+    private string SelectedPromiseType { get; set; } = string.Empty;
+    private string SelectedPromiseStatus { get; set; } = string.Empty;
+    private string SelectedDispositionCategory { get; set; } = string.Empty;
+    private string SelectedDispositionChannel { get; set; } = string.Empty;
+    private string? Notice { get; set; }
+
+    private int ActiveAgents => Snapshot is null
+        ? 0
+        : Snapshot.DispositionsByAgent.Select(item => item.AgentName)
+            .Concat(Snapshot.PromisesByAgent.Select(item => item.AgentName))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+    protected override void OnInitialized()
+    {
+        Dispositions.Changed += HandleDataChanged;
+        PromiseRegistrations.Changed += HandleDataChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await ReloadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        if (StartDate is not null && EndDate is not null && StartDate > EndDate)
+        {
+            Notice = "La fecha inicial no puede ser posterior a la fecha final.";
+            return;
+        }
+
+        Notice = null;
+        await ReloadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        StartDate = null;
+        EndDate = null;
+        SelectedAgent = string.Empty;
+        SelectedPromiseType = string.Empty;
+        SelectedPromiseStatus = string.Empty;
+        SelectedDispositionCategory = string.Empty;
+        SelectedDispositionChannel = string.Empty;
+        Notice = null;
+        await ReloadAsync();
+    }
+
+    private Task ReloadAsync() => LoadSnapshotAsync(new MonitoringFilters(
+        StartDate,
+        EndDate,
+        SelectedAgent,
+        SelectedPromiseType,
+        SelectedPromiseStatus,
+        SelectedDispositionCategory,
+        SelectedDispositionChannel));
+
+    private async Task LoadSnapshotAsync(MonitoringFilters filters)
+    {
+        Snapshot = await MonitorService.GetSnapshotAsync(filters);
+    }
+
+    private void HandleDataChanged() => _ = InvokeAsync(async () =>
+    {
+        if (IsDisposed) return;
+        await ReloadAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        IsDisposed = true;
+        Dispositions.Changed -= HandleDataChanged;
+        PromiseRegistrations.Changed -= HandleDataChanged;
+    }
+}

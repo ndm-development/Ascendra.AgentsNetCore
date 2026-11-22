@@ -68,6 +68,51 @@ public sealed record PromiseRegistrationEntry(
     string CreatedByAgentId);
 
 /// <summary>
+/// Promesa leída directamente de PostgreSQL para seguimiento de Gerencia y
+/// Supervisión. El identificador es interno a Ascendra y el estatus proviene
+/// de la misma tabla, no del corte Excel.
+/// </summary>
+public sealed record DatabasePromiseEntry(
+    int IdPromise,
+    string ClientId,
+    string ClientName,
+    string AgentName,
+    string AgentId,
+    string ClientNumber,
+    DateOnly PromiseDate,
+    decimal? InitialAmount,
+    decimal? WeeklyAmount,
+    string PromiseType,
+    int NumberOfWeeks,
+    DateTimeOffset CreatedAt,
+    string Status,
+    string Origin);
+
+public sealed record MonitoringFilters(
+    DateOnly? StartDate,
+    DateOnly? EndDate,
+    string? AgentName,
+    string? PromiseType,
+    string? PromiseStatus,
+    string? DispositionCategory,
+    string? DispositionChannel);
+
+public sealed record MonitoringAgentCount(string AgentName, int Count);
+
+public sealed record MonitoringSnapshot(
+    IReadOnlyList<string> Agents,
+    IReadOnlyList<string> PromiseTypes,
+    IReadOnlyList<string> PromiseStatuses,
+    IReadOnlyList<string> DispositionCategories,
+    IReadOnlyList<string> DispositionChannels,
+    IReadOnlyList<MonitoringAgentCount> DispositionsByAgent,
+    IReadOnlyList<MonitoringAgentCount> PromisesByAgent)
+{
+    public int DispositionCount => DispositionsByAgent.Sum(item => item.Count);
+    public int PromiseCount => PromisesByAgent.Sum(item => item.Count);
+}
+
+/// <summary>
 /// Fila de la fuente que consume el cruce externo. Las promesas históricas
 /// conservan su IdPromesa original; las nuevas usan un identificador visible
 /// de Ascendra más el rastreo técnico para poder regresar al corte sin
