@@ -151,6 +151,60 @@ window.ascendraChat = (() => {
 // acepta el permiso del navegador, también como notificación del sistema.
 // No se almacena nada adicional en el navegador.
 window.ascendraReminders = (() => {
+    let audioContext = null;
+    let lastRingAt = 0;
+
+    async function armSound() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return false;
+
+        try {
+            audioContext ??= new AudioContext();
+            if (audioContext.state === "suspended") await audioContext.resume();
+            return audioContext.state === "running";
+        } catch {
+            // El indicador visual sigue funcionando si el navegador bloquea audio.
+            return false;
+        }
+    }
+
+    // Los navegadores permiten que el sitio prepare audio solamente después de
+    // una interacción real. De esta forma el timbre puede sonar más adelante,
+    // sin pedir permisos ni mostrar un diálogo al agente.
+    const armOnInteraction = () => { void armSound(); };
+    window.addEventListener("pointerdown", armOnInteraction, { passive: true });
+    window.addEventListener("keydown", armOnInteraction, { passive: true });
+
+    function chime(context, startAt, frequency) {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequency, startAt);
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(0.065, startAt + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.31);
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start(startAt);
+        oscillator.stop(startAt + 0.33);
+    }
+
+    function ring() {
+        const now = Date.now();
+        if (now - lastRingAt < 8000) return;
+        lastRingAt = now;
+
+        const context = audioContext;
+        if (!context || context.state !== "running") return;
+
+        try {
+            const startAt = context.currentTime + 0.03;
+            chime(context, startAt, 880);
+            chime(context, startAt + 0.19, 1047);
+        } catch {
+            // No interrumpimos el recordatorio si el dispositivo no permite audio.
+        }
+    }
+
     async function enable() {
         if (!("Notification" in window)) return "unsupported";
         if (Notification.permission !== "default") return Notification.permission;
@@ -178,7 +232,7 @@ window.ascendraReminders = (() => {
         }
     }
 
-    return { enable, notify };
+    return { enable, notify, ring };
 })();
 
 // Un despliegue sustituye el proceso que aloja el circuito interactivo. En vez

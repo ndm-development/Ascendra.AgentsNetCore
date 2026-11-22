@@ -451,10 +451,12 @@
         try
         {
             var dueReminders = await Reminders.ClaimDueAsync(Session.User.Id);
+            var hasNewReminderAlert = false;
             foreach (var reminder in dueReminders)
             {
                 if (ReminderAlerts.Any(alert => alert.Id == reminder.Id)) continue;
                 ReminderAlerts.Insert(0, reminder);
+                hasNewReminderAlert = true;
                 try
                 {
                     await JS.InvokeVoidAsync(
@@ -467,6 +469,18 @@
                 {
                     // El aviso dentro de Ascendra se conserva para cuando la
                     // conexión interactiva termine de recuperarse.
+                }
+            }
+
+            if (hasNewReminderAlert)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("ascendraReminders.ring");
+                }
+                catch (JSDisconnectedException)
+                {
+                    // El reloj rojo conserva la alerta si el circuito se reconecta.
                 }
             }
 
