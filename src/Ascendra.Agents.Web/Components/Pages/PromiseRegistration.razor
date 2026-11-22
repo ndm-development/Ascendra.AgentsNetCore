@@ -19,28 +19,42 @@ else
             <div>
                 <p class="eyebrow">REGISTRO DE PROMESA</p>
                 <h1>Registrar promesa</h1>
-                <p>Confirma los datos del cliente antes de guardar la promesa.</p>
+                <p>Valida el cliente y registra la promesa en un solo flujo.</p>
             </div>
             <span class="promise-registration__agent">@Session.User?.DisplayName</span>
         </div>
 
-        <form class="promise-registration__form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+        <div class="promise-registration__form" role="group" aria-label="Datos de la promesa">
             <div class="field">
                 <label for="promise-client-id">Cliente único</label>
                 <div class="promise-registration__client-input">
-                    <input id="promise-client-id" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
-                    <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" aria-label="Buscar cliente único" title="Buscar cliente">
+                    <input id="promise-client-id" @ref="ClientIdInput" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" @onkeydown="LookupOnEnterAsync" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
+                    <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" disabled="@(IsLookingUp || string.IsNullOrWhiteSpace(ClientId))" aria-label="Buscar cliente único" title="Buscar cliente">
                         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
                     </button>
                 </div>
             </div>
             <div class="field">
                 <label for="promise-client-name">Nombre del cliente</label>
-                <input id="promise-client-name" value="@ClientName" readonly placeholder="Se completa al validar el cliente" aria-live="polite" />
+                <div id="promise-client-name" class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-live="polite">
+                    @if (IsLookingUp)
+                    {
+                        <span class="promise-registration__client-name-loading">Validando cliente…</span>
+                    }
+                    else if (Lookup is { Exists: true })
+                    {
+                        <span class="promise-registration__client-name-check" aria-hidden="true">✓</span>
+                        <strong>@ClientName</strong>
+                    }
+                    else
+                    {
+                        <span>Se completa al validar el cliente</span>
+                    }
+                </div>
             </div>
             <div class="field">
                 <label for="promise-contact-number">Número contactado</label>
-                <input id="promise-contact-number" @bind="ClientNumber" list="promise-client-phone-options" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Selecciona o escribe 10 dígitos" />
+                <input id="promise-contact-number" @ref="ClientNumberInput" @bind="ClientNumber" list="promise-client-phone-options" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Selecciona o escribe 10 dígitos" />
                 @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0)
                 {
                     <datalist id="promise-client-phone-options">
@@ -49,6 +63,14 @@ else
                             <option value="@phone.Number" label="@phone.Source"></option>
                         }
                     </datalist>
+                    <div class="promise-registration__phone-options" aria-label="Números asociados al cliente">
+                        @foreach (var phone in Lookup.ContactNumbers)
+                        {
+                            <button type="button" class="@(ClientNumber == phone.Number ? "is-selected" : string.Empty)" @onclick="() => SelectContactNumber(phone.Number)" aria-pressed="@(ClientNumber == phone.Number)">
+                                <strong>@phone.Number</strong><small>@phone.Source</small>
+                            </button>
+                        }
+                    </div>
                 }
             </div>
             <div class="field">
@@ -79,11 +101,11 @@ else
             </div>
 
             <div class="promise-registration__action">
-                <button type="submit" class="primary-button" disabled="@(!CanSave)">
-                    @(IsSaving ? "Guardando…" : "Registrar promesa")
+                <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)">
+                    @SaveButtonLabel
                 </button>
             </div>
-        </form>
+        </div>
 
         @if (Lookup is { Exists: false } && !string.IsNullOrWhiteSpace(ClientId))
         {
@@ -116,8 +138,16 @@ else
     private string? Notice { get; set; }
     private bool Saved { get; set; }
     private bool IsSaving { get; set; }
+    private bool IsLookingUp { get; set; }
+    private ElementReference ClientIdInput;
+    private ElementReference ClientNumberInput;
+    private bool FocusClientId { get; set; }
+    private bool FocusClientNumber { get; set; }
 
     private string ClientName => Lookup is { Exists: true } ? Lookup.ClientName : string.Empty;
+    private string SaveButtonLabel => IsSaving ? "Guardando…"
+        : Lookup is not { Exists: true } ? "Valida el cliente"
+        : "Registrar promesa";
     private bool HasValidPromiseData => Lookup is { Exists: true, ActivePromise: null }
         && TextNormalization.Phone(ClientNumber).Length == 10
         && PromiseDate is not null
@@ -129,15 +159,36 @@ else
 
     private async Task LookupClientAsync()
     {
+        if (IsLookingUp || string.IsNullOrWhiteSpace(ClientId)) return;
+
         var previousClientId = Lookup?.ClientId;
         Notice = null;
         Saved = false;
-        Lookup = await PromiseRegistrations.LookupClientAsync(ClientId);
-        if (!string.Equals(previousClientId, Lookup.ClientId, StringComparison.OrdinalIgnoreCase))
+        IsLookingUp = true;
+        try
         {
-            ClientNumber = string.Empty;
+            Lookup = await PromiseRegistrations.LookupClientAsync(ClientId);
+            if (!string.Equals(previousClientId, Lookup.ClientId, StringComparison.OrdinalIgnoreCase))
+            {
+                ClientNumber = string.Empty;
+            }
+            FocusClientNumber = Lookup.Exists && Lookup.ActivePromise is null;
+            FocusClientId = !Lookup.Exists;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Notice = exception.Message;
+        }
+        finally
+        {
+            IsLookingUp = false;
         }
     }
+
+    private Task LookupOnEnterAsync(KeyboardEventArgs arguments) =>
+        arguments.Key.Equals("Enter", StringComparison.Ordinal)
+            ? LookupClientAsync()
+            : Task.CompletedTask;
 
     private void ClearClientLookupWhenChanged()
     {
@@ -147,6 +198,8 @@ else
         Notice = null;
         Saved = false;
     }
+
+    private void SelectContactNumber(string number) => ClientNumber = number;
 
     private async Task SaveAsync()
     {
@@ -179,6 +232,7 @@ else
             Notice = $"Promesa {entry.IdPromise:D2} registrada correctamente para {entry.ClientName}.";
             Saved = true;
             ClearForm();
+            FocusClientId = true;
         }
         catch (InvalidOperationException exception)
         {
@@ -200,5 +254,19 @@ else
         NumberOfWeeks = 1;
         PromiseType = string.Empty;
         Lookup = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (FocusClientNumber)
+        {
+            FocusClientNumber = false;
+            await ClientNumberInput.FocusAsync();
+        }
+        else if (FocusClientId)
+        {
+            FocusClientId = false;
+            await ClientIdInput.FocusAsync();
+        }
     }
 }
