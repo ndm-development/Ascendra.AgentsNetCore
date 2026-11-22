@@ -538,6 +538,7 @@
 
     private void OpenPromiseEditor(DatabasePromiseEntry promise)
     {
+        if (!CanManagePromiseRecords) return;
         EditingPromise = new PromiseEditDraft(
             promise.IdPromise,
             promise.ClientId,
@@ -602,7 +603,7 @@
 
     private async Task SavePromiseEditAsync()
     {
-        if (EditingPromise is null || IsSavingPromiseEdit || Session.User is null) return;
+        if (!CanManagePromiseRecords || EditingPromise is null || IsSavingPromiseEdit || Session.User is null) return;
 
         IsSavingPromiseEdit = true;
         PromiseEditError = null;

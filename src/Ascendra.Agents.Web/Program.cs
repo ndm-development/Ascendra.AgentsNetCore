@@ -197,7 +197,9 @@ app.MapPost("/account/login", async (
 
     // Los agentes comienzan en su actividad principal: registrar promesas.
     // Gerencia y supervisión conservan la búsqueda de clientes como inicio.
-    var defaultDestination = user.HasFullAccess ? "/referencias" : "/registrar-promesa";
+    var defaultDestination = user.HasFullAccess
+        ? "/referencias"
+        : user.CanManagePromises ? "/equipo" : "/registrar-promesa";
     return Results.LocalRedirect(IsSafeReturnUrl(returnUrl) ? returnUrl : defaultDestination);
 }).RequireRateLimiting("login");
 
