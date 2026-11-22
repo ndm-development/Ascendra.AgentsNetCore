@@ -35,8 +35,8 @@ else
                 </div>
             </div>
             <div class="field">
-                <label for="promise-client-name">Nombre del cliente</label>
-                <div id="promise-client-name" class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-live="polite">
+                <span class="promise-registration__field-label">Nombre del cliente</span>
+                <div class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-label="Nombre del cliente" aria-live="polite">
                     @if (IsLookingUp)
                     {
                         <span class="promise-registration__client-name-loading">Validando cliente…</span>
