@@ -207,16 +207,20 @@ else
         Saved = false;
         try
         {
-            try { await JS.InvokeVoidAsync("ascendraReminders.enable"); }
-            catch (JSDisconnectedException) { }
+            // El permiso del navegador es opcional y algunos dispositivos lo
+            // mantienen abierto hasta que el usuario responde. Nunca debe
+            // detener el registro del seguimiento.
+            _ = EnableBrowserRemindersAsync();
 
+            using var saveTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var entry = await Reminders.ScheduleAsync(
                 new FollowUpReminderRequest(
                     ClientId,
                     Phone,
                     ReminderDate.Value.ToDateTime(ReminderTime.Value),
                     Note),
-                Session.User);
+                Session.User,
+                saveTimeout.Token);
             Notice = $"Seguimiento programado para {entry.ClientName} el {OperationalClock.Format(entry.ScheduledAt, "dd/MM/yyyy · HH:mm")}.";
             Saved = true;
             ClearForm();
@@ -227,9 +231,34 @@ else
         {
             Notice = exception.Message;
         }
+        catch (OperationCanceledException)
+        {
+            Notice = "El registro tardó demasiado. Intenta nuevamente; si ya aparece en tu agenda, no lo dupliques.";
+        }
+        catch
+        {
+            Notice = "No pudimos programar el seguimiento. Intenta nuevamente en unos segundos.";
+        }
         finally
         {
             IsSaving = false;
+        }
+    }
+
+    private async Task EnableBrowserRemindersAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ascendraReminders.enable");
+        }
+        catch (JSDisconnectedException)
+        {
+            // El aviso dentro de Ascendra seguirá funcionando al reconectar.
+        }
+        catch (JSException)
+        {
+            // El navegador puede tener una versión anterior del JavaScript;
+            // programar el seguimiento sigue siendo prioritario.
         }
     }
 

@@ -426,19 +426,27 @@
         }
     }
 
-    private async Task OpenReminderPlannerAsync()
+    private void OpenReminderPlannerAsync()
+    {
+        // El permiso del navegador no puede bloquear la apertura de la agenda.
+        _ = EnableBrowserRemindersAsync();
+        Navigation.NavigateTo("/seguimientos");
+    }
+
+    private async Task EnableBrowserRemindersAsync()
     {
         try
         {
-            // Esta interacción permite que el navegador autorice los avisos
-            // visibles antes de que llegue el primer seguimiento programado.
             await JS.InvokeVoidAsync("ascendraReminders.enable");
         }
         catch (JSDisconnectedException)
         {
-            // La navegación sigue disponible aunque el circuito se recupere.
+            // La agenda y el aviso dentro de Ascendra siguen disponibles.
         }
-        Navigation.NavigateTo("/seguimientos");
+        catch (JSException)
+        {
+            // Una actualización visual pendiente no debe afectar la agenda.
+        }
     }
 
     private void CloseFloatingPanels()
