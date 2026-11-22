@@ -223,5 +223,17 @@ public sealed class PostgresDatabase(
         CREATE UNIQUE INDEX IF NOT EXISTS ux_promesas_origen_externo
             ON promesas (origen, id_promesa_origen)
             WHERE id_promesa_origen IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS promesas_historial (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            id_promesa integer NOT NULL,
+            accion varchar(30) NOT NULL,
+            registrado_en timestamptz NOT NULL,
+            registrado_por varchar(100) NOT NULL,
+            datos_anteriores jsonb NOT NULL,
+            datos_nuevos jsonb NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_promesas_historial_promesa
+            ON promesas_historial (id_promesa, registrado_en DESC);
         """;
 }

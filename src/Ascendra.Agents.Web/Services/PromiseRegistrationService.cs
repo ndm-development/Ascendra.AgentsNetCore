@@ -190,7 +190,7 @@ public sealed class PromiseRegistrationService(
     }
 
     /// <summary>
-    /// Corrección exclusiva de Gerencia y Supervisión. La reasignación actualiza
+    /// Corrección exclusiva de Gerencia y Dirección. La reasignación actualiza
     /// tanto el nombre mostrado como UsuAlta, para conservar el vínculo del
     /// registro con el agente activo seleccionado.
     /// </summary>
@@ -199,7 +199,7 @@ public sealed class PromiseRegistrationService(
         AgentUser editor,
         CancellationToken cancellationToken = default)
     {
-        if (!editor.HasFullAccess)
+        if (!editor.CanManagePromises)
         {
             throw new InvalidOperationException("No tienes permiso para modificar promesas.");
         }
@@ -245,7 +245,40 @@ public sealed class PromiseRegistrationService(
         try
         {
             await using var connection = await _database.OpenConnectionAsync(cancellationToken);
-            await using var command = new NpgsqlCommand("""
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var history = new NpgsqlCommand("""
+                INSERT INTO promesas_historial (
+                    id_promesa, accion, registrado_en, registrado_por,
+                    datos_anteriores, datos_nuevos)
+                SELECT p.id_promesa, 'Modificación', @modifiedAt, @modifiedBy,
+                       to_jsonb(p),
+                       jsonb_build_object(
+                           'cliente_unico', @clientId,
+                           'agente', @agentName,
+                           'usu_alta', @agentId,
+                           'numero_cliente', @clientNumber,
+                           'fecha_promesa', @promiseDate,
+                           'monto_inicial', @initialAmount,
+                           'monto_semanal', @weeklyAmount,
+                           'tipo_promesa', @promiseType,
+                           'numero_semanas', @numberOfWeeks,
+                           'fecha_creacion', @createdAt,
+                           'modificado_por', @modifiedBy,
+                           'fecha_modificacion', @modifiedAt)
+                FROM promesas AS p
+                WHERE p.id_promesa = @idPromise;
+                """, connection, transaction))
+            {
+                AddEditParameters(history, request.IdPromise, clientId, assignee, phone, request,
+                    promiseType, createdAt, editor.DisplayName, modifiedAt);
+                if (await history.ExecuteNonQueryAsync(cancellationToken) == 0)
+                {
+                    throw new InvalidOperationException("La promesa ya no existe.");
+                }
+            }
+
+            DatabasePromiseEntry updated;
+            await using (var command = new NpgsqlCommand("""
                 UPDATE promesas
                 SET cliente_unico = @clientId,
                     agente = @agentName,
@@ -264,28 +297,18 @@ public sealed class PromiseRegistrationService(
                           fecha_promesa, monto_inicial, monto_semanal, tipo_promesa,
                           numero_semanas, fecha_creacion, estatus, origen,
                           modificado_por, fecha_modificacion;
-                """, connection);
-            command.Parameters.AddWithValue("idPromise", request.IdPromise);
-            command.Parameters.AddWithValue("clientId", clientId);
-            command.Parameters.AddWithValue("agentName", assignee.DisplayName);
-            command.Parameters.AddWithValue("agentId", assignee.Id);
-            command.Parameters.AddWithValue("clientNumber", phone);
-            command.Parameters.AddWithValue("promiseDate", request.PromiseDate);
-            command.Parameters.Add(new NpgsqlParameter("initialAmount", NpgsqlDbType.Numeric) { Value = request.InitialAmount ?? (object)DBNull.Value });
-            command.Parameters.Add(new NpgsqlParameter("weeklyAmount", NpgsqlDbType.Numeric) { Value = request.WeeklyAmount ?? (object)DBNull.Value });
-            command.Parameters.AddWithValue("promiseType", promiseType);
-            command.Parameters.AddWithValue("numberOfWeeks", checked((short)request.NumberOfWeeks));
-            command.Parameters.AddWithValue("createdAt", createdAt);
-            command.Parameters.AddWithValue("modifiedBy", editor.DisplayName);
-            command.Parameters.AddWithValue("modifiedAt", modifiedAt);
-
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
+                """, connection, transaction))
             {
-                throw new InvalidOperationException("La promesa ya no existe.");
+                AddEditParameters(command, request.IdPromise, clientId, assignee, phone, request,
+                    promiseType, createdAt, editor.DisplayName, modifiedAt);
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                {
+                    throw new InvalidOperationException("La promesa ya no existe.");
+                }
+                updated = ReadDatabasePromiseEntry(reader);
             }
-
-            var updated = ReadDatabasePromiseEntry(reader);
+            await transaction.CommitAsync(cancellationToken);
             NotifyChanged();
             return updated;
         }
@@ -293,6 +316,63 @@ public sealed class PromiseRegistrationService(
         {
             _logger.LogError(exception, "No se pudo modificar la promesa {PromiseId} en PostgreSQL.", request.IdPromise);
             throw new InvalidOperationException("No se pudo modificar la promesa. Intenta nuevamente.");
+        }
+    }
+
+    /// <summary>Elimina una promesa sin perder su evidencia administrativa.</summary>
+    public async Task DeleteAsync(
+        int idPromise,
+        AgentUser editor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!editor.CanManagePromises)
+        {
+            throw new InvalidOperationException("No tienes permiso para eliminar promesas.");
+        }
+        if (idPromise <= 0)
+        {
+            throw new InvalidOperationException("Selecciona una promesa válida.");
+        }
+
+        var deletedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var history = new NpgsqlCommand("""
+                INSERT INTO promesas_historial (
+                    id_promesa, accion, registrado_en, registrado_por,
+                    datos_anteriores, datos_nuevos)
+                SELECT p.id_promesa, 'Eliminación', @deletedAt, @deletedBy,
+                       to_jsonb(p), NULL
+                FROM promesas AS p
+                WHERE p.id_promesa = @idPromise;
+                """, connection, transaction))
+            {
+                history.Parameters.AddWithValue("idPromise", idPromise);
+                history.Parameters.AddWithValue("deletedAt", deletedAt);
+                history.Parameters.AddWithValue("deletedBy", editor.DisplayName);
+                if (await history.ExecuteNonQueryAsync(cancellationToken) == 0)
+                {
+                    throw new InvalidOperationException("La promesa ya no existe.");
+                }
+            }
+            await using (var delete = new NpgsqlCommand(
+                "DELETE FROM promesas WHERE id_promesa = @idPromise;", connection, transaction))
+            {
+                delete.Parameters.AddWithValue("idPromise", idPromise);
+                if (await delete.ExecuteNonQueryAsync(cancellationToken) != 1)
+                {
+                    throw new InvalidOperationException("La promesa ya no existe.");
+                }
+            }
+            await transaction.CommitAsync(cancellationToken);
+            NotifyChanged();
+        }
+        catch (Exception exception) when (exception is PostgresException or NpgsqlException or TimeoutException)
+        {
+            _logger.LogError(exception, "No se pudo eliminar la promesa {PromiseId} en PostgreSQL.", idPromise);
+            throw new InvalidOperationException("No se pudo eliminar la promesa. Intenta nuevamente.");
         }
     }
 
@@ -528,6 +608,34 @@ public sealed class PromiseRegistrationService(
     }
 
     private static string NormalizeClientId(string? value) => (value ?? string.Empty).Trim();
+
+    private static void AddEditParameters(
+        NpgsqlCommand command,
+        int idPromise,
+        string clientId,
+        AgentUser assignee,
+        string phone,
+        PromiseEditRequest request,
+        string promiseType,
+        DateTimeOffset createdAt,
+        string modifiedBy,
+        DateTimeOffset modifiedAt)
+    {
+        command.Parameters.AddWithValue("idPromise", idPromise);
+        command.Parameters.AddWithValue("clientId", clientId);
+        command.Parameters.AddWithValue("agentName", assignee.DisplayName);
+        command.Parameters.AddWithValue("agentId", assignee.Id);
+        command.Parameters.AddWithValue("clientNumber", phone);
+        command.Parameters.AddWithValue("promiseDate", request.PromiseDate);
+        command.Parameters.Add(new NpgsqlParameter("initialAmount", NpgsqlDbType.Numeric) { Value = request.InitialAmount ?? (object)DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("weeklyAmount", NpgsqlDbType.Numeric) { Value = request.WeeklyAmount ?? (object)DBNull.Value });
+        command.Parameters.AddWithValue("promiseType", promiseType);
+        command.Parameters.AddWithValue("numberOfWeeks", checked((short)request.NumberOfWeeks));
+        command.Parameters.AddWithValue("createdAt", createdAt);
+        command.Parameters.AddWithValue("modifiedBy", modifiedBy);
+        command.Parameters.AddWithValue("modifiedAt", modifiedAt);
+    }
+
     private static string NormalizeRequired(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
     private static InvalidOperationException ActivePromiseException(PromiseActiveLock activePromise) =>

@@ -13,6 +13,8 @@ public sealed class DashboardSession
     public bool HasFullAccess => User?.HasFullAccess == true;
     public bool IsManager => User?.IsManager == true;
     public bool IsSupervisor => User?.IsSupervisor == true;
+    public bool IsDirector => User?.IsDirector == true;
+    public bool CanManagePromises => User?.CanManagePromises == true;
 
     public string Greeting
     {

@@ -234,7 +234,7 @@ public sealed class ExcelSnapshotStore(
     private static bool IsActive(string value) => TextNormalization.Normalize(value) is "activo" or "active" or "1" or "true" or "si";
     private static string NormaliseRole(string value) => TextNormalization.Normalize(value) switch
     {
-        "agente" => "Agente", "supervisor" => "Supervisor", "gerente" => "Gerente", _ => "Agente",
+        "agente" => "Agente", "supervisor" => "Supervisor", "gerente" => "Gerente", "director" => "Director", _ => "Agente",
     };
     private static decimal? OptionalDecimal(WorkbookRow row, params string[] candidates)
     {

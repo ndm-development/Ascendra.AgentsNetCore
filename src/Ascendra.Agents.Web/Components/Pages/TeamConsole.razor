@@ -1,5 +1,5 @@
 @page "/equipo"
-@attribute [Authorize(Roles = "Gerente,Supervisor")]
+@attribute [Authorize(Roles = "Gerente,Supervisor,Director")]
 @implements IAsyncDisposable
 @inject DashboardSession Session
 @inject DashboardQueries Queries
@@ -227,13 +227,16 @@
                     {
                         <p class="lookup-notice lookup-notice--success">@PromiseEditNotice</p>
                     }
-                    <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th><th>Modificado</th><th></th></tr></thead><tbody>
+                    <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th><th>Modificado</th>@if (CanManagePromiseRecords) { <th></th> }</tr></thead><tbody>
                         @foreach (var row in teamPromises.Take(400))
                         {
                             <tr>
                                 <td>@row.IdPromise.ToString("D2")</td><td>@row.AgentName</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.PromiseType</td><td>@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td>
                                 <td>@if (!string.IsNullOrWhiteSpace(row.ModifiedBy)) { <span class="team-promise-modified">Modificado por: <strong>@row.ModifiedBy</strong><small>@(row.ModifiedAt is null ? string.Empty : OperationalClock.Format(row.ModifiedAt.Value, "dd/MM/yyyy · HH:mm"))</small></span> } else { <span>—</span> }</td>
-                                <td><button type="button" class="secondary-button team-promise-edit" @onclick="() => OpenPromiseEditor(row)">Editar</button></td>
+                                @if (CanManagePromiseRecords)
+                                {
+                                    <td class="team-promise-actions"><button type="button" class="secondary-button team-promise-edit" @onclick="() => OpenPromiseEditor(row)">Editar</button><button type="button" class="secondary-button team-promise-delete" @onclick="() => RequestPromiseDeletion(row)">Eliminar</button></td>
+                                }
                             </tr>
                         }
                     </tbody></table></div>
@@ -252,7 +255,7 @@
         }
     }
 
-    @if (EditingPromise is not null)
+    @if (CanManagePromiseRecords && EditingPromise is not null)
     {
         <div class="promise-editor-backdrop">
             <section class="promise-editor glass-card" role="dialog" aria-modal="true" aria-labelledby="promise-editor-title">
@@ -273,6 +276,17 @@
                     @if (!string.IsNullOrWhiteSpace(PromiseEditError)) { <p class="lookup-notice lookup-notice--error promise-editor__error" role="alert">@PromiseEditError</p> }
                     <div class="promise-editor__actions"><button type="button" class="secondary-button" @onclick="ClosePromiseEditor" disabled="@IsSavingPromiseEdit">Cancelar</button><button type="submit" class="primary-button" disabled="@IsSavingPromiseEdit">@(IsSavingPromiseEdit ? "Guardando…" : "Guardar cambios")</button></div>
                 </form>
+            </section>
+        </div>
+    }
+
+    @if (CanManagePromiseRecords && PromisePendingDeletion is not null)
+    {
+        <div class="promise-editor-backdrop">
+            <section class="promise-editor promise-editor--confirm glass-card" role="dialog" aria-modal="true" aria-labelledby="promise-delete-title">
+                <div class="promise-editor__heading"><div><p class="eyebrow">ELIMINAR PROMESA</p><h2 id="promise-delete-title">Promesa @PromisePendingDeletion.IdPromise.ToString("D2")</h2><p>Se eliminará la promesa de @PromisePendingDeletion.ClientId. Sus datos y la persona que la eliminó quedarán en el historial.</p></div><button type="button" class="promise-editor__close" @onclick="CancelPromiseDeletion" aria-label="Cerrar confirmación">×</button></div>
+                @if (!string.IsNullOrWhiteSpace(PromiseDeleteError)) { <p class="lookup-notice lookup-notice--error promise-editor__error" role="alert">@PromiseDeleteError</p> }
+                <div class="promise-editor__actions"><button type="button" class="secondary-button" @onclick="CancelPromiseDeletion" disabled="@IsDeletingPromise">Cancelar</button><button type="button" class="team-promise-delete team-promise-delete--confirm" @onclick="DeletePromiseAsync" disabled="@IsDeletingPromise">@(IsDeletingPromise ? "Eliminando…" : "Eliminar promesa")</button></div>
             </section>
         </div>
     }
@@ -320,6 +334,10 @@
     private string? PromiseEditError { get; set; }
     private string? PromiseEditNotice { get; set; }
     private bool IsSavingPromiseEdit { get; set; }
+    private DatabasePromiseEntry? PromisePendingDeletion { get; set; }
+    private string? PromiseDeleteError { get; set; }
+    private bool IsDeletingPromise { get; set; }
+    private bool CanManagePromiseRecords => Session.CanManagePromises;
 
     private IReadOnlyList<AgentUser> AssignableAgents => Queries.Snapshot.Users
         .Where(user => user.IsActive && user.IsAgent)
@@ -541,6 +559,45 @@
         if (IsSavingPromiseEdit) return;
         EditingPromise = null;
         PromiseEditError = null;
+    }
+
+    private void RequestPromiseDeletion(DatabasePromiseEntry promise)
+    {
+        if (!CanManagePromiseRecords) return;
+        PromisePendingDeletion = promise;
+        PromiseDeleteError = null;
+        PromiseEditNotice = null;
+    }
+
+    private void CancelPromiseDeletion()
+    {
+        if (IsDeletingPromise) return;
+        PromisePendingDeletion = null;
+        PromiseDeleteError = null;
+    }
+
+    private async Task DeletePromiseAsync()
+    {
+        if (!CanManagePromiseRecords || PromisePendingDeletion is null || IsDeletingPromise || Session.User is null) return;
+
+        IsDeletingPromise = true;
+        PromiseDeleteError = null;
+        try
+        {
+            var promise = PromisePendingDeletion;
+            await PromiseRegistrations.DeleteAsync(promise.IdPromise, Session.User);
+            await ReloadTeamPromisesAsync();
+            PromisePendingDeletion = null;
+            PromiseEditNotice = $"Promesa {promise.IdPromise:D2} eliminada. Se conservó su historial administrativo.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            PromiseDeleteError = exception.Message;
+        }
+        finally
+        {
+            IsDeletingPromise = false;
+        }
     }
 
     private async Task SavePromiseEditAsync()

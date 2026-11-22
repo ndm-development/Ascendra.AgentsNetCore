@@ -11,6 +11,8 @@ public sealed record AgentUser(
         || Role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase);
     public bool IsManager => Role.Equals("Gerente", StringComparison.OrdinalIgnoreCase);
     public bool IsSupervisor => Role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase);
+    public bool IsDirector => Role.Equals("Director", StringComparison.OrdinalIgnoreCase);
+    public bool CanManagePromises => IsManager || IsDirector;
     public bool IsAgent => Role.Equals("Agente", StringComparison.OrdinalIgnoreCase);
 }
 
