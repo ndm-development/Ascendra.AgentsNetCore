@@ -161,8 +161,8 @@
                             <div class="reminder-control" @onclick:stopPropagation="true">
                                 <button type="button" class="reminder-button" @onclick="OpenReminderPlannerAsync" title="Programar seguimiento" aria-label="Programar seguimiento">
                                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                        <path d="M6 3.75v16.5" />
-                                        <path d="M6 5.5c3.9-2.1 6.9 2.1 12 .1v8.15c-5.1 2-8.1-2.2-12-.1" />
+                                        <circle cx="12" cy="12" r="8.25" />
+                                        <path d="M12 7.75v4.65l3.15 1.95" />
                                     </svg>
                                 </button>
                             </div>
@@ -232,7 +232,7 @@
                         @foreach (var reminder in ReminderAlerts)
                         {
                             <section class="reminder-alert glass-card">
-                                <span class="reminder-alert__icon" aria-hidden="true">⚑</span>
+                                <span class="reminder-alert__icon" aria-hidden="true">◷</span>
                                 <div>
                                     <p>SEGUIMIENTO PROGRAMADO</p>
                                     <strong>@reminder.ClientName</strong>
