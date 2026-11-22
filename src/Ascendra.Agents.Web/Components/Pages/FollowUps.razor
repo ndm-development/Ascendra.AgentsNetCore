@@ -24,67 +24,111 @@ else
             <span class="follow-up-planner__agent">@Session.User.DisplayName</span>
         </div>
 
-        <div class="follow-up-planner__form" role="group" aria-label="Datos del seguimiento">
-            <div class="field">
-                <label for="follow-up-client-id">Cliente único</label>
-                <div class="promise-registration__client-input">
-                    <input id="follow-up-client-id" @ref="ClientIdInput" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" @onkeydown="LookupOnEnterAsync" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
-                    <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" disabled="@(IsLookingUp || string.IsNullOrWhiteSpace(ClientId))" aria-label="Buscar cliente único" title="Buscar cliente">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
-                    </button>
+        <div class="follow-up-planner__layout">
+            <aside class="follow-up-planner__journey" aria-label="Pasos para programar un seguimiento">
+                <p>EN 3 PASOS</p>
+                <ol>
+                    <li class="follow-up-planner__journey-step follow-up-planner__journey-step--active">
+                        <span>01</span>
+                        <div><strong>Ubica al cliente</strong><small>Valida su expediente y teléfono.</small></div>
+                    </li>
+                    <li class="follow-up-planner__journey-step @(Lookup is { Exists: true } ? "follow-up-planner__journey-step--active" : string.Empty)">
+                        <span>02</span>
+                        <div><strong>Define el momento</strong><small>Elige fecha y hora de CDMX.</small></div>
+                    </li>
+                    <li class="follow-up-planner__journey-step @(CanSave ? "follow-up-planner__journey-step--active" : string.Empty)">
+                        <span>03</span>
+                        <div><strong>Agenda la llamada</strong><small>Deja una nota para retomarla.</small></div>
+                    </li>
+                </ol>
+                <div class="follow-up-planner__timezone">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></svg>
+                    <span>Horario de Ciudad de México</span>
                 </div>
-            </div>
+            </aside>
 
-            <div class="field">
-                <span class="promise-registration__field-label">Nombre del cliente</span>
-                <div class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-live="polite">
-                    @if (IsLookingUp)
-                    {
-                        <span class="promise-registration__client-name-loading">Validando cliente…</span>
-                    }
-                    else if (Lookup is { Exists: true })
-                    {
-                        <span class="promise-registration__client-name-check" aria-hidden="true">✓</span>
-                        <strong>@Lookup.ClientName</strong>
-                    }
-                    else
-                    {
-                        <span>Se completa al validar el cliente</span>
-                    }
-                </div>
-            </div>
+            <div class="follow-up-planner__workbench" role="group" aria-label="Datos del seguimiento">
+                <section class="follow-up-stage">
+                    <div class="follow-up-stage__heading">
+                        <span>01</span>
+                        <div><p>CLIENTE</p><h2>¿A quién darás seguimiento?</h2></div>
+                    </div>
+                    <div class="follow-up-stage__fields follow-up-stage__fields--client">
+                        <div class="field">
+                            <label for="follow-up-client-id">Cliente único</label>
+                            <div class="promise-registration__client-input">
+                                <input id="follow-up-client-id" @ref="ClientIdInput" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" @onkeydown="LookupOnEnterAsync" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
+                                <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" disabled="@(IsLookingUp || string.IsNullOrWhiteSpace(ClientId))" aria-label="Buscar cliente único" title="Buscar cliente">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                                </button>
+                            </div>
+                        </div>
 
-            <div class="field">
-                <label for="follow-up-phone">Teléfono</label>
-                <select id="follow-up-phone" @ref="PhoneSelect" @bind="Phone" disabled="@(Lookup is not { Exists: true })">
-                    <option value="">@(Lookup is { Exists: true } ? "Selecciona un teléfono" : "Valida primero el cliente")</option>
-                    @if (Lookup is { Exists: true })
-                    {
-                        @foreach (var phone in Lookup.ContactNumbers)
-                        {
-                            <option value="@phone.Number">@phone.Number · @phone.Source</option>
-                        }
-                    }
-                </select>
-            </div>
+                        <div class="field">
+                            <span class="promise-registration__field-label">Nombre del cliente</span>
+                            <div class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-live="polite">
+                                @if (IsLookingUp)
+                                {
+                                    <span class="promise-registration__client-name-loading">Validando cliente…</span>
+                                }
+                                else if (Lookup is { Exists: true })
+                                {
+                                    <span class="promise-registration__client-name-check" aria-hidden="true">✓</span>
+                                    <strong>@Lookup.ClientName</strong>
+                                }
+                                else
+                                {
+                                    <span>Se completa al validar el cliente</span>
+                                }
+                            </div>
+                        </div>
 
-            <div class="field">
-                <label for="follow-up-date">Fecha</label>
-                <input id="follow-up-date" type="date" @bind="ReminderDate" />
-            </div>
+                        <div class="field follow-up-stage__phone">
+                            <label for="follow-up-phone">Teléfono para el seguimiento</label>
+                            <select id="follow-up-phone" @ref="PhoneSelect" @bind="Phone" disabled="@(Lookup is not { Exists: true })">
+                                <option value="">@(Lookup is { Exists: true } ? "Selecciona un teléfono" : "Valida primero el cliente")</option>
+                                @if (Lookup is { Exists: true })
+                                {
+                                    @foreach (var phone in Lookup.ContactNumbers)
+                                    {
+                                        <option value="@phone.Number">@phone.Number · @phone.Source</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </section>
 
-            <div class="field">
-                <label for="follow-up-time">Hora</label>
-                <input id="follow-up-time" type="time" @bind="ReminderTime" />
-            </div>
+                <section class="follow-up-stage">
+                    <div class="follow-up-stage__heading">
+                        <span>02</span>
+                        <div><p>CUÁNDO</p><h2>Elige el momento de la llamada</h2></div>
+                    </div>
+                    <div class="follow-up-stage__fields follow-up-stage__fields--schedule">
+                        <div class="field">
+                            <label for="follow-up-date">Fecha</label>
+                            <input id="follow-up-date" type="date" @bind="ReminderDate" />
+                        </div>
+                        <div class="field">
+                            <label for="follow-up-time">Hora</label>
+                            <input id="follow-up-time" type="time" @bind="ReminderTime" />
+                        </div>
+                    </div>
+                </section>
 
-            <div class="field follow-up-planner__note">
-                <label for="follow-up-note">Nota</label>
-                <textarea id="follow-up-note" @bind="Note" @bind:event="oninput" maxlength="1000" rows="2" placeholder="Ej. Confirmar pago prometido y actualizar la gestión."></textarea>
-            </div>
-
-            <div class="follow-up-planner__action">
-                <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)">@SaveButtonLabel</button>
+                <section class="follow-up-stage follow-up-stage--note">
+                    <div class="follow-up-stage__heading">
+                        <span>03</span>
+                        <div><p>CONTEXTO</p><h2>Deja preparada la siguiente conversación</h2></div>
+                    </div>
+                    <div class="field">
+                        <label for="follow-up-note">Nota</label>
+                        <textarea id="follow-up-note" @bind="Note" @bind:event="oninput" maxlength="1000" rows="3" placeholder="Ej. Confirmar pago prometido y actualizar la gestión."></textarea>
+                    </div>
+                    <div class="follow-up-planner__action">
+                        <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)">@SaveButtonLabel</button>
+                    </div>
+                </section>
             </div>
         </div>
 
