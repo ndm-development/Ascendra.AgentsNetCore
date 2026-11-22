@@ -12,7 +12,7 @@ public sealed record AgentUser(
     public bool IsManager => Role.Equals("Gerente", StringComparison.OrdinalIgnoreCase);
     public bool IsSupervisor => Role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase);
     public bool IsDirector => Role.Equals("Director", StringComparison.OrdinalIgnoreCase);
-    public bool CanManagePromises => IsManager || IsDirector;
+    public bool CanManagePromises => OperationalPermissions.CanManagePromises(Role);
     public bool IsAgent => Role.Equals("Agente", StringComparison.OrdinalIgnoreCase);
 }
 

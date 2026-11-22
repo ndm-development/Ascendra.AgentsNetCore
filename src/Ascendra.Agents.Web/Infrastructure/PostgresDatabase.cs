@@ -67,6 +67,7 @@ public sealed class PostgresDatabase(
                 await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
                 await using var command = new NpgsqlCommand(SchemaSql, connection);
                 await command.ExecuteNonQueryAsync(cancellationToken);
+                await ApplyMigrationsAsync(connection, cancellationToken);
                 _dataSource = dataSource;
                 logger.LogInformation("PostgreSQL de Ascendra está disponible con un máximo de {MaxPoolSize} conexiones agrupadas.", builder.MaxPoolSize);
             }
@@ -121,6 +122,39 @@ public sealed class PostgresDatabase(
         return builder;
     }
 
+    private static async Task ApplyMigrationsAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        foreach (var migration in DatabaseMigrations.All)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var applied = new NpgsqlCommand(
+                "SELECT 1 FROM application_schema_migrations WHERE migration_id = @id;", connection, transaction))
+            {
+                applied.Parameters.AddWithValue("id", migration.Id);
+                if (await applied.ExecuteScalarAsync(cancellationToken) is not null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    continue;
+                }
+            }
+
+            await using (var apply = new NpgsqlCommand(migration.Sql, connection, transaction))
+            {
+                await apply.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var record = new NpgsqlCommand("""
+                INSERT INTO application_schema_migrations (migration_id, applied_at)
+                VALUES (@id, now())
+                ON CONFLICT (migration_id) DO NOTHING;
+                """, connection, transaction))
+            {
+                record.Parameters.AddWithValue("id", migration.Id);
+                await record.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         _initializationGate.Dispose();
@@ -131,6 +165,11 @@ public sealed class PostgresDatabase(
         CREATE TABLE IF NOT EXISTS application_imports (
             import_key text PRIMARY KEY,
             completed_at timestamptz NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS application_schema_migrations (
+            migration_id text PRIMARY KEY,
+            applied_at timestamptz NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS chat_messages (
@@ -224,16 +263,5 @@ public sealed class PostgresDatabase(
             ON promesas (origen, id_promesa_origen)
             WHERE id_promesa_origen IS NOT NULL;
 
-        CREATE TABLE IF NOT EXISTS promesas_historial (
-            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            id_promesa integer NOT NULL,
-            accion varchar(30) NOT NULL,
-            registrado_en timestamptz NOT NULL,
-            registrado_por varchar(100) NOT NULL,
-            datos_anteriores jsonb NOT NULL,
-            datos_nuevos jsonb NULL
-        );
-        CREATE INDEX IF NOT EXISTS ix_promesas_historial_promesa
-            ON promesas_historial (id_promesa, registrado_en DESC);
         """;
 }

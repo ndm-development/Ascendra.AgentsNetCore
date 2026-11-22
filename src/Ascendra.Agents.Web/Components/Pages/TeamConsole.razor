@@ -1,5 +1,5 @@
 @page "/equipo"
-@attribute [Authorize(Roles = "Gerente,Supervisor,Director")]
+@attribute [Authorize(Roles = OperationalPermissions.TeamConsoleRoles)]
 @implements IAsyncDisposable
 @inject DashboardSession Session
 @inject DashboardQueries Queries
@@ -280,16 +280,17 @@
         </div>
     }
 
-    @if (CanManagePromiseRecords && PromisePendingDeletion is not null)
-    {
-        <div class="promise-editor-backdrop">
-            <section class="promise-editor promise-editor--confirm glass-card" role="dialog" aria-modal="true" aria-labelledby="promise-delete-title">
-                <div class="promise-editor__heading"><div><p class="eyebrow">ELIMINAR PROMESA</p><h2 id="promise-delete-title">Promesa @PromisePendingDeletion.IdPromise.ToString("D2")</h2><p>Se eliminará la promesa de @PromisePendingDeletion.ClientId. Sus datos y la persona que la eliminó quedarán en el historial.</p></div><button type="button" class="promise-editor__close" @onclick="CancelPromiseDeletion" aria-label="Cerrar confirmación">×</button></div>
-                @if (!string.IsNullOrWhiteSpace(PromiseDeleteError)) { <p class="lookup-notice lookup-notice--error promise-editor__error" role="alert">@PromiseDeleteError</p> }
-                <div class="promise-editor__actions"><button type="button" class="secondary-button" @onclick="CancelPromiseDeletion" disabled="@IsDeletingPromise">Cancelar</button><button type="button" class="team-promise-delete team-promise-delete--confirm" @onclick="DeletePromiseAsync" disabled="@IsDeletingPromise">@(IsDeletingPromise ? "Eliminando…" : "Eliminar promesa")</button></div>
-            </section>
-        </div>
-    }
+    <ConfirmationDialog
+        IsOpen="@(CanManagePromiseRecords && PromisePendingDeletion is not null)"
+        Eyebrow="ELIMINAR PROMESA"
+        Title="@(PromisePendingDeletion is null ? "Eliminar promesa" : $"Promesa {PromisePendingDeletion.IdPromise:D2}")"
+        Message="@(PromisePendingDeletion is null ? string.Empty : $"Se eliminará la promesa de {PromisePendingDeletion.ClientId}. Sus datos y la persona que la eliminó quedarán en el historial.")"
+        Error="@PromiseDeleteError"
+        IsBusy="@IsDeletingPromise"
+        ConfirmLabel="Eliminar promesa"
+        BusyLabel="Eliminando…"
+        OnConfirm="DeletePromiseAsync"
+        OnCancel="CancelPromiseDeletion" />
 </section>
 
 @code {

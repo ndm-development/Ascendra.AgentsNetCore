@@ -1,0 +1,36 @@
+@if (IsOpen)
+{
+    <div class="confirmation-dialog__backdrop">
+        <section class="confirmation-dialog glass-card" role="dialog" aria-modal="true" aria-labelledby="@TitleId">
+            <div class="confirmation-dialog__heading">
+                <div>
+                    @if (!string.IsNullOrWhiteSpace(Eyebrow)) { <p class="eyebrow">@Eyebrow</p> }
+                    <h2 id="@TitleId">@Title</h2>
+                    <p>@Message</p>
+                </div>
+                <button type="button" class="confirmation-dialog__close" @onclick="OnCancel" aria-label="Cerrar confirmación" disabled="@IsBusy">×</button>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Error)) { <p class="lookup-notice lookup-notice--error confirmation-dialog__error" role="alert">@Error</p> }
+            <div class="confirmation-dialog__actions">
+                <button type="button" class="secondary-button" @onclick="OnCancel" disabled="@IsBusy">@CancelLabel</button>
+                <button type="button" class="confirmation-dialog__confirm" @onclick="OnConfirm" disabled="@IsBusy">@(IsBusy ? BusyLabel : ConfirmLabel)</button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private string TitleId { get; } = $"confirmation-dialog-{Guid.NewGuid():N}";
+
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string? Eyebrow { get; set; }
+    [Parameter] public string Title { get; set; } = "Confirmar acción";
+    [Parameter] public string Message { get; set; } = string.Empty;
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public string ConfirmLabel { get; set; } = "Confirmar";
+    [Parameter] public string BusyLabel { get; set; } = "Procesando…";
+    [Parameter] public string CancelLabel { get; set; } = "Cancelar";
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+}
