@@ -38,7 +38,9 @@ public sealed class FollowUpReminderService(
             throw new InvalidOperationException("Selecciona uno de los teléfonos asociados al cliente.");
         }
 
-        var scheduledAt = OperationalClock.FromMexicoCityLocal(request.ScheduledAtLocal);
+        // La captura es hora de Ciudad de México, pero PostgreSQL (timestamptz)
+        // recibe instantes UTC. Npgsql rechaza DateTimeOffset con desfase local.
+        var scheduledAt = OperationalClock.FromMexicoCityLocal(request.ScheduledAtLocal).ToUniversalTime();
         if (scheduledAt <= DateTimeOffset.UtcNow)
         {
             throw new InvalidOperationException("Selecciona una fecha y hora futuras para el seguimiento.");
@@ -102,6 +104,34 @@ public sealed class FollowUpReminderService(
         command.Parameters.AddWithValue("agentId", agentId.Trim());
         command.Parameters.AddWithValue("from", DateTimeOffset.UtcNow.AddDays(-1));
         return await ReadManyAsync(command, cancellationToken);
+    }
+
+    public async Task CancelAsync(
+        Guid reminderId,
+        AgentUser agent,
+        CancellationToken cancellationToken = default)
+    {
+        if (!agent.IsAgent)
+        {
+            throw new InvalidOperationException("Sólo el agente que creó el seguimiento puede cancelarlo.");
+        }
+
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            UPDATE recordatorios
+            SET cancelado_en = @cancelledAt
+            WHERE id = @id
+              AND agente_id = @agentId
+              AND cancelado_en IS NULL
+            RETURNING id;
+            """, connection);
+        command.Parameters.AddWithValue("id", reminderId);
+        command.Parameters.AddWithValue("agentId", agent.Id);
+        command.Parameters.AddWithValue("cancelledAt", DateTimeOffset.UtcNow);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+        {
+            throw new InvalidOperationException("Este seguimiento ya no está disponible para cancelar.");
+        }
     }
 
     /// <summary>

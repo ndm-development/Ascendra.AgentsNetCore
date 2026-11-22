@@ -3,7 +3,6 @@
 @inject DashboardSession Session
 @inject PromiseRegistrationService PromiseRegistrations
 @inject FollowUpReminderService Reminders
-@inject IJSRuntime JS
 
 @if (Session.User?.IsAgent != true)
 {
@@ -121,6 +120,7 @@ else
                         <time datetime="@reminder.ScheduledAt.ToString("O")">@OperationalClock.Format(reminder.ScheduledAt, "ddd dd MMM · HH:mm")</time>
                         <div><strong>@reminder.ClientName</strong><span>@reminder.ClientId · @reminder.Phone</span></div>
                         <p>@reminder.Note</p>
+                        <button type="button" class="secondary-button follow-up-item__cancel" @onclick="() => CancelAsync(reminder)" disabled="@(CancellingReminderId == reminder.Id)">@(CancellingReminderId == reminder.Id ? "Cancelando…" : "Cancelar")</button>
                     </article>
                 }
             </div>
@@ -140,6 +140,7 @@ else
     private bool Saved { get; set; }
     private bool IsLookingUp { get; set; }
     private bool IsSaving { get; set; }
+    private Guid? CancellingReminderId { get; set; }
     private bool FocusPhone { get; set; }
     private bool FocusClientId { get; set; }
     private ElementReference ClientIdInput;
@@ -207,11 +208,6 @@ else
         Saved = false;
         try
         {
-            // El permiso del navegador es opcional y algunos dispositivos lo
-            // mantienen abierto hasta que el usuario responde. Nunca debe
-            // detener el registro del seguimiento.
-            _ = EnableBrowserRemindersAsync();
-
             using var saveTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var entry = await Reminders.ScheduleAsync(
                 new FollowUpReminderRequest(
@@ -245,27 +241,38 @@ else
         }
     }
 
-    private async Task EnableBrowserRemindersAsync()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("ascendraReminders.enable");
-        }
-        catch (JSDisconnectedException)
-        {
-            // El aviso dentro de Ascendra seguirá funcionando al reconectar.
-        }
-        catch (JSException)
-        {
-            // El navegador puede tener una versión anterior del JavaScript;
-            // programar el seguimiento sigue siendo prioritario.
-        }
-    }
-
     private async Task ReloadUpcomingAsync()
     {
         if (Session.User is null) return;
         Upcoming = await Reminders.GetUpcomingAsync(Session.User.Id);
+    }
+
+    private async Task CancelAsync(FollowUpReminder reminder)
+    {
+        if (CancellingReminderId is not null || Session.User is null) return;
+
+        CancellingReminderId = reminder.Id;
+        Notice = null;
+        Saved = false;
+        try
+        {
+            await Reminders.CancelAsync(reminder.Id, Session.User);
+            await ReloadUpcomingAsync();
+            Notice = $"Seguimiento de {reminder.ClientName} cancelado.";
+            Saved = true;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Notice = exception.Message;
+        }
+        catch
+        {
+            Notice = "No pudimos cancelar el seguimiento. Intenta nuevamente en unos segundos.";
+        }
+        finally
+        {
+            CancellingReminderId = null;
+        }
     }
 
     private void ClearForm()

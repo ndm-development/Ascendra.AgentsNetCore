@@ -159,7 +159,7 @@
                         @if (Session.User?.IsAgent == true)
                         {
                             <div class="reminder-control" @onclick:stopPropagation="true">
-                                <button type="button" class="reminder-button" @onclick="OpenReminderPlannerAsync" title="Programar seguimiento" aria-label="Programar seguimiento">
+                                <button type="button" class="@ReminderButtonClass" @onclick="OpenReminderPlanner" title="@ReminderButtonLabel" aria-label="@ReminderButtonLabel">
                                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                         <circle cx="12" cy="12" r="8.25" />
                                         <path d="M12 7.75v4.65l3.15 1.95" />
@@ -305,6 +305,12 @@
     private CancellationTokenSource? ReminderPollingCancellation { get; set; }
     private Task? ReminderPollingTask { get; set; }
     private List<FollowUpReminder> ReminderAlerts { get; } = [];
+    private string ReminderButtonClass => ReminderAlerts.Count > 0
+        ? "reminder-button reminder-button--alert"
+        : "reminder-button";
+    private string ReminderButtonLabel => ReminderAlerts.Count > 0
+        ? $"{ReminderAlerts.Count} seguimiento(s) pendiente(s)"
+        : "Programar seguimiento";
     private static readonly (string Value, string Label)[] ChatEmojis =
     [
         ("👀", "Revisar"), ("✅", "Confirmado"), ("❤️", "Me gusta"), ("💵", "Pago"), ("🤑", "Cobrado"), ("💯", "Cien por ciento"),
@@ -426,27 +432,9 @@
         }
     }
 
-    private void OpenReminderPlannerAsync()
+    private void OpenReminderPlanner()
     {
-        // El permiso del navegador no puede bloquear la apertura de la agenda.
-        _ = EnableBrowserRemindersAsync();
         Navigation.NavigateTo("/seguimientos");
-    }
-
-    private async Task EnableBrowserRemindersAsync()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("ascendraReminders.enable");
-        }
-        catch (JSDisconnectedException)
-        {
-            // La agenda y el aviso dentro de Ascendra siguen disponibles.
-        }
-        catch (JSException)
-        {
-            // Una actualización visual pendiente no debe afectar la agenda.
-        }
     }
 
     private void CloseFloatingPanels()
