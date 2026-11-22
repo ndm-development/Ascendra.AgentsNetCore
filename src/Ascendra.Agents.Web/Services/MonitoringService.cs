@@ -124,8 +124,8 @@ public sealed class MonitoringService(PostgresDatabase database)
         await using var command = new NpgsqlCommand("""
             SELECT COALESCE(NULLIF(BTRIM(agent_name), ''), 'Sin agente'), COUNT(*)
             FROM call_dispositions
-            WHERE (@start_date IS NULL OR recorded_at::date >= @start_date)
-              AND (@end_date IS NULL OR recorded_at::date <= @end_date)
+            WHERE (@start_instant IS NULL OR recorded_at >= @start_instant)
+              AND (@end_exclusive IS NULL OR recorded_at < @end_exclusive)
               AND (@agent_name IS NULL OR LOWER(agent_name) = LOWER(@agent_name))
               AND (@category IS NULL OR LOWER(category) = LOWER(@category))
               AND (@channel IS NULL OR LOWER(channel) = LOWER(@channel))
@@ -146,8 +146,8 @@ public sealed class MonitoringService(PostgresDatabase database)
         await using var command = new NpgsqlCommand("""
             SELECT COALESCE(NULLIF(BTRIM(agente), ''), 'Sin agente'), COUNT(*)
             FROM promesas
-            WHERE (@start_date IS NULL OR fecha_creacion::date >= @start_date)
-              AND (@end_date IS NULL OR fecha_creacion::date <= @end_date)
+            WHERE (@start_instant IS NULL OR fecha_creacion >= @start_instant)
+              AND (@end_exclusive IS NULL OR fecha_creacion < @end_exclusive)
               AND (@agent_name IS NULL OR LOWER(agente) = LOWER(@agent_name))
               AND (@promise_type IS NULL OR LOWER(tipo_promesa) = LOWER(@promise_type))
               AND (@promise_status IS NULL OR LOWER(estatus) = LOWER(@promise_status))
@@ -175,16 +175,27 @@ public sealed class MonitoringService(PostgresDatabase database)
 
     private static void AddDateAndAgentParameters(NpgsqlCommand command, MonitoringFilters filters)
     {
-        command.Parameters.Add(new NpgsqlParameter("start_date", NpgsqlDbType.Date)
+        // Los eventos se almacenan en UTC, pero el rango seleccionado se
+        // interpreta como días completos de Ciudad de México. Además de
+        // eliminar el salto de fecha nocturno, el rango sobre timestamptz
+        // permite usar los índices de las dos tablas.
+        command.Parameters.Add(new NpgsqlParameter("start_instant", NpgsqlDbType.TimestampTz)
         {
-            Value = filters.StartDate is null ? DBNull.Value : filters.StartDate.Value,
+            Value = filters.StartDate is null
+                ? DBNull.Value
+                : MexicoCityMidnight(filters.StartDate.Value),
         });
-        command.Parameters.Add(new NpgsqlParameter("end_date", NpgsqlDbType.Date)
+        command.Parameters.Add(new NpgsqlParameter("end_exclusive", NpgsqlDbType.TimestampTz)
         {
-            Value = filters.EndDate is null ? DBNull.Value : filters.EndDate.Value,
+            Value = filters.EndDate is null
+                ? DBNull.Value
+                : MexicoCityMidnight(filters.EndDate.Value.AddDays(1)),
         });
         AddOptionalText(command, "agent_name", filters.AgentName);
     }
+
+    private static DateTimeOffset MexicoCityMidnight(DateOnly date) =>
+        OperationalClock.FromMexicoCityLocal(date.ToDateTime(TimeOnly.MinValue)).ToUniversalTime();
 
     private static void AddOptionalText(NpgsqlCommand command, string name, string? value) =>
         command.Parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Text)

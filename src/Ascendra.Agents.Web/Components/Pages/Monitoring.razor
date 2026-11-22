@@ -123,8 +123,10 @@ else
 @code {
     private MonitoringSnapshot? Snapshot { get; set; }
     private bool IsDisposed { get; set; }
-    private DateOnly? StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddDays(-6));
-    private DateOnly? EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    // El contenedor de Render usa UTC. Las fechas que ve Operación siempre
+    // se calculan en Ciudad de México, igual que las demás pantallas.
+    private DateOnly? StartDate { get; set; } = OperationalClock.Date(DateTimeOffset.UtcNow).AddDays(-6);
+    private DateOnly? EndDate { get; set; } = OperationalClock.Date(DateTimeOffset.UtcNow);
     private string SelectedAgent { get; set; } = string.Empty;
     private string SelectedPromiseType { get; set; } = string.Empty;
     private string SelectedPromiseStatus { get; set; } = string.Empty;
