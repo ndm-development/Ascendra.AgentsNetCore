@@ -147,6 +147,7 @@ else
     private string ClientName => Lookup is { Exists: true } ? Lookup.ClientName : string.Empty;
     private string SaveButtonLabel => IsSaving ? "Guardando…"
         : Lookup is not { Exists: true } ? "Valida el cliente"
+        : !HasValidPromiseData ? "Completa los datos"
         : "Registrar promesa";
     private bool HasValidPromiseData => Lookup is { Exists: true, ActivePromise: null }
         && TextNormalization.Phone(ClientNumber).Length == 10
