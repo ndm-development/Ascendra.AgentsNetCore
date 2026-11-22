@@ -199,6 +199,8 @@ public sealed class PostgresDatabase(
             estatus varchar(100) NOT NULL DEFAULT 'Pendiente de pago',
             origen varchar(20) NOT NULL DEFAULT 'Ascendra',
             id_promesa_origen varchar(100) NULL,
+            modificado_por varchar(100) NULL,
+            fecha_modificacion timestamptz NULL,
             CONSTRAINT ck_promesas_numero_semanas CHECK (numero_semanas BETWEEN 0 AND 255),
             CONSTRAINT ck_promesas_montos CHECK (
                 (monto_inicial IS NULL OR monto_inicial >= 0)
@@ -207,6 +209,8 @@ public sealed class PostgresDatabase(
         ALTER TABLE promesas ADD COLUMN IF NOT EXISTS origen varchar(20) NOT NULL DEFAULT 'Ascendra';
         ALTER TABLE promesas ADD COLUMN IF NOT EXISTS id_promesa_origen varchar(100) NULL;
         ALTER TABLE promesas ADD COLUMN IF NOT EXISTS estatus varchar(100) NOT NULL DEFAULT 'Pendiente de pago';
+        ALTER TABLE promesas ADD COLUMN IF NOT EXISTS modificado_por varchar(100) NULL;
+        ALTER TABLE promesas ADD COLUMN IF NOT EXISTS fecha_modificacion timestamptz NULL;
         ALTER TABLE promesas ALTER COLUMN agente DROP NOT NULL;
         ALTER TABLE promesas ALTER COLUMN tipo_promesa DROP NOT NULL;
         ALTER TABLE promesas ALTER COLUMN usu_alta DROP NOT NULL;

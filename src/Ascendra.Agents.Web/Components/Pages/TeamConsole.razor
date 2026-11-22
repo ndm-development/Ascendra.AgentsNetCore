@@ -223,9 +223,19 @@
             {
                 <section class="table-card glass-card team-console__table">
                     <div class="result-heading"><div><p class="eyebrow">PROMESAS EN POSTGRESQL</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros visibles</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
-                    <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
+                    @if (!string.IsNullOrWhiteSpace(PromiseEditNotice))
+                    {
+                        <p class="lookup-notice lookup-notice--success">@PromiseEditNotice</p>
+                    }
+                    <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th><th>Modificado</th><th></th></tr></thead><tbody>
                         @foreach (var row in teamPromises.Take(400))
-                        { <tr><td>@row.IdPromise.ToString("D2")</td><td>@row.AgentName</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.PromiseType</td><td>@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td></tr> }
+                        {
+                            <tr>
+                                <td>@row.IdPromise.ToString("D2")</td><td>@row.AgentName</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.PromiseType</td><td>@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td>
+                                <td>@if (!string.IsNullOrWhiteSpace(row.ModifiedBy)) { <span class="team-promise-modified">Modificado por: <strong>@row.ModifiedBy</strong><small>@(row.ModifiedAt is null ? string.Empty : OperationalClock.Format(row.ModifiedAt.Value, "dd/MM/yyyy · HH:mm"))</small></span> } else { <span>—</span> }</td>
+                                <td><button type="button" class="secondary-button team-promise-edit" @onclick="() => OpenPromiseEditor(row)">Editar</button></td>
+                            </tr>
+                        }
                     </tbody></table></div>
                 </section>
             }
@@ -240,6 +250,31 @@
                 </tbody></table></div>
             </section>
         }
+    }
+
+    @if (EditingPromise is not null)
+    {
+        <div class="promise-editor-backdrop">
+            <section class="promise-editor glass-card" role="dialog" aria-modal="true" aria-labelledby="promise-editor-title">
+                <div class="promise-editor__heading">
+                    <div><p class="eyebrow">EDICIÓN DE PROMESA</p><h2 id="promise-editor-title">Promesa @EditingPromise.IdPromise.ToString("D2")</h2><p>Los cambios quedan identificados con tu nombre.</p></div>
+                    <button type="button" class="promise-editor__close" @onclick="ClosePromiseEditor" aria-label="Cerrar edición">×</button>
+                </div>
+                <form class="promise-editor__form" @onsubmit="SavePromiseEditAsync" @onsubmit:preventDefault="true">
+                    <div class="field"><label for="edit-promise-client">Cliente único</label><input id="edit-promise-client" @bind="EditingPromise.ClientId" maxlength="100" /></div>
+                    <div class="field"><label for="edit-promise-agent">Agente asignado</label><select id="edit-promise-agent" @bind="EditingPromise.AssignedAgentId"><option value="">Selecciona un agente activo</option>@if (!AssignableAgents.Any(agent => agent.Id.Equals(EditingPromise.AssignedAgentId, StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(EditingPromise.AssignedAgentId)) { <option value="@EditingPromise.AssignedAgentId">@EditingPromise.AgentName (actual)</option> }@foreach (var agent in AssignableAgents) { <option value="@agent.Id">@agent.DisplayName</option> }</select></div>
+                    <div class="field"><label for="edit-promise-phone">Número contactado</label><input id="edit-promise-phone" @bind="EditingPromise.ClientNumber" inputmode="numeric" maxlength="20" /></div>
+                    <div class="field"><label for="edit-promise-date">Fecha de promesa</label><input id="edit-promise-date" type="date" @bind="EditingPromise.PromiseDate" /></div>
+                    <div class="field"><label for="edit-promise-initial">Monto inicial</label><input id="edit-promise-initial" type="number" @bind="EditingPromise.InitialAmount" min="0" step="0.01" inputmode="decimal" /></div>
+                    <div class="field"><label for="edit-promise-weekly">Monto semanal</label><input id="edit-promise-weekly" type="number" @bind="EditingPromise.WeeklyAmount" min="0" step="0.01" inputmode="decimal" /></div>
+                    <div class="field"><label for="edit-promise-weeks">Número de semanas</label><input id="edit-promise-weeks" type="number" @bind="EditingPromise.NumberOfWeeks" min="0" max="255" step="1" inputmode="numeric" /></div>
+                    <div class="field"><label for="edit-promise-type">Tipo de promesa</label><select id="edit-promise-type" @bind="EditingPromise.PromiseType">@foreach (var type in EditablePromiseTypes) { <option value="@type">@type</option> }</select></div>
+                    <div class="field promise-editor__created"><label for="edit-promise-created">Fecha de creación</label><input id="edit-promise-created" type="datetime-local" @bind="EditingPromise.CreatedAtLocal" /></div>
+                    @if (!string.IsNullOrWhiteSpace(PromiseEditError)) { <p class="lookup-notice lookup-notice--error promise-editor__error" role="alert">@PromiseEditError</p> }
+                    <div class="promise-editor__actions"><button type="button" class="secondary-button" @onclick="ClosePromiseEditor" disabled="@IsSavingPromiseEdit">Cancelar</button><button type="submit" class="primary-button" disabled="@IsSavingPromiseEdit">@(IsSavingPromiseEdit ? "Guardando…" : "Guardar cambios")</button></div>
+                </form>
+            </section>
+        </div>
     }
 </section>
 

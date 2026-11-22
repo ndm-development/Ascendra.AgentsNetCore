@@ -176,31 +176,124 @@ public sealed class PromiseRegistrationService(
         await using var command = new NpgsqlCommand("""
             SELECT id_promesa, cliente_unico, agente, usu_alta, numero_cliente,
                    fecha_promesa, monto_inicial, monto_semanal, tipo_promesa,
-                   numero_semanas, fecha_creacion, estatus, origen
+                   numero_semanas, fecha_creacion, estatus, origen,
+                   modificado_por, fecha_modificacion
             FROM promesas
             ORDER BY fecha_creacion DESC, id_promesa DESC;
             """, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            var clientId = reader.GetString(1);
-            entries.Add(new DatabasePromiseEntry(
-                reader.GetInt32(0),
-                clientId,
-                FindClient(clientId)?.Name ?? "Nombre no disponible en cartera vigente",
-                reader.IsDBNull(2) ? "Sin agente" : reader.GetString(2),
-                reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                reader.GetString(4),
-                reader.GetFieldValue<DateOnly>(5),
-                reader.IsDBNull(6) ? null : reader.GetDecimal(6),
-                reader.IsDBNull(7) ? null : reader.GetDecimal(7),
-                reader.IsDBNull(8) ? "Sin tipo" : reader.GetString(8),
-                reader.GetInt16(9),
-                reader.GetFieldValue<DateTimeOffset>(10),
-                reader.IsDBNull(11) ? "Pendiente de pago" : reader.GetString(11),
-                reader.IsDBNull(12) ? "Ascendra" : reader.GetString(12)));
+            entries.Add(ReadDatabasePromiseEntry(reader));
         }
         return entries;
+    }
+
+    /// <summary>
+    /// Corrección exclusiva de Gerencia y Supervisión. La reasignación actualiza
+    /// tanto el nombre mostrado como UsuAlta, para conservar el vínculo del
+    /// registro con el agente activo seleccionado.
+    /// </summary>
+    public async Task<DatabasePromiseEntry> UpdateAsync(
+        PromiseEditRequest request,
+        AgentUser editor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!editor.HasFullAccess)
+        {
+            throw new InvalidOperationException("No tienes permiso para modificar promesas.");
+        }
+        if (request.IdPromise <= 0)
+        {
+            throw new InvalidOperationException("Selecciona una promesa válida.");
+        }
+
+        var clientId = NormalizeClientId(request.ClientId);
+        if (FindClient(clientId) is null)
+        {
+            throw new InvalidOperationException("El CLIENTE_UNICO no existe en la cartera vigente.");
+        }
+        var phone = TextNormalization.Phone(request.ClientNumber);
+        if (phone.Length != 10)
+        {
+            throw new InvalidOperationException("Ingresa un número contactado válido de 10 dígitos.");
+        }
+        if (request.InitialAmount is < 0 || request.WeeklyAmount is < 0)
+        {
+            throw new InvalidOperationException("Los montos no pueden ser negativos.");
+        }
+        if (request.NumberOfWeeks is < 0 or > 255)
+        {
+            throw new InvalidOperationException("El número de semanas debe estar entre 0 y 255.");
+        }
+        var promiseType = AvailablePromiseTypes.FirstOrDefault(type =>
+            type.Equals(request.PromiseType?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (promiseType is null)
+        {
+            throw new InvalidOperationException("Selecciona un tipo de promesa válido.");
+        }
+        var assignee = _snapshots.Current.Users.FirstOrDefault(user =>
+            user.IsActive && user.IsAgent
+            && user.Id.Equals(request.AssignedAgentId?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (assignee is null)
+        {
+            throw new InvalidOperationException("Selecciona un agente activo para reasignar la promesa.");
+        }
+
+        var createdAt = OperationalClock.FromMexicoCityLocal(request.CreatedAtLocal).ToUniversalTime();
+        var modifiedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+            await using var command = new NpgsqlCommand("""
+                UPDATE promesas
+                SET cliente_unico = @clientId,
+                    agente = @agentName,
+                    usu_alta = @agentId,
+                    numero_cliente = @clientNumber,
+                    fecha_promesa = @promiseDate,
+                    monto_inicial = @initialAmount,
+                    monto_semanal = @weeklyAmount,
+                    tipo_promesa = @promiseType,
+                    numero_semanas = @numberOfWeeks,
+                    fecha_creacion = @createdAt,
+                    modificado_por = @modifiedBy,
+                    fecha_modificacion = @modifiedAt
+                WHERE id_promesa = @idPromise
+                RETURNING id_promesa, cliente_unico, agente, usu_alta, numero_cliente,
+                          fecha_promesa, monto_inicial, monto_semanal, tipo_promesa,
+                          numero_semanas, fecha_creacion, estatus, origen,
+                          modificado_por, fecha_modificacion;
+                """, connection);
+            command.Parameters.AddWithValue("idPromise", request.IdPromise);
+            command.Parameters.AddWithValue("clientId", clientId);
+            command.Parameters.AddWithValue("agentName", assignee.DisplayName);
+            command.Parameters.AddWithValue("agentId", assignee.Id);
+            command.Parameters.AddWithValue("clientNumber", phone);
+            command.Parameters.AddWithValue("promiseDate", request.PromiseDate);
+            command.Parameters.Add(new NpgsqlParameter("initialAmount", NpgsqlDbType.Numeric) { Value = request.InitialAmount ?? (object)DBNull.Value });
+            command.Parameters.Add(new NpgsqlParameter("weeklyAmount", NpgsqlDbType.Numeric) { Value = request.WeeklyAmount ?? (object)DBNull.Value });
+            command.Parameters.AddWithValue("promiseType", promiseType);
+            command.Parameters.AddWithValue("numberOfWeeks", checked((short)request.NumberOfWeeks));
+            command.Parameters.AddWithValue("createdAt", createdAt);
+            command.Parameters.AddWithValue("modifiedBy", editor.DisplayName);
+            command.Parameters.AddWithValue("modifiedAt", modifiedAt);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new InvalidOperationException("La promesa ya no existe.");
+            }
+
+            var updated = ReadDatabasePromiseEntry(reader);
+            NotifyChanged();
+            return updated;
+        }
+        catch (Exception exception) when (exception is PostgresException or NpgsqlException or TimeoutException)
+        {
+            _logger.LogError(exception, "No se pudo modificar la promesa {PromiseId} en PostgreSQL.", request.IdPromise);
+            throw new InvalidOperationException("No se pudo modificar la promesa. Intenta nuevamente.");
+        }
     }
 
     public async Task<IReadOnlyList<PromiseCrossSourceEntry>> GetCrossSourceAsync(
@@ -359,6 +452,28 @@ public sealed class PromiseRegistrationService(
 
     private bool IsIncludedInCurrentCut(int registrationId) =>
         _snapshots.Current.AscendraRegistrationIds.Contains(registrationId);
+
+    private DatabasePromiseEntry ReadDatabasePromiseEntry(NpgsqlDataReader reader)
+    {
+        var clientId = reader.GetString(1);
+        return new DatabasePromiseEntry(
+            reader.GetInt32(0),
+            clientId,
+            FindClient(clientId)?.Name ?? "Nombre no disponible en cartera vigente",
+            reader.IsDBNull(2) ? "Sin agente" : reader.GetString(2),
+            reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+            reader.GetString(4),
+            reader.GetFieldValue<DateOnly>(5),
+            reader.IsDBNull(6) ? null : reader.GetDecimal(6),
+            reader.IsDBNull(7) ? null : reader.GetDecimal(7),
+            reader.IsDBNull(8) ? "Sin tipo" : reader.GetString(8),
+            reader.GetInt16(9),
+            reader.GetFieldValue<DateTimeOffset>(10),
+            reader.IsDBNull(11) ? "Pendiente de pago" : reader.GetString(11),
+            reader.IsDBNull(12) ? "Ascendra" : reader.GetString(12),
+            reader.IsDBNull(13) ? null : reader.GetString(13),
+            reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14));
+    }
 
     private ClientMatch? FindClient(string clientId)
     {

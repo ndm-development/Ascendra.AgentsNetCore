@@ -86,7 +86,25 @@ public sealed record DatabasePromiseEntry(
     int NumberOfWeeks,
     DateTimeOffset CreatedAt,
     string Status,
-    string Origin);
+    string Origin,
+    string? ModifiedBy = null,
+    DateTimeOffset? ModifiedAt = null);
+
+/// <summary>
+/// Corrección administrativa de una promesa. La fecha de creación se recibe
+/// como hora local de Ciudad de México y se normaliza en el servicio.
+/// </summary>
+public sealed record PromiseEditRequest(
+    int IdPromise,
+    string ClientId,
+    string ClientNumber,
+    DateOnly PromiseDate,
+    decimal? InitialAmount,
+    decimal? WeeklyAmount,
+    string PromiseType,
+    int NumberOfWeeks,
+    DateTime CreatedAtLocal,
+    string AssignedAgentId);
 
 public sealed record MonitoringFilters(
     DateOnly? StartDate,
