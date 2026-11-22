@@ -24,5 +24,25 @@ public static class DatabaseMigrations
             CREATE INDEX IF NOT EXISTS ix_promesas_historial_promesa
                 ON promesas_historial (id_promesa, registrado_en DESC);
             """),
+        new("2026-11-22-02-recordatorios", """
+            CREATE TABLE IF NOT EXISTS recordatorios (
+                id uuid PRIMARY KEY,
+                agente_id varchar(100) NOT NULL,
+                agente varchar(100) NOT NULL,
+                cliente_unico varchar(100) NOT NULL,
+                nombre_cliente varchar(300) NOT NULL,
+                numero_telefono varchar(100) NOT NULL,
+                fecha_recordatorio timestamptz NOT NULL,
+                nota varchar(1000) NOT NULL,
+                creado_en timestamptz NOT NULL,
+                notificado_en timestamptz NULL,
+                cancelado_en timestamptz NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_recordatorios_agente_fecha
+                ON recordatorios (agente_id, fecha_recordatorio);
+            CREATE INDEX IF NOT EXISTS ix_recordatorios_pendientes
+                ON recordatorios (fecha_recordatorio)
+                WHERE notificado_en IS NULL AND cancelado_en IS NULL;
+            """),
     ];
 }

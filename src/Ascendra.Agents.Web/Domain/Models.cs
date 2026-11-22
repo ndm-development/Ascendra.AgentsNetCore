@@ -169,6 +169,29 @@ public sealed record PromiseContactNumber(
     string Number,
     string Source);
 
+/// <summary>
+/// Seguimiento que un agente programa para un cliente. La fecha se almacena
+/// como instante y se captura siempre en horario de Ciudad de México.
+/// </summary>
+public sealed record FollowUpReminder(
+    Guid Id,
+    string AgentId,
+    string AgentName,
+    string ClientId,
+    string ClientName,
+    string Phone,
+    DateTimeOffset ScheduledAt,
+    string Note,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? NotifiedAt,
+    DateTimeOffset? CancelledAt);
+
+public sealed record FollowUpReminderRequest(
+    string ClientId,
+    string Phone,
+    DateTime ScheduledAtLocal,
+    string Note);
+
 public sealed record PortfolioRecord(
     string ClientId,
     string ClientName,

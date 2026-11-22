@@ -1,0 +1,265 @@
+@page "/seguimientos"
+@attribute [Authorize]
+@inject DashboardSession Session
+@inject PromiseRegistrationService PromiseRegistrations
+@inject FollowUpReminderService Reminders
+@inject IJSRuntime JS
+
+@if (Session.User?.IsAgent != true)
+{
+    <section class="empty-state glass-card">
+        <p class="eyebrow">SEGUIMIENTOS</p>
+        <h1>Esta agenda es para agentes</h1>
+        <p>Los seguimientos se programan desde la operación individual de cada agente.</p>
+    </section>
+}
+else
+{
+    <section class="follow-up-planner glass-card" aria-label="Programar seguimiento">
+        <div class="follow-up-planner__heading">
+            <div>
+                <p class="eyebrow">AGENDA DE SEGUIMIENTOS</p>
+                <h1>Programar seguimiento</h1>
+                <p>Registra la llamada pendiente y Ascendra te avisará en la fecha y hora de Ciudad de México.</p>
+            </div>
+            <span class="follow-up-planner__agent">@Session.User.DisplayName</span>
+        </div>
+
+        <div class="follow-up-planner__form" role="group" aria-label="Datos del seguimiento">
+            <div class="field">
+                <label for="follow-up-client-id">Cliente único</label>
+                <div class="promise-registration__client-input">
+                    <input id="follow-up-client-id" @ref="ClientIdInput" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" @onkeydown="LookupOnEnterAsync" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
+                    <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" disabled="@(IsLookingUp || string.IsNullOrWhiteSpace(ClientId))" aria-label="Buscar cliente único" title="Buscar cliente">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="field">
+                <span class="promise-registration__field-label">Nombre del cliente</span>
+                <div class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-live="polite">
+                    @if (IsLookingUp)
+                    {
+                        <span class="promise-registration__client-name-loading">Validando cliente…</span>
+                    }
+                    else if (Lookup is { Exists: true })
+                    {
+                        <span class="promise-registration__client-name-check" aria-hidden="true">✓</span>
+                        <strong>@Lookup.ClientName</strong>
+                    }
+                    else
+                    {
+                        <span>Se completa al validar el cliente</span>
+                    }
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="follow-up-phone">Teléfono</label>
+                <select id="follow-up-phone" @ref="PhoneSelect" @bind="Phone" disabled="@(Lookup is not { Exists: true })">
+                    <option value="">@(Lookup is { Exists: true } ? "Selecciona un teléfono" : "Valida primero el cliente")</option>
+                    @if (Lookup is { Exists: true })
+                    {
+                        @foreach (var phone in Lookup.ContactNumbers)
+                        {
+                            <option value="@phone.Number">@phone.Number · @phone.Source</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="follow-up-date">Fecha</label>
+                <input id="follow-up-date" type="date" @bind="ReminderDate" />
+            </div>
+
+            <div class="field">
+                <label for="follow-up-time">Hora</label>
+                <input id="follow-up-time" type="time" @bind="ReminderTime" />
+            </div>
+
+            <div class="field follow-up-planner__note">
+                <label for="follow-up-note">Nota</label>
+                <textarea id="follow-up-note" @bind="Note" @bind:event="oninput" maxlength="1000" rows="2" placeholder="Ej. Confirmar pago prometido y actualizar la gestión."></textarea>
+            </div>
+
+            <div class="follow-up-planner__action">
+                <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)">@SaveButtonLabel</button>
+            </div>
+        </div>
+
+        @if (Lookup is { Exists: false } && !string.IsNullOrWhiteSpace(ClientId))
+        {
+            <p class="lookup-notice lookup-notice--error" role="status">No encontramos ese CLIENTE_UNICO en la cartera vigente.</p>
+        }
+        else if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count == 0)
+        {
+            <p class="lookup-notice lookup-notice--attention" role="status">Este cliente no tiene teléfonos disponibles para programar un seguimiento.</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(Notice))
+        {
+            <p class="lookup-notice @(Saved ? "lookup-notice--success" : "lookup-notice--error")" role="status">@Notice</p>
+        }
+    </section>
+
+    <section class="follow-up-list glass-card" aria-live="polite">
+        <div class="follow-up-list__heading">
+            <div><p class="eyebrow">TU AGENDA</p><h2>Próximos seguimientos</h2></div>
+            <span>@Upcoming.Count programado@(Upcoming.Count == 1 ? string.Empty : "s")</span>
+        </div>
+        @if (Upcoming.Count == 0)
+        {
+            <p class="follow-up-list__empty">Aún no tienes seguimientos programados.</p>
+        }
+        else
+        {
+            <div class="follow-up-list__items">
+                @foreach (var reminder in Upcoming)
+                {
+                    <article class="follow-up-item">
+                        <time datetime="@reminder.ScheduledAt.ToString("O")">@OperationalClock.Format(reminder.ScheduledAt, "ddd dd MMM · HH:mm")</time>
+                        <div><strong>@reminder.ClientName</strong><span>@reminder.ClientId · @reminder.Phone</span></div>
+                        <p>@reminder.Note</p>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private string ClientId { get; set; } = string.Empty;
+    private string Phone { get; set; } = string.Empty;
+    private DateOnly? ReminderDate { get; set; } = OperationalClock.Date(DateTimeOffset.UtcNow);
+    private TimeOnly? ReminderTime { get; set; } = TimeOnly.FromDateTime(OperationalClock.LocalDateTime(DateTimeOffset.UtcNow).AddHours(1));
+    private string Note { get; set; } = string.Empty;
+    private PromiseClientLookup? Lookup { get; set; }
+    private IReadOnlyList<FollowUpReminder> Upcoming { get; set; } = [];
+    private string? Notice { get; set; }
+    private bool Saved { get; set; }
+    private bool IsLookingUp { get; set; }
+    private bool IsSaving { get; set; }
+    private bool FocusPhone { get; set; }
+    private bool FocusClientId { get; set; }
+    private ElementReference ClientIdInput;
+    private ElementReference PhoneSelect;
+
+    private bool HasSchedule => ReminderDate is not null && ReminderTime is not null;
+    private bool CanSave => !IsSaving
+        && Lookup is { Exists: true }
+        && Lookup.ContactNumbers.Any(number => number.Number.Equals(Phone, StringComparison.Ordinal))
+        && HasSchedule
+        && !string.IsNullOrWhiteSpace(Note);
+    private string SaveButtonLabel => IsSaving ? "Programando…"
+        : Lookup is not { Exists: true } ? "Valida el cliente"
+        : string.IsNullOrWhiteSpace(Phone) ? "Selecciona un teléfono"
+        : !HasSchedule || string.IsNullOrWhiteSpace(Note) ? "Completa los datos"
+        : "Programar seguimiento";
+
+    protected override async Task OnInitializedAsync() => await ReloadUpcomingAsync();
+
+    private async Task LookupClientAsync()
+    {
+        if (IsLookingUp || string.IsNullOrWhiteSpace(ClientId)) return;
+
+        var previousClientId = Lookup?.ClientId;
+        IsLookingUp = true;
+        Notice = null;
+        Saved = false;
+        try
+        {
+            Lookup = await PromiseRegistrations.LookupClientAsync(ClientId);
+            if (!string.Equals(previousClientId, Lookup.ClientId, StringComparison.OrdinalIgnoreCase)) Phone = string.Empty;
+            FocusPhone = Lookup.Exists && Lookup.ContactNumbers.Count > 0;
+            FocusClientId = !Lookup.Exists;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Notice = exception.Message;
+        }
+        finally
+        {
+            IsLookingUp = false;
+        }
+    }
+
+    private Task LookupOnEnterAsync(KeyboardEventArgs arguments) =>
+        arguments.Key.Equals("Enter", StringComparison.Ordinal)
+            ? LookupClientAsync()
+            : Task.CompletedTask;
+
+    private void ClearClientLookupWhenChanged()
+    {
+        if (Lookup is null || string.Equals(Lookup.ClientId, ClientId.Trim(), StringComparison.OrdinalIgnoreCase)) return;
+        Lookup = null;
+        Phone = string.Empty;
+        Notice = null;
+        Saved = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (IsSaving || Session.User is null || ReminderDate is null || ReminderTime is null) return;
+
+        IsSaving = true;
+        Notice = null;
+        Saved = false;
+        try
+        {
+            try { await JS.InvokeVoidAsync("ascendraReminders.enable"); }
+            catch (JSDisconnectedException) { }
+
+            var entry = await Reminders.ScheduleAsync(
+                new FollowUpReminderRequest(
+                    ClientId,
+                    Phone,
+                    ReminderDate.Value.ToDateTime(ReminderTime.Value),
+                    Note),
+                Session.User);
+            Notice = $"Seguimiento programado para {entry.ClientName} el {OperationalClock.Format(entry.ScheduledAt, "dd/MM/yyyy · HH:mm")}.";
+            Saved = true;
+            ClearForm();
+            await ReloadUpcomingAsync();
+            FocusClientId = true;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Notice = exception.Message;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task ReloadUpcomingAsync()
+    {
+        if (Session.User is null) return;
+        Upcoming = await Reminders.GetUpcomingAsync(Session.User.Id);
+    }
+
+    private void ClearForm()
+    {
+        ClientId = string.Empty;
+        Phone = string.Empty;
+        Lookup = null;
+        ReminderDate = OperationalClock.Date(DateTimeOffset.UtcNow);
+        ReminderTime = TimeOnly.FromDateTime(OperationalClock.LocalDateTime(DateTimeOffset.UtcNow).AddHours(1));
+        Note = string.Empty;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (FocusPhone)
+        {
+            FocusPhone = false;
+            await PhoneSelect.FocusAsync();
+        }
+        else if (FocusClientId)
+        {
+            FocusClientId = false;
+            await ClientIdInput.FocusAsync();
+        }
+    }
+}

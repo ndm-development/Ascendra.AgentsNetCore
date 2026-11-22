@@ -6,6 +6,7 @@
 @inject OperationalAssetUrls AssetUrls
 @inject IJSRuntime JS
 @inject EphemeralChatService Chat
+@inject FollowUpReminderService Reminders
 
 <AuthorizeView Context="auth">
     <Authorized>
@@ -155,6 +156,17 @@
                                 </aside>
                             }
                         </div>
+                        @if (Session.User?.IsAgent == true)
+                        {
+                            <div class="reminder-control" @onclick:stopPropagation="true">
+                                <button type="button" class="reminder-button" @onclick="OpenReminderPlannerAsync" title="Programar seguimiento" aria-label="Programar seguimiento">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M6 3.75v16.5" />
+                                        <path d="M6 5.5c3.9-2.1 6.9 2.1 12 .1v8.15c-5.1 2-8.1-2.2-12-.1" />
+                                    </svg>
+                                </button>
+                            </div>
+                        }
                         <div class="appearance-control" @onclick:stopPropagation="true">
                             <button type="button" class="theme-button appearance-trigger" @onclick="ToggleAppearanceMenu" aria-haspopup="menu" aria-expanded="@IsAppearanceMenuOpen">
                                 <span class="appearance-trigger__glow" aria-hidden="true"></span>
@@ -214,6 +226,25 @@
                     </div>
                 </header>
 
+                @if (ReminderAlerts.Count > 0)
+                {
+                    <aside class="reminder-alert-stack" aria-live="assertive" aria-label="Recordatorios de seguimiento">
+                        @foreach (var reminder in ReminderAlerts)
+                        {
+                            <section class="reminder-alert glass-card">
+                                <span class="reminder-alert__icon" aria-hidden="true">⚑</span>
+                                <div>
+                                    <p>SEGUIMIENTO PROGRAMADO</p>
+                                    <strong>@reminder.ClientName</strong>
+                                    <span>@reminder.ClientId · @reminder.Phone</span>
+                                    <small>@reminder.Note</small>
+                                </div>
+                                <button type="button" @onclick="() => DismissReminderAlert(reminder.Id)" aria-label="Cerrar recordatorio">×</button>
+                            </section>
+                        }
+                    </aside>
+                }
+
                 <nav class="main-tabs glass-card" aria-label="Módulos principales">
                     @if (Session.HasFullAccess)
                     {
@@ -271,6 +302,9 @@
     private string? ChatError { get; set; }
     private ElementReference ChatThreadElement;
     private bool ScrollChatThreadToBottom { get; set; }
+    private CancellationTokenSource? ReminderPollingCancellation { get; set; }
+    private Task? ReminderPollingTask { get; set; }
+    private List<FollowUpReminder> ReminderAlerts { get; } = [];
     private static readonly (string Value, string Label)[] ChatEmojis =
     [
         ("👀", "Revisar"), ("✅", "Confirmado"), ("❤️", "Me gusta"), ("💵", "Pago"), ("🤑", "Cobrado"), ("💯", "Cien por ciento"),
@@ -392,12 +426,93 @@
         }
     }
 
+    private async Task OpenReminderPlannerAsync()
+    {
+        try
+        {
+            // Esta interacción permite que el navegador autorice los avisos
+            // visibles antes de que llegue el primer seguimiento programado.
+            await JS.InvokeVoidAsync("ascendraReminders.enable");
+        }
+        catch (JSDisconnectedException)
+        {
+            // La navegación sigue disponible aunque el circuito se recupere.
+        }
+        Navigation.NavigateTo("/seguimientos");
+    }
+
     private void CloseFloatingPanels()
     {
         IsChatOpen = false;
         IsAppearanceMenuOpen = false;
         IsChatEmojiPickerOpen = false;
     }
+
+    private async Task CheckDueRemindersAsync()
+    {
+        if (IsDisposed || Session.User?.IsAgent != true) return;
+
+        try
+        {
+            var dueReminders = await Reminders.ClaimDueAsync(Session.User.Id);
+            foreach (var reminder in dueReminders)
+            {
+                if (ReminderAlerts.Any(alert => alert.Id == reminder.Id)) continue;
+                ReminderAlerts.Insert(0, reminder);
+                try
+                {
+                    await JS.InvokeVoidAsync(
+                        "ascendraReminders.notify",
+                        "Seguimiento programado",
+                        $"{reminder.ClientName} · {reminder.Phone}. {reminder.Note}",
+                        reminder.Id.ToString("N"));
+                }
+                catch (JSDisconnectedException)
+                {
+                    // El aviso dentro de Ascendra se conserva para cuando la
+                    // conexión interactiva termine de recuperarse.
+                }
+            }
+
+            if (dueReminders.Count == 0) return;
+            if (ReminderAlerts.Count > 4) ReminderAlerts.RemoveRange(4, ReminderAlerts.Count - 4);
+            StateHasChanged();
+        }
+        catch (OperationCanceledException)
+        {
+            // La vista se está cerrando.
+        }
+        catch
+        {
+            // Una caída puntual de la base no debe interrumpir el resto de
+            // Ascendra. La siguiente revisión vuelve a intentarlo.
+        }
+    }
+
+    private void StartReminderPolling()
+    {
+        if (ReminderPollingCancellation is not null || Session.User?.IsAgent != true) return;
+        ReminderPollingCancellation = new CancellationTokenSource();
+        ReminderPollingTask = PollDueRemindersAsync(ReminderPollingCancellation.Token);
+    }
+
+    private async Task PollDueRemindersAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(CheckDueRemindersAsync);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // El usuario cerró esta vista.
+        }
+    }
+
+    private void DismissReminderAlert(Guid reminderId) => ReminderAlerts.RemoveAll(alert => alert.Id == reminderId);
 
     private void SelectGeneralChat()
     {
@@ -661,6 +776,8 @@
             // El chat es común a todos los roles. La restricción de WhatsApp
             // para Supervisión y Gerencia no debe impedirles participar aquí.
             await StartChatAsync();
+            await CheckDueRemindersAsync();
+            StartReminderPolling();
         }
 
         if (ScrollChatThreadToBottom && IsChatOpen)
@@ -684,6 +801,16 @@
     public async ValueTask DisposeAsync()
     {
         IsDisposed = true;
+        if (ReminderPollingCancellation is not null)
+        {
+            ReminderPollingCancellation.Cancel();
+            if (ReminderPollingTask is not null)
+            {
+                try { await ReminderPollingTask; }
+                catch (OperationCanceledException) { }
+            }
+            ReminderPollingCancellation.Dispose();
+        }
         RemoveChatAttachment();
         if (ChatRegistered)
         {

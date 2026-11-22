@@ -147,6 +147,40 @@ window.ascendraChat = (() => {
     return { scrollToBottom };
 })();
 
+// Los seguimientos se presentan siempre dentro de Ascendra y, si el agente
+// acepta el permiso del navegador, también como notificación del sistema.
+// No se almacena nada adicional en el navegador.
+window.ascendraReminders = (() => {
+    async function enable() {
+        if (!("Notification" in window)) return "unsupported";
+        if (Notification.permission !== "default") return Notification.permission;
+
+        try {
+            return await Notification.requestPermission();
+        } catch {
+            return "denied";
+        }
+    }
+
+    function notify(title, body, tag) {
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+        try {
+            const notification = new Notification(title, {
+                body,
+                tag: `ascendra-reminder-${tag}`,
+                renotify: true,
+            });
+            notification.onclick = () => window.focus();
+        } catch {
+            // El aviso dentro de Ascendra sigue disponible aunque el navegador
+            // tenga bloqueadas las notificaciones del sistema.
+        }
+    }
+
+    return { enable, notify };
+})();
+
 // Un despliegue sustituye el proceso que aloja el circuito interactivo. En vez
 // de mostrar el mensaje técnico de Blazor o recargar contra un 502, esperamos
 // a que la nueva instancia responda y recuperamos la vista automáticamente.

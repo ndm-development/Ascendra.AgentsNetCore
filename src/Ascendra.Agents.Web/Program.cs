@@ -89,6 +89,7 @@ builder.Services.AddHostedService(provider => provider.GetRequiredService<Postgr
 builder.Services.AddSingleton<EphemeralChatService>();
 builder.Services.AddSingleton<CallDispositionService>();
 builder.Services.AddSingleton<PromiseRegistrationService>();
+builder.Services.AddSingleton<FollowUpReminderService>();
 builder.Services.AddSingleton<MonitoringService>();
 builder.Services.AddHostedService<HistoricalPromiseImportService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<EphemeralChatService>());
