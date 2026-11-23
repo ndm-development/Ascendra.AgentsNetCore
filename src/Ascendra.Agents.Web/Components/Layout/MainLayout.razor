@@ -120,7 +120,7 @@
                                     </div>
 
                                     <form class="chat-composer" @onsubmit="SendChatMessageAsync" @onsubmit:preventDefault="true">
-                                        <textarea @bind="ChatDraft" maxlength="500" rows="3" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
+                                        <textarea @bind="ChatDraft" @onkeydown="HandleChatComposerKeyDownAsync" maxlength="500" rows="3" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
                                         @if (PendingChatAttachment is not null)
                                         {
                                             <div class="chat-composer__attachment">
@@ -435,6 +435,15 @@
     private void OpenReminderPlanner()
     {
         Navigation.NavigateTo("/seguimientos");
+    }
+
+    private async Task HandleChatComposerKeyDownAsync(KeyboardEventArgs arguments)
+    {
+        if (arguments.Key.Equals("Enter", StringComparison.Ordinal)
+            && (arguments.CtrlKey || arguments.MetaKey))
+        {
+            await SendChatMessageAsync();
+        }
     }
 
     private void CloseFloatingPanels()
