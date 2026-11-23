@@ -326,11 +326,14 @@ app.MapGet("/exports/team/promises", async (
         return Results.BadRequest("La fecha inicial no puede ser posterior a la fecha final.");
 
     var useDateRange = start is not null || end is not null;
+    var hasClientSearch = !string.IsNullOrWhiteSpace(client);
     var selectedWeek = week is > 0 ? week.Value : System.Globalization.ISOWeek.GetWeekOfYear(DateTime.Today);
     var promises = (await registrations.GetAllForTeamAsync(cancellationToken))
         .Where(promise =>
             (string.IsNullOrWhiteSpace(client) || promise.ClientId.Contains(client.Trim(), StringComparison.OrdinalIgnoreCase))
-            && (useDateRange || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == selectedWeek)
+            // El Excel debe coincidir con la consola: al buscar un cliente
+            // se exporta todo su historial, salvo que haya un rango explícito.
+            && (useDateRange || hasClientSearch || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == selectedWeek)
             && (start is null || promise.PromiseDate >= start)
             && (end is null || promise.PromiseDate <= end)
             && (string.IsNullOrWhiteSpace(agent) || promise.AgentName.Equals(agent, StringComparison.OrdinalIgnoreCase))

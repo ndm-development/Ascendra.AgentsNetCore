@@ -230,7 +230,7 @@
             else
             {
                 <section class="table-card glass-card team-console__table">
-                    <div class="result-heading"><div><p class="eyebrow">PROMESAS EN POSTGRESQL</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros encontrados</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
+                    <div class="result-heading"><div><p class="eyebrow">PROMESAS EN POSTGRESQL</p><h2>Promesas · @PromisePeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros encontrados</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
                     @if (!string.IsNullOrWhiteSpace(PromiseEditNotice))
                     {
                         <p class="lookup-notice lookup-notice--success">@PromiseEditNotice</p>
@@ -451,9 +451,13 @@
     };
 
     private bool HasDateRange => StartDate is not null || EndDate is not null;
+    private bool HasClientSearch => !string.IsNullOrWhiteSpace(ClientQuery);
     private string PeriodLabel => HasDateRange
         ? $"{StartDate?.ToString("dd/MM/yyyy") ?? "Inicio"} — {EndDate?.ToString("dd/MM/yyyy") ?? "Hoy"}"
         : $"Semana {_week}";
+    private string PromisePeriodLabel => HasClientSearch && !HasDateRange
+        ? $"Historial completo · {ClientQuery.Trim()}"
+        : PeriodLabel;
     private static int PageCount(int itemCount) => Math.Max(1, (int)Math.Ceiling(itemCount / (double)TeamTablePageSize));
     private void SetPaymentTablePage(int page) => PaymentTablePage = Math.Max(1, page);
     private void SetPromiseTablePage(int page) => PromiseTablePage = Math.Max(1, page);
@@ -482,7 +486,10 @@
             || SelectedPaymentOrigin == "equipo" && !IsOrganicPayment(payment)));
     private IEnumerable<DatabasePromiseEntry> FilterDatabasePromises() => TeamPromises.Where(promise =>
         (string.IsNullOrWhiteSpace(ClientQuery) || promise.ClientId.Contains(ClientQuery.Trim(), StringComparison.OrdinalIgnoreCase))
-        && (HasDateRange || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == _week)
+        // Una búsqueda de cliente es una consulta de historial: no la limita
+        // al corte semanal seleccionado. El rango de fechas, si se indica,
+        // sigue siendo una restricción explícita.
+        && (HasDateRange || HasClientSearch || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == _week)
         && (StartDate is null || promise.PromiseDate >= StartDate)
         && (EndDate is null || promise.PromiseDate <= EndDate)
         && (string.IsNullOrWhiteSpace(SelectedAgent) || promise.AgentName.Equals(SelectedAgent, StringComparison.OrdinalIgnoreCase))
