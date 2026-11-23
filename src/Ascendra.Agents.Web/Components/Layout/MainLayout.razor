@@ -120,16 +120,18 @@
                                     </div>
 
                                     <form class="chat-composer" @onsubmit="SendChatMessageAsync" @onsubmit:preventDefault="true">
-                                        <textarea @bind="ChatDraft" @onkeydown="HandleChatComposerKeyDownAsync" maxlength="500" rows="3" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
-                                        @if (PendingChatAttachment is not null)
-                                        {
-                                            <div class="chat-composer__attachment">
-                                                <img src="@ChatAttachmentUrl(PendingChatAttachment)" alt="Imagen lista para enviar" />
-                                                <span>@PendingChatAttachment.FileName</span>
-                                                <button type="button" @onclick="RemoveChatAttachment">Quitar</button>
-                                            </div>
-                                        }
-                                        <div>
+                                        <div class="chat-composer__body">
+                                            <textarea @bind="ChatDraft" @onkeydown="HandleChatComposerKeyDownAsync" maxlength="500" rows="3" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
+                                            @if (PendingChatAttachment is not null)
+                                            {
+                                                <div class="chat-composer__attachment">
+                                                    <img src="@ChatAttachmentUrl(PendingChatAttachment)" alt="Imagen lista para enviar" />
+                                                    <span>@PendingChatAttachment.FileName</span>
+                                                    <button type="button" @onclick="RemoveChatAttachment">Quitar</button>
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="chat-composer__footer">
                                             @if (!string.IsNullOrWhiteSpace(ChatError))
                                             {
                                                 <span class="chat-composer__error" role="status">@ChatError</span>

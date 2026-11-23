@@ -798,3 +798,31 @@ th, td { padding: 10px 12px; }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; } }
 @media (max-width: 640px) { .coding-console__hero,.coding-console__table-heading { align-items:flex-start; flex-direction:column; }.coding-console__download,.coding-console__search { width:100%; }.coding-console__download { justify-content:center; }.coding-console__pagination { justify-content:space-between; padding:12px 14px; }.coding-console__pagination span { font-size:11px; } }
 @media (max-width: 640px) { .coding-console__filters { grid-template-columns:1fr; padding:14px; }.coding-console__client-filter { grid-column:auto; }.coding-console__clear { width:100%; justify-content:center; }.coding-console__table-heading { padding:16px 14px 12px; }.coding-console__count { align-self:flex-start; }.coding-console__data { min-width:930px; } }
+
+/* El pie del chat tiene prioridad sobre las imágenes adjuntas: el historial y
+   la vista previa pueden desplazarse, pero Enviar nunca queda fuera de vista. */
+.chat-composer { grid-template-rows:minmax(0,1fr) auto; max-height:min(230px,38dvh); min-height:0; }
+.chat-composer__body { display:grid; min-height:0; gap:7px; overflow:auto; padding-right:2px; scrollbar-width:thin; }
+.chat-composer__body textarea { width:100%; min-height:76px; }
+.chat-composer__footer { position:relative; display:grid !important; grid-template-columns:minmax(0,1fr) auto; min-height:33px; align-items:center; gap:8px; padding-top:1px; background:inherit; }
+.chat-composer__footer .chat-composer__actions { justify-self:end; }
+
+@media (max-height:720px) {
+  .chat-panel { top:12px; height:calc(100dvh - 24px); gap:8px; padding:11px; }
+  .chat-panel__header h2 { font-size:18px; }
+  .chat-panel__header span:not(.chat-panel__presence) { display:none; }
+  .chat-recipient-picker { gap:4px; padding-bottom:5px; }
+  .chat-recipient-picker__general { min-height:37px; }
+  .chat-recipient-picker__person input { min-height:35px; }
+  .chat-composer { gap:5px; max-height:min(190px,42dvh); }
+  .chat-composer__body textarea { min-height:54px; }
+  .chat-composer__attachment { grid-template-columns:34px minmax(0,1fr) auto; gap:6px; padding:4px; }
+  .chat-composer__attachment img { width:34px; height:30px; }
+}
+
+@media (max-width:420px) {
+  .chat-composer__footer { grid-template-columns:1fr; }
+  .chat-composer__footer .chat-composer__actions { justify-self:stretch; justify-content:flex-end; }
+  .chat-attach-button { width:32px; padding:0; }
+  .chat-attach-button > span:last-of-type { display:none; }
+}
