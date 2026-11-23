@@ -192,6 +192,10 @@
             </div>
             @if (ActiveSection == TeamSection.Promises)
             {
+                <div class="field compact-field">
+                    <label for="team-promise-id">ID de promesa</label>
+                    <input id="team-promise-id" @bind="PromiseIdQuery" @bind:event="oninput" @bind:after="ResetTablePages" inputmode="numeric" maxlength="10" placeholder="Ej. 10020" />
+                </div>
                 <div class="field">
                     <label for="team-status">Estatus</label>
                     <select id="team-status" @bind="SelectedStatus" @bind:after="ResetTablePages">
@@ -336,6 +340,7 @@
     private int PaymentTablePage { get; set; } = 1;
     private int PromiseTablePage { get; set; } = 1;
     private string ClientQuery { get; set; } = string.Empty;
+    private string PromiseIdQuery { get; set; } = string.Empty;
     private string SelectedAgent { get; set; } = string.Empty;
     private string SelectedStatus { get; set; } = string.Empty;
     private string SelectedPaymentOrigin { get; set; } = string.Empty;
@@ -452,11 +457,15 @@
 
     private bool HasDateRange => StartDate is not null || EndDate is not null;
     private bool HasClientSearch => !string.IsNullOrWhiteSpace(ClientQuery);
+    private bool HasPromiseIdSearch => !string.IsNullOrWhiteSpace(PromiseIdQuery);
+    private bool HasPromiseIdentitySearch => HasClientSearch || HasPromiseIdSearch;
     private string PeriodLabel => HasDateRange
         ? $"{StartDate?.ToString("dd/MM/yyyy") ?? "Inicio"} — {EndDate?.ToString("dd/MM/yyyy") ?? "Hoy"}"
         : $"Semana {_week}";
-    private string PromisePeriodLabel => HasClientSearch && !HasDateRange
-        ? $"Historial completo · {ClientQuery.Trim()}"
+    private string PromisePeriodLabel => HasPromiseIdentitySearch && !HasDateRange
+        ? HasClientSearch
+            ? $"Historial completo · {ClientQuery.Trim()}"
+            : $"Promesa {PromiseIdQuery.Trim()}"
         : PeriodLabel;
     private static int PageCount(int itemCount) => Math.Max(1, (int)Math.Ceiling(itemCount / (double)TeamTablePageSize));
     private void SetPaymentTablePage(int page) => PaymentTablePage = Math.Max(1, page);
@@ -486,15 +495,19 @@
             || SelectedPaymentOrigin == "equipo" && !IsOrganicPayment(payment)));
     private IEnumerable<DatabasePromiseEntry> FilterDatabasePromises() => TeamPromises.Where(promise =>
         (string.IsNullOrWhiteSpace(ClientQuery) || promise.ClientId.Contains(ClientQuery.Trim(), StringComparison.OrdinalIgnoreCase))
+        && MatchesPromiseId(promise, PromiseIdQuery)
         // Una búsqueda de cliente es una consulta de historial: no la limita
-        // al corte semanal seleccionado. El rango de fechas, si se indica,
-        // sigue siendo una restricción explícita.
-        && (HasDateRange || HasClientSearch || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == _week)
+        // al corte semanal seleccionado; una búsqueda de ID se comporta igual.
+        // El rango de fechas, si se indica, sigue siendo una restricción explícita.
+        && (HasDateRange || HasPromiseIdentitySearch || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == _week)
         && (StartDate is null || promise.PromiseDate >= StartDate)
         && (EndDate is null || promise.PromiseDate <= EndDate)
         && (string.IsNullOrWhiteSpace(SelectedAgent) || promise.AgentName.Equals(SelectedAgent, StringComparison.OrdinalIgnoreCase))
         && (string.IsNullOrWhiteSpace(SelectedStatus) || promise.Status.Equals(SelectedStatus, StringComparison.OrdinalIgnoreCase))
         && (string.IsNullOrWhiteSpace(SelectedPromiseType) || promise.PromiseType.Equals(SelectedPromiseType, StringComparison.OrdinalIgnoreCase)));
+    private static bool MatchesPromiseId(DatabasePromiseEntry promise, string? promiseId) =>
+        string.IsNullOrWhiteSpace(promiseId)
+        || int.TryParse(promiseId.Trim(), out var id) && promise.IdPromise == id;
     private string TabClass(TeamSection section) => ActiveSection == section ? "is-selected" : string.Empty;
     private string MessageModeClass(ChatMode mode) => CurrentChatMode == mode ? "is-selected" : string.Empty;
     private string TeamChatModeClass => CurrentChatMode switch
@@ -835,6 +848,7 @@
     private void ClearFilters()
     {
         ClientQuery = string.Empty;
+        PromiseIdQuery = string.Empty;
         SelectedAgent = string.Empty;
         SelectedStatus = string.Empty;
         SelectedPaymentOrigin = string.Empty;
@@ -856,6 +870,7 @@
         if (EndDate is not null) query.Add($"end={EndDate:yyyy-MM-dd}");
         if (kind == "promises")
         {
+            query.Add($"promiseId={Uri.EscapeDataString(PromiseIdQuery)}");
             query.Add($"status={Uri.EscapeDataString(SelectedStatus)}");
             query.Add($"promiseType={Uri.EscapeDataString(SelectedPromiseType)}");
         }
