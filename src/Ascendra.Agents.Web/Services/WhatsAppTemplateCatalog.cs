@@ -63,7 +63,9 @@ public sealed partial class WhatsAppTemplateCatalog(IHostEnvironment environment
         }
     }
 
-    private static string Greeting(DateTime? now) => (now ?? DateTime.Now).Hour switch
+    // Render opera en UTC. El saludo siempre se determina con la hora de
+    // Ciudad de México, independientemente de la configuración del servidor.
+    private static string Greeting(DateTime? now) => (now ?? OperationalClock.LocalDateTime(DateTimeOffset.UtcNow)).Hour switch
     {
         < 12 => "Buenos días", < 20 => "Buenas tardes", _ => "Buenas noches",
     };
