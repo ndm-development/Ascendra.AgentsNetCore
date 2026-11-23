@@ -281,6 +281,14 @@ def apply(promises: list[Promise], url: str) -> dict[str, int]:
         promise.initial_amount, promise.weekly_amount, promise.promise_type, promise.number_of_weeks,
         promise.created_at, promise.user_created, promise.source_id,
     ) for promise in promises]
+    # El IdPromesa del origen es visible en algunas exportaciones. Reservamos
+    # los IDs internos de Ascendra después del mayor ID numérico de origen
+    # (y como mínimo a partir de 10,000) para que tampoco haya ambigüedad al
+    # comparar archivos fuera de la aplicación.
+    source_id_floor = max(
+        9_999,
+        *(int(promise.source_id) for promise in promises if promise.source_id.isdecimal()),
+    )
     with connect(url, sslmode="require") as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM promesas")
@@ -289,7 +297,10 @@ def apply(promises: list[Promise], url: str) -> dict[str, int]:
                 raise RuntimeError(
                     f"La tabla promesas contiene {existing} registros. La importación se canceló para no mezclar información."
                 )
-            cursor.execute("SELECT setval(pg_get_serial_sequence('promesas', 'id_promesa'), 1, false)")
+            cursor.execute(
+                "SELECT setval(pg_get_serial_sequence('promesas', 'id_promesa'), %s, true)",
+                (source_id_floor,),
+            )
             cursor.executemany(insert, values)
             cursor.execute("""
                 SELECT COUNT(*), COUNT(DISTINCT id_promesa_origen), MIN(id_promesa), MAX(id_promesa)
@@ -303,6 +314,7 @@ def apply(promises: list[Promise], url: str) -> dict[str, int]:
         "ids_origen_distintos": distinct_source_ids,
         "id_interno_minimo": min_internal_id or 0,
         "id_interno_maximo": max_internal_id or 0,
+        "proximo_id_interno": source_id_floor + 1,
     }
 
 

@@ -59,7 +59,8 @@ python3 scripts/importar_promesas_excel.py --excel /ruta/Promesas.xlsx --seco
 Para la carga real usa una URL de conexión local (nunca se imprime ni se guarda
 en el repositorio). El proceso exige que `promesas` esté vacía, conserva
 `IdPromesa` como identificador de origen y deja que PostgreSQL genere los IDs
-internos de Ascendra:
+internos de Ascendra. El siguiente ID interno se reserva después del ID
+histórico numérico más alto (con un mínimo de `10,000`):
 
 ```bash
 ASCENDRA_DATABASE_URL='postgresql://...' \
