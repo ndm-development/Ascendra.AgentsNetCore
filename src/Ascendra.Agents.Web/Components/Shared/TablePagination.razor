@@ -1,0 +1,16 @@
+@if (PageCount > 1)
+{
+    <nav class="table-pagination" aria-label="Paginación de resultados">
+        <button type="button" class="secondary-button" disabled="@(Page <= 1)" @onclick="OnPrevious">Anterior</button>
+        <span>Página @Page de @PageCount · @ItemCount registros</span>
+        <button type="button" class="secondary-button" disabled="@(Page >= PageCount)" @onclick="OnNext">Siguiente</button>
+    </nav>
+}
+
+@code {
+    [Parameter] public int Page { get; set; }
+    [Parameter] public int PageCount { get; set; }
+    [Parameter] public int ItemCount { get; set; }
+    [Parameter] public EventCallback OnPrevious { get; set; }
+    [Parameter] public EventCallback OnNext { get; set; }
+}

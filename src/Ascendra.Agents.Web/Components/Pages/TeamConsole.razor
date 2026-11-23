@@ -13,6 +13,14 @@
     if (_week == 0) _week = System.Globalization.ISOWeek.GetWeekOfYear(DateTime.Today);
     var teamPayments = FilterPayments(scope).ToArray();
     var teamPromises = FilterDatabasePromises().ToArray();
+    var paymentPageCount = PageCount(teamPayments.Length);
+    var promisePageCount = PageCount(teamPromises.Length);
+    var paymentPage = Math.Clamp(PaymentTablePage, 1, paymentPageCount);
+    var promisePage = Math.Clamp(PromiseTablePage, 1, promisePageCount);
+    var pagedPayments = teamPayments.OrderByDescending(payment => payment.ReceivedOn)
+        .Skip((paymentPage - 1) * TeamTablePageSize).Take(TeamTablePageSize).ToArray();
+    var pagedPromises = teamPromises.Skip((promisePage - 1) * TeamTablePageSize)
+        .Take(TeamTablePageSize).ToArray();
     var totalRecovery = teamPayments.Sum(payment => payment.Recovery);
     var promisesExportUrl = TeamExportUrl("promises");
     var paymentsExportUrl = TeamExportUrl("payments");
@@ -159,41 +167,41 @@
         <section class="team-console__filters glass-card" aria-label="Filtros del equipo">
             <div class="field compact-field">
                 <label for="team-week">Semana</label>
-                <select id="team-week" @bind="_week">
+                <select id="team-week" @bind="_week" @bind:after="ResetTablePages">
                     @foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }
                 </select>
             </div>
             <div class="field">
                 <label for="team-agent">Agente</label>
-                <select id="team-agent" @bind="SelectedAgent">
+                <select id="team-agent" @bind="SelectedAgent" @bind:after="ResetTablePages">
                     <option value="">Todo el equipo</option>
                     @foreach (var agent in ActiveSection == TeamSection.Promises ? TeamPromiseAgents : Queries.AgentNames(scope)) { <option value="@agent">@agent</option> }
                 </select>
             </div>
             <div class="field client-query-field">
                 <label for="team-client">Cliente único</label>
-                <input id="team-client" @bind="ClientQuery" @bind:event="oninput" placeholder="Buscar cliente" />
+                <input id="team-client" @bind="ClientQuery" @bind:event="oninput" @bind:after="ResetTablePages" placeholder="Buscar cliente" />
             </div>
             <div class="field">
                 <label for="team-start">Fecha inicial</label>
-                <input id="team-start" type="date" @bind="StartDate" />
+                <input id="team-start" type="date" @bind="StartDate" @bind:after="ResetTablePages" />
             </div>
             <div class="field">
                 <label for="team-end">Fecha final</label>
-                <input id="team-end" type="date" @bind="EndDate" />
+                <input id="team-end" type="date" @bind="EndDate" @bind:after="ResetTablePages" />
             </div>
             @if (ActiveSection == TeamSection.Promises)
             {
                 <div class="field">
                     <label for="team-status">Estatus</label>
-                    <select id="team-status" @bind="SelectedStatus">
+                    <select id="team-status" @bind="SelectedStatus" @bind:after="ResetTablePages">
                         <option value="">Todos los estatus</option>
                         @foreach (var status in TeamPromiseStatuses) { <option value="@status">@DashboardQueries.PromiseStatusLabel(status)</option> }
                     </select>
                 </div>
                 <div class="field">
                     <label for="team-promise-type">Tipo de promesa</label>
-                    <select id="team-promise-type" @bind="SelectedPromiseType">
+                    <select id="team-promise-type" @bind="SelectedPromiseType" @bind:after="ResetTablePages">
                         <option value="">Todos los tipos</option>
                         @foreach (var type in TeamPromiseTypes) { <option value="@type">@type</option> }
                     </select>
@@ -203,7 +211,7 @@
             {
                 <div class="field">
                     <label for="team-payment-origin">Clasificación</label>
-                    <select id="team-payment-origin" @bind="SelectedPaymentOrigin">
+                    <select id="team-payment-origin" @bind="SelectedPaymentOrigin" @bind:after="ResetTablePages">
                         <option value="">Equipo y orgánico</option>
                         <option value="equipo">Equipo</option>
                         <option value="organico">Orgánico</option>
@@ -222,13 +230,13 @@
             else
             {
                 <section class="table-card glass-card team-console__table">
-                    <div class="result-heading"><div><p class="eyebrow">PROMESAS EN POSTGRESQL</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros visibles</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
+                    <div class="result-heading"><div><p class="eyebrow">PROMESAS EN POSTGRESQL</p><h2>Promesas · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPromises.Length registros encontrados</p><a class="secondary-button collection-export-button" href="@promisesExportUrl" download><span aria-hidden="true">↓</span> Descargar promesas</a></div></div>
                     @if (!string.IsNullOrWhiteSpace(PromiseEditNotice))
                     {
                         <p class="lookup-notice lookup-notice--success">@PromiseEditNotice</p>
                     }
                     <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Agente</th><th>Cliente único</th><th>Cliente</th><th>Fecha promesa</th><th>Inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th><th>Modificado</th>@if (CanManagePromiseRecords) { <th></th> }</tr></thead><tbody>
-                        @foreach (var row in teamPromises.Take(400))
+                        @foreach (var row in pagedPromises)
                         {
                             <tr>
                                 <td>@row.IdPromise.ToString("D2")</td><td>@row.AgentName</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.PromiseDate.ToString("dd/MM/yyyy")</td><td>@DashboardQueries.Currency(row.InitialAmount ?? 0m)</td><td>@DashboardQueries.Currency(row.WeeklyAmount ?? 0m)</td><td>@row.PromiseType</td><td>@OperationalClock.Format(row.CreatedAt, "dd/MM/yyyy · HH:mm")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td>
@@ -240,6 +248,7 @@
                             </tr>
                         }
                     </tbody></table></div>
+                    <TablePagination Page="@promisePage" PageCount="@promisePageCount" ItemCount="@teamPromises.Length" OnPrevious="@(() => SetPromiseTablePage(promisePage - 1))" OnNext="@(() => SetPromiseTablePage(promisePage + 1))" />
                 </section>
             }
         }
@@ -248,9 +257,10 @@
             <section class="table-card glass-card team-console__table">
                 <div class="result-heading"><div><p class="eyebrow">COBRANZA DEL EQUIPO</p><h2>Pagos · @PeriodLabel</h2></div><div class="collection-export-actions"><p>@teamPayments.Length pagos · @DashboardQueries.Currency(totalRecovery)</p><a class="secondary-button collection-export-button" href="@paymentsExportUrl" download><span aria-hidden="true">↓</span> Descargar pagos</a></div></div>
                 <div class="table-wrap"><table><thead><tr><th>Agente</th><th>Fecha</th><th>Cliente único</th><th>Cliente</th><th>Producto</th><th>Clasificación</th><th>Pago recibido</th></tr></thead><tbody>
-                    @foreach (var row in teamPayments.OrderByDescending(payment => payment.ReceivedOn).Take(400))
+                    @foreach (var row in pagedPayments)
                     { <tr><td>@row.Agent</td><td>@(row.ReceivedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.Product</td><td><span class="promise-status @(IsOrganicPayment(row) ? "promise-status--open" : "promise-status--neutral")">@(IsOrganicPayment(row) ? "Orgánico" : "Equipo")</span></td><td>@DashboardQueries.Currency(row.Recovery)</td></tr> }
                 </tbody></table></div>
+                <TablePagination Page="@paymentPage" PageCount="@paymentPageCount" ItemCount="@teamPayments.Length" OnPrevious="@(() => SetPaymentTablePage(paymentPage - 1))" OnNext="@(() => SetPaymentTablePage(paymentPage + 1))" />
             </section>
         }
     }
@@ -322,6 +332,9 @@
         ("📌", "Importante"), ("⚠️", "Atención"), ("⏱️", "Pendiente"), ("🎯", "Objetivo"), ("🚨", "Alerta"), ("📎", "Adjunto"),
     ];
     private int _week;
+    private const int TeamTablePageSize = 100;
+    private int PaymentTablePage { get; set; } = 1;
+    private int PromiseTablePage { get; set; } = 1;
     private string ClientQuery { get; set; } = string.Empty;
     private string SelectedAgent { get; set; } = string.Empty;
     private string SelectedStatus { get; set; } = string.Empty;
@@ -441,6 +454,23 @@
     private string PeriodLabel => HasDateRange
         ? $"{StartDate?.ToString("dd/MM/yyyy") ?? "Inicio"} — {EndDate?.ToString("dd/MM/yyyy") ?? "Hoy"}"
         : $"Semana {_week}";
+    private static int PageCount(int itemCount) => Math.Max(1, (int)Math.Ceiling(itemCount / (double)TeamTablePageSize));
+    private void SetPaymentTablePage(int page) => PaymentTablePage = Math.Max(1, page);
+    private void SetPromiseTablePage(int page) => PromiseTablePage = Math.Max(1, page);
+    private void ResetTablePages()
+    {
+        PaymentTablePage = 1;
+        PromiseTablePage = 1;
+    }
+    private static int LatestPaymentWeek(ScopedOperations scope)
+    {
+        var weeks = scope.Payments.Select(payment => payment.Week)
+            .Where(week => week.HasValue).Select(week => week!.Value)
+            .Distinct().Order().ToArray();
+        if (weeks.Length == 0) return ISOWeek.GetWeekOfYear(DateTime.Today);
+        var currentWeek = ISOWeek.GetWeekOfYear(DateTime.Today);
+        return weeks.Where(week => week <= currentWeek).DefaultIfEmpty(weeks[^1]).Last();
+    }
     private IEnumerable<PaymentRecord> FilterPayments(ScopedOperations scope) => scope.Payments.Where(payment =>
         (!HasDateRange || payment.ReceivedOn is not null)
         && (!HasDateRange || StartDate is null || payment.ReceivedOn >= StartDate)
@@ -520,9 +550,18 @@
     {
         ActiveSection = section;
         IsEmojiPickerOpen = false;
+        if (section == TeamSection.Payments)
+        {
+            // La fuente de pagos puede cerrarse antes que la de promesas.
+            // Al entrar, elegimos su último corte disponible y evitamos que
+            // una semana de promesas sin pagos muestre una tabla vacía.
+            _week = LatestPaymentWeek(Queries.TeamScope());
+            PaymentTablePage = 1;
+        }
         if (section == TeamSection.Promises && !AreTeamPromisesLoaded)
         {
             await ReloadTeamPromisesAsync();
+            PromiseTablePage = 1;
         }
         if (section == TeamSection.Messages)
         {
@@ -795,6 +834,7 @@
         SelectedPromiseType = string.Empty;
         StartDate = null;
         EndDate = null;
+        ResetTablePages();
     }
 
     private string TeamExportUrl(string kind)
