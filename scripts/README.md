@@ -47,3 +47,29 @@ python3 scripts/generar_credenciales.py --todos-activos
 El script solicita cada contraseña sin mostrarla y entrega un único JSON. Copia
 ese resultado directamente como valor de `ASCENDRA_AGENT_CREDENTIALS_JSON` en
 Render. No lo guardes en un archivo ni lo subas a GitHub.
+
+## Carga de promesas históricas
+
+Primero valida el archivo real sin abrir PostgreSQL:
+
+```bash
+python3 scripts/importar_promesas_excel.py --excel /ruta/Promesas.xlsx --seco
+```
+
+Para la carga real usa una URL de conexión local (nunca se imprime ni se guarda
+en el repositorio). El proceso exige que `promesas` esté vacía, conserva
+`IdPromesa` como identificador de origen y deja que PostgreSQL genere los IDs
+internos de Ascendra:
+
+```bash
+ASCENDRA_DATABASE_URL='postgresql://...' \
+  python3 scripts/importar_promesas_excel.py --excel /ruta/Promesas.xlsx --aplicar
+```
+
+También puede leer la URL de un cuaderno local ya existente, sin mostrarla:
+
+```bash
+python3 scripts/importar_promesas_excel.py --excel /ruta/Promesas.xlsx --aplicar \
+  --connection-notebook /ruta/PostgreSQL_Ascendra.ipynb \
+  --reporte /ruta/reporte-promesas.json
+```

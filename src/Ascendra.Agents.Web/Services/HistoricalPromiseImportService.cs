@@ -6,8 +6,8 @@ namespace Ascendra.Agents.Web.Services;
 
 /// <summary>
 /// Migra una sola vez la fuente histórica de promesas. El archivo original
-/// se conserva sin cambios y se omiten únicamente las filas que la dirección
-/// indicó no utilizar: semanas en cero e importes negativos.
+/// se conserva sin cambios y se omiten únicamente las filas con datos inválidos,
+/// como importes negativos. Las semanas en cero son una condición válida.
 /// </summary>
 public sealed class HistoricalPromiseImportService(
     IHostEnvironment environment,
@@ -60,7 +60,7 @@ public sealed class HistoricalPromiseImportService(
         foreach (var row in rows)
         {
             var weeks = row.Integer("Numero_Semanas", "Número de semanas", "Numero Semanas");
-            if (weeks is null || weeks < 1 || weeks > 255)
+            if (weeks is null || weeks < 0 || weeks > short.MaxValue)
             {
                 excludedWeeks++;
                 continue;
