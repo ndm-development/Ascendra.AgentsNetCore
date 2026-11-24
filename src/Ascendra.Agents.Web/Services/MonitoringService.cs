@@ -63,7 +63,10 @@ public sealed class MonitoringService(PostgresDatabase database)
         string traceName,
         string color)
     {
-        var visible = counts.Take(30).Reverse().ToArray();
+        // La gráfica es operativa: excluir agentes con menor volumen haría
+        // parecer que sus gestiones no se registraron. Mostramos a todas las
+        // personas que tienen actividad en el periodo seleccionado.
+        var visible = counts.Reverse().ToArray();
         var values = visible.Select(item => item.Count).ToArray();
         return new ChartModel(
             [new
@@ -89,7 +92,7 @@ public sealed class MonitoringService(PostgresDatabase database)
             new
             {
                 title = new { text = title, x = .01, font = new { size = 17 } },
-                height = Math.Clamp(visible.Length * 34 + 130, 330, 1080),
+                height = Math.Max(330, visible.Length * 34 + 130),
                 margin = new { l = 175, r = 46, t = 64, b = 48 },
                 paper_bgcolor = "rgba(0,0,0,0)",
                 plot_bgcolor = "rgba(0,0,0,0)",

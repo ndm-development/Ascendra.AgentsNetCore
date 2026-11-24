@@ -74,6 +74,7 @@ else
         </div>
         <div class="monitoring-filters__actions">
             <button type="button" class="primary-button" @onclick="ApplyFiltersAsync">Aplicar filtros</button>
+            <button type="button" class="secondary-button" @onclick="RefreshNowAsync">Actualizar ahora</button>
             <button type="button" class="secondary-button" @onclick="ClearFiltersAsync">Limpiar</button>
         </div>
         @if (!string.IsNullOrWhiteSpace(Notice))
@@ -133,6 +134,7 @@ else
     private string SelectedDispositionCategory { get; set; } = string.Empty;
     private string SelectedDispositionChannel { get; set; } = string.Empty;
     private string? Notice { get; set; }
+    private CancellationTokenSource? RefreshCancellation { get; set; }
 
     private int ActiveAgents => Snapshot is null
         ? 0
@@ -151,6 +153,8 @@ else
     {
         if (!firstRender) return;
         await ReloadAsync();
+        RefreshCancellation = new CancellationTokenSource();
+        _ = RefreshPeriodicallyAsync(RefreshCancellation.Token);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -179,6 +183,12 @@ else
         await ReloadAsync();
     }
 
+    private async Task RefreshNowAsync()
+    {
+        Notice = null;
+        await ReloadAsync();
+    }
+
     private Task ReloadAsync() => LoadSnapshotAsync(new MonitoringFilters(
         StartDate,
         EndDate,
@@ -193,6 +203,35 @@ else
         Snapshot = await MonitorService.GetSnapshotAsync(filters);
     }
 
+    private async Task RefreshPeriodicallyAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (IsDisposed) return;
+                    try
+                    {
+                        await ReloadAsync();
+                        StateHasChanged();
+                    }
+                    catch
+                    {
+                        // La pantalla conserva el último corte visible si una
+                        // lectura puntual falla; el siguiente ciclo reintenta.
+                    }
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // El componente se cerró o el usuario navegó a otra pantalla.
+        }
+    }
+
     private void HandleDataChanged() => _ = InvokeAsync(async () =>
     {
         if (IsDisposed) return;
@@ -203,6 +242,8 @@ else
     public void Dispose()
     {
         IsDisposed = true;
+        RefreshCancellation?.Cancel();
+        RefreshCancellation?.Dispose();
         Dispositions.Changed -= HandleDataChanged;
         PromiseRegistrations.Changed -= HandleDataChanged;
     }
