@@ -808,6 +808,11 @@ th, td { padding: 10px 12px; }
 @media (max-width:900px) { .promise-registration__flow { grid-template-columns:1fr; }.promise-registration__journey { display:none; } }
 @media (max-width:640px) { .promise-registration__success { grid-template-columns:40px minmax(0,1fr); padding:12px; }.promise-registration__success-state { display:none; }.promise-stage__fields--client,.promise-stage__fields--details,.promise-registration__submit-panel { grid-template-columns:1fr; }.promise-stage__type-field { grid-column:auto; }.promise-stage__phone-field { max-width:none; }.promise-registration__submit-panel .primary-button { width:100%; } }
 
+/* La captura de promesas usa todo el ancho útil: los pasos se expresan sólo
+   con numeración y etiquetas, sin una columna instructiva redundante. */
+.promise-registration__flow { display:block; }.promise-registration__workbench { grid-template-columns:repeat(2,minmax(0,1fr)); width:min(100%,1540px); margin:0 auto; }.promise-registration__workbench > .promise-stage:last-child { grid-column:1 / -1; }.promise-stage__heading { margin-bottom:11px; }.promise-stage__heading > h2 { margin:0; color:var(--ink); font-size:15px; letter-spacing:-.022em; line-height:1.2; }.promise-registration__submit-panel { margin-top:13px; }.promise-registration__submit-panel strong { margin:0; }
+@media (max-width:900px) { .promise-registration__workbench { grid-template-columns:1fr; }.promise-registration__workbench > .promise-stage:last-child { grid-column:auto; } }
+
 /* El pie del chat tiene prioridad sobre las imágenes adjuntas: el historial y
    la vista previa pueden desplazarse, pero Enviar nunca queda fuera de vista. */
 .chat-composer { grid-template-rows:minmax(0,1fr) auto; max-height:min(230px,38dvh); min-height:0; }

@@ -19,7 +19,6 @@ else
             <div>
                 <p class="eyebrow">REGISTRO DE PROMESA</p>
                 <h1>Registrar promesa</h1>
-                <p>Valida el cliente y registra la promesa en un solo flujo.</p>
             </div>
             <span class="promise-registration__agent">@Session.User?.DisplayName</span>
         </div>
@@ -38,29 +37,11 @@ else
         }
 
         <div class="promise-registration__flow">
-            <aside class="promise-registration__journey" aria-label="Pasos para registrar una promesa">
-                <p>EN 3 PASOS</p>
-                <ol>
-                    <li class="promise-registration__journey-step promise-registration__journey-step--active">
-                        <span>01</span>
-                        <div><strong>Identifica al cliente</strong><small>Consulta su expediente.</small></div>
-                    </li>
-                    <li class="promise-registration__journey-step @(Lookup is { Exists: true } ? "promise-registration__journey-step--active" : string.Empty)">
-                        <span>02</span>
-                        <div><strong>Confirma el contacto</strong><small>El teléfono es obligatorio.</small></div>
-                    </li>
-                    <li class="promise-registration__journey-step @(HasValidPhoneNumber ? "promise-registration__journey-step--active" : string.Empty)">
-                        <span>03</span>
-                        <div><strong>Registra la promesa</strong><small>Captura los montos y fecha.</small></div>
-                    </li>
-                </ol>
-            </aside>
-
             <div class="promise-registration__workbench" role="group" aria-label="Datos de la promesa">
                 <section class="promise-stage">
                     <div class="promise-stage__heading">
                         <span>01</span>
-                        <div><p>CLIENTE</p><h2>¿Para quién es la promesa?</h2></div>
+                        <h2>Cliente</h2>
                     </div>
                     <div class="promise-stage__fields promise-stage__fields--client">
                         <div class="field">
@@ -96,7 +77,7 @@ else
                 <section class="promise-stage promise-stage--phone @(Lookup is { Exists: true } && !HasValidPhoneNumber ? "promise-stage--required" : string.Empty)">
                     <div class="promise-stage__heading">
                         <span>02</span>
-                        <div><p>CONTACTO</p><h2>¿Qué número contactaste?</h2></div>
+                        <h2>Teléfono contactado</h2>
                     </div>
                     <div class="field promise-stage__phone-field">
                         <label for="promise-contact-number">Número contactado <em>Obligatorio</em></label>
@@ -133,7 +114,7 @@ else
                 <section class="promise-stage">
                     <div class="promise-stage__heading">
                         <span>03</span>
-                        <div><p>COMPROMISO</p><h2>Completa los datos de la promesa</h2></div>
+                        <h2>Datos de la promesa</h2>
                     </div>
                     <div class="promise-stage__fields promise-stage__fields--details">
                         <div class="field">
@@ -165,7 +146,6 @@ else
                     </div>
                     <div class="promise-registration__submit-panel">
                         <div>
-                            <p>ESTADO DEL REGISTRO</p>
                             <strong>@SaveHint</strong>
                         </div>
                         <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)">
@@ -229,19 +209,19 @@ else
         : !HasValidPromiseData ? "Completa los datos"
         : "Registrar promesa";
     private string PhoneStatus => Lookup is not { Exists: true }
-        ? "Primero valida al cliente"
+        ? "Valida el cliente primero"
         : HasValidPhoneNumber
-            ? "Número confirmado para esta promesa"
-            : "Selecciona o escribe el número contactado";
+            ? "Teléfono confirmado"
+            : "Selecciona un teléfono";
     private string SaveHint => Lookup is not { Exists: true }
-        ? "Valida al cliente para iniciar"
+        ? "Valida el cliente"
         : Lookup.ActivePromise is not null
-            ? "Este cliente ya tiene una promesa vigente"
+            ? "Promesa vigente"
             : !HasValidPhoneNumber
-                ? "Falta confirmar el número contactado"
+                ? "Selecciona el teléfono"
                 : !HasValidPromiseData
-                    ? "Completa los datos del compromiso"
-                    : "Todo listo para guardar";
+                    ? "Completa los datos"
+                    : "Listo para guardar";
     private bool HasValidPromiseData => Lookup is { Exists: true, ActivePromise: null }
         && HasValidPhoneNumber
         && PromiseDate is not null
