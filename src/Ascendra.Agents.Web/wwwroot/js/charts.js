@@ -121,7 +121,7 @@ window.ascendraCharts = {
       return { ink: '#fff4e5', axis: '#fff4e5', muted: '#e3c7a6', grid: 'rgba(234, 189, 132, .18)', hoverBackground: 'rgba(38, 28, 23, .96)', hoverBorder: 'rgba(255, 206, 144, .45)', hoverInk: '#fff9f0' };
     }
     if (shell?.classList.contains('theme-kintsugi')) {
-      return { ink: '#213650', axis: '#213650', muted: '#5e7187', grid: 'rgba(72, 113, 154, .19)', hoverBackground: 'rgba(252, 251, 247, .98)', hoverBorder: 'rgba(185, 133, 47, .62)', hoverInk: '#1e3046' };
+      return { ink: '#f1ede5', axis: '#f1ede5', muted: '#c5c4bd', grid: 'rgba(221, 218, 205, .16)', hoverBackground: 'rgba(25, 27, 28, .97)', hoverBorder: 'rgba(210, 166, 80, .56)', hoverInk: '#fbf5e9' };
     }
     return { ink: '#111827', axis: '#111827', muted: '#172235', grid: 'rgba(47,68,94,.16)', hoverBackground: 'rgba(14, 27, 45, .94)', hoverBorder: 'rgba(210, 228, 250, .38)', hoverInk: '#f7fbff' };
   },
@@ -133,12 +133,12 @@ window.ascendraCharts = {
     const isAmbar = Boolean(target.closest('.theme-ambar'));
     const isKintsugi = Boolean(target.closest('.theme-kintsugi'));
     const palette = isKintsugi ? {
-      status: { 'Esperando pago': '#c49a45', Pagada: '#4f86b9', 'No pagó': '#b46f60', Robada: '#776e94', Duplicada: '#af9361' },
-      recovery: { '#1f9b72': '#4f86b9', '#c38d25': '#c49a45', '#c74857': '#b46f60', 'rgba(124,145,169,.48)': 'rgba(112, 143, 174, .48)' },
-      recoveryFallback: ['#4f86b9', '#c49a45', '#8ba7c3', '#af9361'],
-      line: 'rgba(255, 255, 255, .92)',
-      externalText: '#213650',
-      heatmap: [[0, '#f5f3ec'], [.26, '#d7e2ee'], [.55, '#92afd0'], [.77, '#d3b767'], [1, '#ae8129']]
+      status: { 'Esperando pago': '#d2a650', Pagada: '#6c96c3', 'No pagó': '#c77a69', Robada: '#998ec1', Duplicada: '#bea16a' },
+      recovery: { '#1f9b72': '#6c96c3', '#c38d25': '#d2a650', '#c74857': '#c77a69', 'rgba(124,145,169,.48)': 'rgba(166, 167, 161, .42)' },
+      recoveryFallback: ['#6c96c3', '#d2a650', '#b5b4ad', '#bea16a'],
+      line: 'rgba(242, 232, 209, .62)',
+      externalText: '#f1ede5',
+      heatmap: [[0, '#202221'], [.26, '#4d4f4d'], [.55, '#668eb8'], [.77, '#c6a158'], [1, '#ecd187']]
     } : isAmbar ? {
       status: { 'Esperando pago': '#dca45d', Pagada: '#d1a264', 'No pagó': '#c8776b', Robada: '#e1b360', Duplicada: '#b796c8' },
       recovery: { '#1f9b72': '#d1a264', '#c38d25': '#e1b360', '#c74857': '#c8776b', 'rgba(124,145,169,.48)': 'rgba(185, 139, 105, .43)' },
@@ -170,10 +170,10 @@ window.ascendraCharts = {
     const metallicRecoveryColor = (value, largest) => {
       const amount = Math.max(0, Number(value) || 0);
       const ratio = largest > 0 ? amount / largest : 0;
-      if (ratio >= .8) return '#4f86b9';
-      if (ratio >= .55) return '#c49a45';
-      if (ratio > .2) return '#8ba7c3';
-      return amount > 0 ? '#af9361' : 'rgba(112, 143, 174, .42)';
+      if (ratio >= .8) return '#6c96c3';
+      if (ratio >= .55) return '#d2a650';
+      if (ratio > .2) return '#b5b4ad';
+      return amount > 0 ? '#bea16a' : 'rgba(166, 167, 161, .42)';
     };
     return data.map(trace => {
       if (trace?.type === 'heatmap' && palette.heatmap) {
