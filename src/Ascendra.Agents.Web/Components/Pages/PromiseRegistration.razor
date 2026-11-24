@@ -121,10 +121,6 @@ else
                                 }
                             </div>
                         }
-                        <div class="promise-stage__phone-status @(HasValidPhoneNumber ? "promise-stage__phone-status--complete" : string.Empty)" aria-live="polite">
-                            <span aria-hidden="true">@(HasValidPhoneNumber ? "✓" : "!")</span>
-                            <strong>@PhoneStatus</strong>
-                        </div>
                     </div>
                 </section>
 
@@ -225,11 +221,6 @@ else
         : !HasValidPhoneNumber ? "Selecciona el teléfono"
         : !HasValidPromiseData ? "Completa los datos"
         : "Registrar promesa";
-    private string PhoneStatus => Lookup is not { Exists: true }
-        ? "Valida el cliente primero"
-        : HasValidPhoneNumber
-            ? "Teléfono confirmado"
-            : "Selecciona un teléfono";
     private string SaveHint => Lookup is not { Exists: true }
         ? "Valida el cliente"
         : Lookup.ActivePromise is not null
