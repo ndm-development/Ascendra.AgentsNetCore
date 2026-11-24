@@ -41,7 +41,7 @@ else
             <label for="monitoring-agent">Agente</label>
             <select id="monitoring-agent" @bind="SelectedAgent">
                 <option value="">Todos los agentes</option>
-                @foreach (var agent in Snapshot.Agents) { <option value="@agent">@agent</option> }
+                @foreach (var agent in Snapshot.Agents) { <option value="@agent.Key">@agent.Name</option> }
             </select>
         </div>
         <div class="field">
@@ -138,8 +138,8 @@ else
 
     private int ActiveAgents => Snapshot is null
         ? 0
-        : Snapshot.DispositionsByAgent.Select(item => item.AgentName)
-            .Concat(Snapshot.PromisesByAgent.Select(item => item.AgentName))
+        : Snapshot.DispositionsByAgent.Select(item => item.AgentKey)
+            .Concat(Snapshot.PromisesByAgent.Select(item => item.AgentKey))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
 

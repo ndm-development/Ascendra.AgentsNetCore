@@ -114,16 +114,18 @@ public sealed record PromiseEditRequest(
 public sealed record MonitoringFilters(
     DateOnly? StartDate,
     DateOnly? EndDate,
-    string? AgentName,
+    string? AgentKey,
     string? PromiseType,
     string? PromiseStatus,
     string? DispositionCategory,
     string? DispositionChannel);
 
-public sealed record MonitoringAgentCount(string AgentName, int Count);
+public sealed record MonitoringAgent(string Key, string Name);
+
+public sealed record MonitoringAgentCount(string AgentKey, string AgentName, int Count);
 
 public sealed record MonitoringSnapshot(
-    IReadOnlyList<string> Agents,
+    IReadOnlyList<MonitoringAgent> Agents,
     IReadOnlyList<string> PromiseTypes,
     IReadOnlyList<string> PromiseStatuses,
     IReadOnlyList<string> DispositionCategories,
