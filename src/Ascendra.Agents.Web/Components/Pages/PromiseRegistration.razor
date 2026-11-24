@@ -24,91 +24,155 @@ else
             <span class="promise-registration__agent">@Session.User?.DisplayName</span>
         </div>
 
-        <div class="promise-registration__form" role="group" aria-label="Datos de la promesa">
-            <div class="field">
-                <label for="promise-client-id">Cliente único</label>
-                <div class="promise-registration__client-input">
-                    <input id="promise-client-id" @ref="ClientIdInput" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" @onkeydown="LookupOnEnterAsync" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
-                    <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" disabled="@(IsLookingUp || string.IsNullOrWhiteSpace(ClientId))" aria-label="Buscar cliente único" title="Buscar cliente">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
-                    </button>
+        @if (Saved && SavedPromise is { } savedPromise)
+        {
+            <div class="promise-registration__success" role="status" aria-live="polite">
+                <span class="promise-registration__success-icon" aria-hidden="true">✓</span>
+                <div>
+                    <p>PROMESA GUARDADA</p>
+                    <strong>Folio @savedPromise.IdPromise:D2 · @savedPromise.ClientName</strong>
+                    <span>@savedPromise.ClientId · @savedPromise.PromiseDate.ToString("dd/MM/yyyy") · @savedPromise.ClientNumber</span>
                 </div>
+                <span class="promise-registration__success-state">Registro confirmado</span>
             </div>
-            <div class="field">
-                <span class="promise-registration__field-label">Nombre del cliente</span>
-                <div class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-label="Nombre del cliente" aria-live="polite">
-                    @if (IsLookingUp)
-                    {
-                        <span class="promise-registration__client-name-loading">Validando cliente…</span>
-                    }
-                    else if (Lookup is { Exists: true })
-                    {
-                        <span class="promise-registration__client-name-check" aria-hidden="true">✓</span>
-                        <strong>@ClientName</strong>
-                    }
-                    else
-                    {
-                        <span>Se completa al validar el cliente</span>
-                    }
-                </div>
-            </div>
-            <div class="field">
-                <label for="promise-contact-number">Número contactado</label>
-                @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0 && !IsUsingCustomPhoneNumber)
-                {
-                    <select id="promise-contact-number" @ref="ClientNumberSelect" @bind="SelectedPhoneNumber" autocomplete="tel">
-                        <option value="">Selecciona un número</option>
-                        @foreach (var phone in Lookup.ContactNumbers)
-                        {
-                            <option value="@phone.Number">@phone.Number · @phone.Source</option>
-                        }
-                        <option value="@CustomPhoneOption">Otro número…</option>
-                    </select>
-                }
-                else
-                {
-                    <div class="promise-registration__phone-input">
-                        <input id="promise-contact-number" @ref="ClientNumberInput" @bind="ClientNumber" inputmode="numeric" maxlength="20" autocomplete="tel" placeholder="Escribe 10 dígitos" />
-                        @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0)
-                        {
-                            <button type="button" class="promise-registration__phone-picker" @onclick="ShowKnownPhoneNumbers" aria-label="Ver números asociados" title="Ver números asociados">
-                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 9 5 5 5-5" /></svg>
-                            </button>
-                        }
-                    </div>
-                }
-            </div>
-            <div class="field">
-                <label for="promise-date">Fecha de promesa</label>
-                <input id="promise-date" type="date" @bind="PromiseDate" />
-            </div>
-            <div class="field">
-                <label for="promise-initial-amount">Monto inicial</label>
-                <input id="promise-initial-amount" type="number" @bind="InitialAmount" min="0" step="0.01" inputmode="decimal" placeholder="$0.00" />
-            </div>
-            <div class="field">
-                <label for="promise-weekly-amount">Monto semanal</label>
-                <input id="promise-weekly-amount" type="number" @bind="WeeklyAmount" min="0" step="0.01" inputmode="decimal" placeholder="$0.00" />
-            </div>
-            <div class="field">
-                <label for="promise-weeks">Número de semanas</label>
-                <input id="promise-weeks" type="number" @bind="NumberOfWeeks" min="0" max="255" step="1" inputmode="numeric" />
-            </div>
-            <div class="field">
-                <label for="promise-type">Tipo de promesa</label>
-                <select id="promise-type" @bind="PromiseType">
-                    <option value="">Selecciona un tipo</option>
-                    @foreach (var type in PromiseRegistrations.Types)
-                    {
-                        <option value="@type">@type</option>
-                    }
-                </select>
-            </div>
+        }
 
-            <div class="promise-registration__action">
-                <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)">
-                    @SaveButtonLabel
-                </button>
+        <div class="promise-registration__flow">
+            <aside class="promise-registration__journey" aria-label="Pasos para registrar una promesa">
+                <p>EN 3 PASOS</p>
+                <ol>
+                    <li class="promise-registration__journey-step promise-registration__journey-step--active">
+                        <span>01</span>
+                        <div><strong>Identifica al cliente</strong><small>Consulta su expediente.</small></div>
+                    </li>
+                    <li class="promise-registration__journey-step @(Lookup is { Exists: true } ? "promise-registration__journey-step--active" : string.Empty)">
+                        <span>02</span>
+                        <div><strong>Confirma el contacto</strong><small>El teléfono es obligatorio.</small></div>
+                    </li>
+                    <li class="promise-registration__journey-step @(HasValidPhoneNumber ? "promise-registration__journey-step--active" : string.Empty)">
+                        <span>03</span>
+                        <div><strong>Registra la promesa</strong><small>Captura los montos y fecha.</small></div>
+                    </li>
+                </ol>
+            </aside>
+
+            <div class="promise-registration__workbench" role="group" aria-label="Datos de la promesa">
+                <section class="promise-stage">
+                    <div class="promise-stage__heading">
+                        <span>01</span>
+                        <div><p>CLIENTE</p><h2>¿Para quién es la promesa?</h2></div>
+                    </div>
+                    <div class="promise-stage__fields promise-stage__fields--client">
+                        <div class="field">
+                            <label for="promise-client-id">Cliente único</label>
+                            <div class="promise-registration__client-input">
+                                <input id="promise-client-id" @ref="ClientIdInput" @bind="ClientId" @bind:event="oninput" @bind:after="ClearClientLookupWhenChanged" @onkeydown="LookupOnEnterAsync" maxlength="100" autocomplete="off" placeholder="CLIENTE_UNICO" />
+                                <button type="button" class="promise-registration__client-search" @onclick="LookupClientAsync" disabled="@(IsLookingUp || string.IsNullOrWhiteSpace(ClientId))" aria-label="Buscar cliente único" title="Buscar cliente">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <span class="promise-registration__field-label">Nombre del cliente</span>
+                            <div class="promise-registration__client-name @(Lookup is { Exists: true } ? "promise-registration__client-name--confirmed" : string.Empty)" aria-label="Nombre del cliente" aria-live="polite">
+                                @if (IsLookingUp)
+                                {
+                                    <span class="promise-registration__client-name-loading">Validando cliente…</span>
+                                }
+                                else if (Lookup is { Exists: true })
+                                {
+                                    <span class="promise-registration__client-name-check" aria-hidden="true">✓</span>
+                                    <strong>@ClientName</strong>
+                                }
+                                else
+                                {
+                                    <span>Se completa al validar el cliente</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="promise-stage promise-stage--phone @(Lookup is { Exists: true } && !HasValidPhoneNumber ? "promise-stage--required" : string.Empty)">
+                    <div class="promise-stage__heading">
+                        <span>02</span>
+                        <div><p>CONTACTO</p><h2>¿Qué número contactaste?</h2></div>
+                    </div>
+                    <div class="field promise-stage__phone-field">
+                        <label for="promise-contact-number">Número contactado <em>Obligatorio</em></label>
+                        @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0 && !IsUsingCustomPhoneNumber)
+                        {
+                            <select id="promise-contact-number" @ref="ClientNumberSelect" @bind="SelectedPhoneNumber" autocomplete="tel">
+                                <option value="">Selecciona un número</option>
+                                @foreach (var phone in Lookup.ContactNumbers)
+                                {
+                                    <option value="@phone.Number">@phone.Number · @phone.Source</option>
+                                }
+                                <option value="@CustomPhoneOption">Otro número…</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <div class="promise-registration__phone-input">
+                                <input id="promise-contact-number" @ref="ClientNumberInput" @bind="ClientNumber" @bind:event="oninput" inputmode="numeric" maxlength="20" autocomplete="tel" disabled="@(Lookup is not { Exists: true })" placeholder="@(Lookup is { Exists: true } ? "Escribe 10 dígitos" : "Valida primero el cliente")" />
+                                @if (Lookup is { Exists: true } && Lookup.ContactNumbers.Count > 0)
+                                {
+                                    <button type="button" class="promise-registration__phone-picker" @onclick="ShowKnownPhoneNumbers" aria-label="Ver números asociados" title="Ver números asociados">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 9 5 5 5-5" /></svg>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        <div class="promise-stage__phone-status @(HasValidPhoneNumber ? "promise-stage__phone-status--complete" : string.Empty)" aria-live="polite">
+                            <span aria-hidden="true">@(HasValidPhoneNumber ? "✓" : "!")</span>
+                            <strong>@PhoneStatus</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="promise-stage">
+                    <div class="promise-stage__heading">
+                        <span>03</span>
+                        <div><p>COMPROMISO</p><h2>Completa los datos de la promesa</h2></div>
+                    </div>
+                    <div class="promise-stage__fields promise-stage__fields--details">
+                        <div class="field">
+                            <label for="promise-date">Fecha de promesa</label>
+                            <input id="promise-date" type="date" @bind="PromiseDate" />
+                        </div>
+                        <div class="field">
+                            <label for="promise-initial-amount">Monto inicial</label>
+                            <input id="promise-initial-amount" type="number" @bind="InitialAmount" min="0" step="0.01" inputmode="decimal" placeholder="$0.00" />
+                        </div>
+                        <div class="field">
+                            <label for="promise-weekly-amount">Monto semanal</label>
+                            <input id="promise-weekly-amount" type="number" @bind="WeeklyAmount" min="0" step="0.01" inputmode="decimal" placeholder="$0.00" />
+                        </div>
+                        <div class="field">
+                            <label for="promise-weeks">Número de semanas</label>
+                            <input id="promise-weeks" type="number" @bind="NumberOfWeeks" min="0" max="255" step="1" inputmode="numeric" />
+                        </div>
+                        <div class="field promise-stage__type-field">
+                            <label for="promise-type">Tipo de promesa</label>
+                            <select id="promise-type" @bind="PromiseType">
+                                <option value="">Selecciona un tipo</option>
+                                @foreach (var type in PromiseRegistrations.Types)
+                                {
+                                    <option value="@type">@type</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="promise-registration__submit-panel">
+                        <div>
+                            <p>ESTADO DEL REGISTRO</p>
+                            <strong>@SaveHint</strong>
+                        </div>
+                        <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)">
+                            @SaveButtonLabel
+                        </button>
+                    </div>
+                </section>
             </div>
         </div>
 
@@ -120,7 +184,7 @@ else
         {
             <p class="lookup-notice lookup-notice--attention" role="status">Este cliente ya tiene una promesa vigente (@activePromise.PromiseId) para el @activePromise.PromiseDate.ToString("dd/MM/yyyy").</p>
         }
-        else if (!string.IsNullOrWhiteSpace(Notice))
+        else if (!string.IsNullOrWhiteSpace(Notice) && !Saved)
         {
             <p class="lookup-notice @(Saved ? "lookup-notice--success" : "lookup-notice--error")" role="status">@Notice</p>
         }
@@ -140,6 +204,7 @@ else
     private int NumberOfWeeks { get; set; } = 1;
     private string PromiseType { get; set; } = string.Empty;
     private PromiseClientLookup? Lookup { get; set; }
+    private PromiseRegistrationEntry? SavedPromise { get; set; }
     private string? Notice { get; set; }
     private bool Saved { get; set; }
     private bool IsSaving { get; set; }
@@ -155,12 +220,30 @@ else
     private const string CustomPhoneOption = "__custom_phone__";
 
     private string ClientName => Lookup is { Exists: true } ? Lookup.ClientName : string.Empty;
+    private bool HasValidPhoneNumber => Lookup is { Exists: true }
+        && TextNormalization.Phone(ClientNumber).Length == 10;
     private string SaveButtonLabel => IsSaving ? "Guardando…"
         : Lookup is not { Exists: true } ? "Valida el cliente"
+        : Lookup.ActivePromise is not null ? "Promesa vigente"
+        : !HasValidPhoneNumber ? "Selecciona el teléfono"
         : !HasValidPromiseData ? "Completa los datos"
         : "Registrar promesa";
+    private string PhoneStatus => Lookup is not { Exists: true }
+        ? "Primero valida al cliente"
+        : HasValidPhoneNumber
+            ? "Número confirmado para esta promesa"
+            : "Selecciona o escribe el número contactado";
+    private string SaveHint => Lookup is not { Exists: true }
+        ? "Valida al cliente para iniciar"
+        : Lookup.ActivePromise is not null
+            ? "Este cliente ya tiene una promesa vigente"
+            : !HasValidPhoneNumber
+                ? "Falta confirmar el número contactado"
+                : !HasValidPromiseData
+                    ? "Completa los datos del compromiso"
+                    : "Todo listo para guardar";
     private bool HasValidPromiseData => Lookup is { Exists: true, ActivePromise: null }
-        && TextNormalization.Phone(ClientNumber).Length == 10
+        && HasValidPhoneNumber
         && PromiseDate is not null
         && InitialAmount is not null && InitialAmount >= 0
         && WeeklyAmount is not null && WeeklyAmount >= 0
@@ -192,6 +275,7 @@ else
         var previousClientId = Lookup?.ClientId;
         Notice = null;
         Saved = false;
+        SavedPromise = null;
         IsLookingUp = true;
         try
         {
@@ -230,6 +314,7 @@ else
         IsUsingCustomPhoneNumber = false;
         Notice = null;
         Saved = false;
+        SavedPromise = null;
     }
 
     private void ShowKnownPhoneNumbers()
@@ -267,7 +352,7 @@ else
                 PromiseType,
                 Session.User?.DisplayName,
                 Session.User?.Id);
-            Notice = $"Promesa {entry.IdPromise:D2} registrada correctamente para {entry.ClientName}.";
+            SavedPromise = entry;
             Saved = true;
             ClearForm();
             FocusClientId = true;
