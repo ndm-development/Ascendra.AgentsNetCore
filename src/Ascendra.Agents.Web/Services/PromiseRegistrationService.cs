@@ -490,6 +490,7 @@ public sealed class PromiseRegistrationService(
             var historicalId = reader.IsDBNull(1) ? null : reader.GetString(1);
             var isAscendra = origin.Equals("Ascendra", StringComparison.OrdinalIgnoreCase);
             entries.Add(new PromiseCrossSourceEntry(
+                registrationId,
                 !isAscendra && !string.IsNullOrWhiteSpace(historicalId)
                     ? historicalId
                     : $"ASC-{registrationId:D6}",
@@ -531,6 +532,7 @@ public sealed class PromiseRegistrationService(
 
             return snapshot with
             {
+                DatabasePromiseId = stored.DatabasePromiseId,
                 ClientId = stored.ClientId,
                 ClientNumber = stored.ClientNumber,
                 Agent = string.IsNullOrWhiteSpace(stored.AgentName) ? snapshot.Agent : stored.AgentName,

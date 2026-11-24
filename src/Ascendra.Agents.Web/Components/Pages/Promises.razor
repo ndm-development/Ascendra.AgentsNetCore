@@ -132,7 +132,7 @@ else
         <div class="table-wrap"><table class="promise-table"><thead><tr><th>Id</th><th>Cliente único</th><th>Nombre</th><th>Teléfono</th><th>Fecha promesa</th><th>Monto inicial</th><th>Semanal</th><th>Tipo</th><th>Creación</th><th>Estatus</th></tr></thead><tbody>
             @foreach (var row in visible)
             {
-                <tr><td>@row.Id</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td>@(row.CreatedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td></tr>
+                <tr><td>@DisplayPromiseId(row)</td><td>@row.ClientId</td><td>@row.ClientName</td><td>@row.ClientNumber</td><td>@(row.PromiseDate?.ToString("dd/MM/yyyy") ?? "—")</td><td>@DashboardQueries.Currency(row.InitialAmount)</td><td>@DashboardQueries.Currency(row.WeeklyAmount)</td><td>@row.Type</td><td>@(row.CreatedOn?.ToString("dd/MM/yyyy") ?? "—")</td><td><span class="promise-status @StatusClass(row.Status)">@DashboardQueries.PromiseStatusLabel(row.Status)</span></td></tr>
             }
         </tbody></table></div>
     </section>
@@ -241,7 +241,10 @@ else
         registration.NumberOfWeeks,
         DateOnly.FromDateTime(registration.CreatedAt.LocalDateTime),
         "Vigente",
+        registration.IdPromise,
         registration.IdPromise);
+    private static string DisplayPromiseId(PromiseRecord promise) =>
+        (promise.DatabasePromiseId ?? promise.AscendraRegistrationId)?.ToString() ?? promise.Id;
     private static string ComplianceTone(decimal? rate) => rate switch { >= .60m => "compliance-score--positive", >= .45m => "compliance-score--caution", < .45m => "compliance-score--attention", _ => string.Empty };
     private static string StatusClass(string status) => TextNormalization.Normalize(status) switch { "robada" => "promise-status--stolen", "duplicada" => "promise-status--duplicate", "incumplida" => "promise-status--failed", "activa" or "cumplida" or "cumplido" => "promise-status--paid", "vigente" => "promise-status--open", _ => "promise-status--neutral" };
 }

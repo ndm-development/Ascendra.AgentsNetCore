@@ -49,7 +49,10 @@ public sealed record PromiseRecord(
     // Sólo se llena cuando el corte proviene de una promesa capturada en
     // Ascendra. Permite reemplazar la vista provisional por el resultado del
     // cruce sin depender de fechas, importes o nombres.
-    int? AscendraRegistrationId = null);
+    int? AscendraRegistrationId = null,
+    // Identificador canónico de PostgreSQL. El Id histórico se conserva para
+    // el cruce, pero nunca debe presentarse como el ID principal al usuario.
+    int? DatabasePromiseId = null);
 
 /// <summary>
 /// Promesa capturada directamente por Ascendra. A diferencia del historial
@@ -139,6 +142,7 @@ public sealed record MonitoringSnapshot(
 /// duplicarse en la aplicación.
 /// </summary>
 public sealed record PromiseCrossSourceEntry(
+    int DatabasePromiseId,
     string PromiseId,
     int? AscendraRegistrationId,
     string ClientId,
