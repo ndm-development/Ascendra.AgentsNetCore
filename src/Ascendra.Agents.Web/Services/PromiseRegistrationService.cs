@@ -508,6 +508,53 @@ public sealed class PromiseRegistrationService(
         return entries;
     }
 
+    /// <summary>
+    /// El cruce conserva el estatus y el nombre provenientes del Excel, pero
+    /// los campos administrativos editables se resuelven siempre desde
+    /// PostgreSQL. Así un cambio realizado por Gerencia se refleja en Mis
+    /// promesas de inmediato, aun antes del siguiente cruce.
+    /// </summary>
+    public static IReadOnlyList<PromiseRecord> ApplyStoredEdits(
+        IReadOnlyList<PromiseRecord> snapshotPromises,
+        IReadOnlyList<PromiseCrossSourceEntry> storedPromises)
+    {
+        var storedByKey = storedPromises
+            .GroupBy(StoredPromiseKey)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(entry => entry.CreatedAt).First(),
+                StringComparer.Ordinal);
+
+        return snapshotPromises.Select(snapshot =>
+        {
+            if (!storedByKey.TryGetValue(SnapshotPromiseKey(snapshot), out var stored)) return snapshot;
+
+            return snapshot with
+            {
+                ClientId = stored.ClientId,
+                ClientNumber = stored.ClientNumber,
+                Agent = string.IsNullOrWhiteSpace(stored.AgentName) ? snapshot.Agent : stored.AgentName,
+                AgentId = string.IsNullOrWhiteSpace(stored.AgentId) ? snapshot.AgentId : stored.AgentId,
+                PromiseDate = stored.PromiseDate,
+                InitialAmount = stored.InitialAmount ?? snapshot.InitialAmount,
+                WeeklyAmount = stored.WeeklyAmount ?? snapshot.WeeklyAmount,
+                Type = string.IsNullOrWhiteSpace(stored.PromiseType) ? snapshot.Type : stored.PromiseType,
+                NumberOfWeeks = stored.NumberOfWeeks,
+                CreatedOn = OperationalClock.Date(stored.CreatedAt),
+            };
+        }).ToArray();
+    }
+
+    private static string SnapshotPromiseKey(PromiseRecord promise) =>
+        promise.AscendraRegistrationId is int registrationId
+            ? $"ascendra:{registrationId}"
+            : $"historial:{promise.Id.Trim()}";
+
+    private static string StoredPromiseKey(PromiseCrossSourceEntry promise) =>
+        promise.AscendraRegistrationId is int registrationId
+            ? $"ascendra:{registrationId}"
+            : $"historial:{promise.PromiseId.Trim()}";
+
     private async Task<IReadOnlyList<PromiseRegistrationEntry>> GetEntriesAsync(
         string whereClause,
         string? parameterName,

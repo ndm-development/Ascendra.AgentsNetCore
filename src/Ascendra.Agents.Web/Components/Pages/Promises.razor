@@ -6,7 +6,10 @@
 @inject PromiseRegistrationService PromiseRegistrations
 
 @{
-    var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
+    var sourceScope = !Session.HasFullAccess && AgentPromiseScope is not null
+        ? AgentPromiseScope
+        : Queries.Scope();
+    var scope = Queries.FilterByClient(sourceScope, ClientQuery);
     var spreadsheetRows = Queries.FilterPromises(
         scope, null, null, null, null, null, null, null, null, null);
     var pendingRows = RegisteredPromises
@@ -148,6 +151,7 @@ else
     private int _week;
     private PromiseSelection? _selectedPromise;
     private IReadOnlyList<PromiseRegistrationEntry> RegisteredPromises { get; set; } = [];
+    private ScopedOperations? AgentPromiseScope { get; set; }
     private bool IsLoadingRegistrations { get; set; } = true;
 
     protected override void OnInitialized()
@@ -165,11 +169,24 @@ else
     private async Task ReloadRegisteredPromisesAsync()
     {
         var user = Session.User;
-        RegisteredPromises = Session.HasFullAccess
-            ? await PromiseRegistrations.GetPendingForTeamAsync()
-            : string.IsNullOrWhiteSpace(user?.Id)
-                ? []
-                : await PromiseRegistrations.GetPendingForAgentAsync(user.Id);
+        if (Session.HasFullAccess)
+        {
+            RegisteredPromises = await PromiseRegistrations.GetPendingForTeamAsync();
+        }
+        else if (string.IsNullOrWhiteSpace(user?.Id))
+        {
+            RegisteredPromises = [];
+            AgentPromiseScope = null;
+        }
+        else
+        {
+            RegisteredPromises = await PromiseRegistrations.GetPendingForAgentAsync(user.Id);
+            var storedPromises = await PromiseRegistrations.GetCrossSourceAsync();
+            var effectivePromises = PromiseRegistrationService.ApplyStoredEdits(
+                Queries.Snapshot.Promises,
+                storedPromises);
+            AgentPromiseScope = Queries.Scope(effectivePromises);
+        }
         IsLoadingRegistrations = false;
     }
 

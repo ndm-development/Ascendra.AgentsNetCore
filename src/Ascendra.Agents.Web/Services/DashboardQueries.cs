@@ -50,6 +50,32 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
             return _scopeCache;
         }
 
+        _scopeCacheKey = cacheKey;
+        return _scopeCache = BuildPersonalScope(snapshot, user, snapshot.Promises);
+    }
+
+    /// <summary>
+    /// Construye el alcance personal sobre una versión enriquecida de las
+    /// promesas. La pantalla del agente usa esta sobrecarga cuando Gerencia o
+    /// Dirección modificaron un registro en PostgreSQL y el Excel del cruce
+    /// todavía conserva la versión anterior.
+    /// </summary>
+    public ScopedOperations Scope(IReadOnlyList<PromiseRecord> promises)
+    {
+        var snapshot = Snapshot;
+        EnsureSnapshotCaches(snapshot.Version);
+        var user = session.User;
+        return user is null
+            ? new ScopedOperations([], [], [], [])
+            : BuildPersonalScope(snapshot, user, promises);
+    }
+
+    private static ScopedOperations BuildPersonalScope(
+        AgentDataSnapshot snapshot,
+        AgentUser user,
+        IReadOnlyList<PromiseRecord> promises)
+    {
+
         var aliases = snapshot.AgentDirectory
             .Where(directory => TextNormalization.AgentId(directory.Id)
                 .Equals(user.Id, StringComparison.OrdinalIgnoreCase))
@@ -64,15 +90,14 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
                     || aliases.Any(alias => TextNormalization.AgentNameMatches(sourceAgent, alias))));
 
         var payments = snapshot.Payments.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
-        var promises = snapshot.Promises.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
-        var allowedClients = payments.Select(x => x.ClientId).Concat(promises.Select(x => x.ClientId))
+        var ownPromises = promises.Where(x => Owns(x.Agent, x.AgentId)).ToArray();
+        var allowedClients = payments.Select(x => x.ClientId).Concat(ownPromises.Select(x => x.ClientId))
             .Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var portfolio = allowedClients
             .Select(clientId => snapshot.PortfolioByClientId.TryGetValue(clientId, out var record) ? record : null)
             .OfType<PortfolioRecord>()
             .ToArray();
-        _scopeCacheKey = cacheKey;
-        return _scopeCache = BuildScope(payments, promises, portfolio);
+        return BuildScope(payments, ownPromises, portfolio);
     }
 
     /// <summary>
