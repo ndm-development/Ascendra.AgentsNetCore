@@ -165,12 +165,15 @@
     else
     {
         <section class="team-console__filters glass-card" aria-label="Filtros del equipo">
-            <div class="field compact-field">
-                <label for="team-week">Semana</label>
-                <select id="team-week" @bind="_week" @bind:after="ResetTablePages">
-                    @foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }
-                </select>
-            </div>
+            @if (ActiveSection != TeamSection.Promises)
+            {
+                <div class="field compact-field">
+                    <label for="team-week">Semana</label>
+                    <select id="team-week" @bind="_week" @bind:after="ResetTablePages">
+                        @foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }
+                    </select>
+                </div>
+            }
             <div class="field">
                 <label for="team-agent">Agente</label>
                 <select id="team-agent" @bind="SelectedAgent" @bind:after="ResetTablePages">
@@ -458,15 +461,16 @@
     private bool HasDateRange => StartDate is not null || EndDate is not null;
     private bool HasClientSearch => !string.IsNullOrWhiteSpace(ClientQuery);
     private bool HasPromiseIdSearch => !string.IsNullOrWhiteSpace(PromiseIdQuery);
-    private bool HasPromiseIdentitySearch => HasClientSearch || HasPromiseIdSearch;
     private string PeriodLabel => HasDateRange
         ? $"{StartDate?.ToString("dd/MM/yyyy") ?? "Inicio"} — {EndDate?.ToString("dd/MM/yyyy") ?? "Hoy"}"
         : $"Semana {_week}";
-    private string PromisePeriodLabel => HasPromiseIdentitySearch && !HasDateRange
-        ? HasClientSearch
+    private string PromisePeriodLabel => HasDateRange
+        ? PeriodLabel
+        : HasClientSearch
             ? $"Historial completo · {ClientQuery.Trim()}"
-            : $"Promesa {PromiseIdQuery.Trim()}"
-        : PeriodLabel;
+            : HasPromiseIdSearch
+                ? $"Promesa {PromiseIdQuery.Trim()}"
+                : "Historial completo";
     private static int PageCount(int itemCount) => Math.Max(1, (int)Math.Ceiling(itemCount / (double)TeamTablePageSize));
     private void SetPaymentTablePage(int page) => PaymentTablePage = Math.Max(1, page);
     private void SetPromiseTablePage(int page) => PromiseTablePage = Math.Max(1, page);
@@ -496,10 +500,8 @@
     private IEnumerable<DatabasePromiseEntry> FilterDatabasePromises() => TeamPromises.Where(promise =>
         (string.IsNullOrWhiteSpace(ClientQuery) || promise.ClientId.Contains(ClientQuery.Trim(), StringComparison.OrdinalIgnoreCase))
         && MatchesPromiseId(promise, PromiseIdQuery)
-        // Una búsqueda de cliente es una consulta de historial: no la limita
-        // al corte semanal seleccionado; una búsqueda de ID se comporta igual.
-        // El rango de fechas, si se indica, sigue siendo una restricción explícita.
-        && (HasDateRange || HasPromiseIdentitySearch || System.Globalization.ISOWeek.GetWeekOfYear(promise.PromiseDate) == _week)
+        // Las promesas de equipo son siempre un historial completo. El rango
+        // de fechas, si se indica, es la única restricción temporal.
         && (StartDate is null || promise.PromiseDate >= StartDate)
         && (EndDate is null || promise.PromiseDate <= EndDate)
         && (string.IsNullOrWhiteSpace(SelectedAgent) || promise.AgentName.Equals(SelectedAgent, StringComparison.OrdinalIgnoreCase))
@@ -862,10 +864,10 @@
     {
         var query = new List<string>
         {
-            $"week={_week}",
             $"client={Uri.EscapeDataString(ClientQuery)}",
             $"agent={Uri.EscapeDataString(SelectedAgent)}",
         };
+        if (kind != "promises") query.Insert(0, $"week={_week}");
         if (StartDate is not null) query.Add($"start={StartDate:yyyy-MM-dd}");
         if (EndDate is not null) query.Add($"end={EndDate:yyyy-MM-dd}");
         if (kind == "promises")
