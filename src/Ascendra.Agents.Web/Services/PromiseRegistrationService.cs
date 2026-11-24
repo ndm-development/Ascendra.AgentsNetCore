@@ -20,6 +20,8 @@ public sealed class PromiseRegistrationService(
     private readonly ExcelSnapshotStore _snapshots = snapshots;
     private readonly PostgresDatabase _database = database;
     private readonly ILogger<PromiseRegistrationService> _logger = logger;
+    private readonly SemaphoreSlim _reconciliationSyncGate = new(1, 1);
+    private string? _lastReconciledSnapshotVersion;
 
     public event Action? Changed;
 
@@ -164,13 +166,15 @@ public sealed class PromiseRegistrationService(
         FilterReconciled(await GetEntriesAsync("WHERE origen = 'Ascendra'", null, null, cancellationToken));
 
     /// <summary>
-    /// Fuente de la pestaña Equipo → Promesas. No depende del corte Excel:
-    /// muestra lo que vive actualmente en PostgreSQL, incluyendo el estatus
-    /// calculado por el proceso de cruces cuando ya fue actualizado.
+    /// Fuente de la pestaña Equipo → Promesas. Antes de leer, replica al
+    /// registro operativo el estatus calculado por el último cruce válido.
+    /// Así Gerencia, Monitoreo y los agentes comparten el mismo resultado.
     /// </summary>
     public async Task<IReadOnlyList<DatabasePromiseEntry>> GetAllForTeamAsync(
         CancellationToken cancellationToken = default)
     {
+        await SynchronizeReconciledStatusesAsync(cancellationToken);
+        var (reconciledStatuses, _) = ReconciledStatuses(_snapshots.Current);
         var entries = new List<DatabasePromiseEntry>();
         await using var connection = await _database.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
@@ -184,9 +188,98 @@ public sealed class PromiseRegistrationService(
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            entries.Add(ReadDatabasePromiseEntry(reader));
+            var entry = ReadDatabasePromiseEntry(reader);
+            // Si PostgreSQL no estuvo disponible durante la sincronización,
+            // la consola sigue mostrando el resultado autoritativo del corte.
+            if (entry.Origin.Equals("Ascendra", StringComparison.OrdinalIgnoreCase)
+                && reconciledStatuses.TryGetValue(entry.IdPromise, out var reconciledStatus))
+            {
+                entry = entry with { Status = reconciledStatus };
+            }
+            entries.Add(entry);
         }
         return entries;
+    }
+
+    /// <summary>
+    /// Copia una vez por corte los estatus calculados por el proceso de
+    /// cruces. Sólo toca altas de Ascendra enlazadas mediante
+    /// IdPromesa_Ascendra; el histórico y las modificaciones administrativas
+    /// permanecen intactos.
+    /// </summary>
+    public async Task SynchronizeReconciledStatusesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = _snapshots.Current;
+        if (snapshot == AgentDataSnapshot.Empty
+            || string.Equals(Volatile.Read(ref _lastReconciledSnapshotVersion), snapshot.Version, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await _reconciliationSyncGate.WaitAsync(cancellationToken);
+        try
+        {
+            snapshot = _snapshots.Current;
+            if (snapshot == AgentDataSnapshot.Empty
+                || string.Equals(Volatile.Read(ref _lastReconciledSnapshotVersion), snapshot.Version, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var (statuses, conflictingIds) = ReconciledStatuses(snapshot);
+            if (conflictingIds > 0)
+            {
+                _logger.LogWarning(
+                    "El corte contiene {ConflictingIds} IdPromesa_Ascendra con estatus contradictorios; se omitieron de la sincronización.",
+                    conflictingIds);
+            }
+
+            if (statuses.Count == 0)
+            {
+                Volatile.Write(ref _lastReconciledSnapshotVersion, snapshot.Version);
+                return;
+            }
+
+            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using var update = new NpgsqlCommand("""
+                UPDATE promesas
+                SET estatus = @status
+                WHERE id_promesa = @idPromise
+                  AND origen = 'Ascendra'
+                  AND estatus IS DISTINCT FROM @status;
+                """, connection, transaction);
+            var idParameter = update.Parameters.Add("idPromise", NpgsqlDbType.Integer);
+            var statusParameter = update.Parameters.Add("status", NpgsqlDbType.Text);
+            var updatedCount = 0;
+            foreach (var (idPromise, status) in statuses.OrderBy(pair => pair.Key))
+            {
+                idParameter.Value = idPromise;
+                statusParameter.Value = status;
+                updatedCount += await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+
+            Volatile.Write(ref _lastReconciledSnapshotVersion, snapshot.Version);
+            if (updatedCount > 0)
+            {
+                _logger.LogInformation(
+                    "Se sincronizaron {UpdatedCount} estatus de promesas desde el corte reconciliado de Ascendra.",
+                    updatedCount);
+                NotifyChanged();
+            }
+        }
+        catch (Exception exception) when (exception is PostgresException or NpgsqlException or TimeoutException)
+        {
+            // No sustituye el corte en memoria ni impide que Supervisión vea
+            // el estatus correcto mientras PostgreSQL se recupera.
+            _logger.LogError(exception, "No se pudieron sincronizar los estatus reconciliados de promesas en PostgreSQL.");
+        }
+        finally
+        {
+            _reconciliationSyncGate.Release();
+        }
     }
 
     /// <summary>
@@ -525,6 +618,33 @@ public sealed class PromiseRegistrationService(
         TextNormalization.Normalize(status) is not (
             "activa" or "vigente" or "esperando pago" or "pendiente de pago"
             or "incumplida" or "duplicada" or "robada");
+
+    private static (IReadOnlyDictionary<int, string> Statuses, int ConflictingIds) ReconciledStatuses(
+        AgentDataSnapshot snapshot)
+    {
+        var statuses = new Dictionary<int, string>();
+        var conflictingIds = 0;
+        foreach (var group in snapshot.Promises
+                     .Where(promise => promise.AscendraRegistrationId is not null)
+                     .GroupBy(promise => promise.AscendraRegistrationId!.Value))
+        {
+            var candidates = group
+                .Select(promise => promise.Status?.Trim())
+                .Where(status => !string.IsNullOrWhiteSpace(status))
+                .GroupBy(TextNormalization.Normalize, StringComparer.Ordinal)
+                .ToArray();
+
+            if (candidates.Length == 0) continue;
+            if (candidates.Length > 1)
+            {
+                conflictingIds++;
+                continue;
+            }
+
+            statuses[group.Key] = candidates[0].First()!;
+        }
+        return (statuses, conflictingIds);
+    }
 
     private IReadOnlyList<PromiseRegistrationEntry> FilterReconciled(
         IReadOnlyList<PromiseRegistrationEntry> entries) =>
