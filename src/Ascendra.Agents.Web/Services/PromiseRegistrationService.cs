@@ -715,8 +715,7 @@ public sealed class PromiseRegistrationService(
         var databaseByKey = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         await using var command = new NpgsqlCommand("""
             SELECT id_promesa, cliente_unico, agente, usu_alta, fecha_promesa,
-                   monto_inicial, monto_semanal, tipo_promesa, numero_semanas,
-                   fecha_creacion
+                   monto_inicial, monto_semanal, tipo_promesa, numero_semanas
             FROM promesas
             WHERE origen = 'Ascendra'
               AND cliente_unico = ANY(@clientIds);
@@ -732,8 +731,7 @@ public sealed class PromiseRegistrationService(
                 reader.IsDBNull(5) ? null : reader.GetDecimal(5),
                 reader.IsDBNull(6) ? null : reader.GetDecimal(6),
                 reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetInt16(8),
-                OperationalClock.LocalDateTime(reader.GetFieldValue<DateTimeOffset>(9)));
+                reader.IsDBNull(8) ? null : reader.GetInt16(8));
             if (key is null) continue;
             if (!databaseByKey.TryGetValue(key, out var ids))
             {
@@ -789,9 +787,12 @@ public sealed class PromiseRegistrationService(
 
     /// <summary>
     /// Llave de compatibilidad usada exclusivamente cuando un corte heredado
-    /// omite IdPromesa_Ascendra. Incluye el instante de alta y todos los datos
-    /// operativos para actualizar sólo coincidencias uno-a-uno; si hay duda,
-    /// la fila se deja intacta hasta recibir el identificador correcto.
+    /// omite IdPromesa_Ascendra. La fecha-hora de creación no participa: al
+    /// exportar, el cruce puede convertir UTC a CDMX o truncar milisegundos,
+    /// aunque se trate de la misma promesa. Los campos operativos se exigen
+    /// completos y la sincronización sólo actualiza coincidencias uno-a-uno;
+    /// si hay duda, la fila se deja intacta hasta recibir el identificador
+    /// correcto.
     /// </summary>
     private static string? ReconciliationKey(PromiseRecord promise) => ReconciliationKey(
         promise.ClientId,
@@ -800,8 +801,7 @@ public sealed class PromiseRegistrationService(
         promise.InitialAmount,
         promise.WeeklyAmount,
         promise.Type,
-        promise.NumberOfWeeks,
-        promise.SourceCreatedAt);
+        promise.NumberOfWeeks);
 
     private static string? ReconciliationKey(
         string clientId,
@@ -810,8 +810,7 @@ public sealed class PromiseRegistrationService(
         decimal? initialAmount,
         decimal? weeklyAmount,
         string promiseType,
-        int? numberOfWeeks,
-        DateTime? createdAt)
+        int? numberOfWeeks)
     {
         var normalizedClient = clientId?.Trim();
         var normalizedAgent = TextNormalization.AgentId(agentId);
@@ -822,8 +821,7 @@ public sealed class PromiseRegistrationService(
             || initialAmount is null
             || weeklyAmount is null
             || string.IsNullOrWhiteSpace(normalizedType)
-            || numberOfWeeks is null
-            || createdAt is null)
+            || numberOfWeeks is null)
         {
             return null;
         }
@@ -835,8 +833,7 @@ public sealed class PromiseRegistrationService(
             initialAmount.Value.ToString("0.################", CultureInfo.InvariantCulture),
             weeklyAmount.Value.ToString("0.################", CultureInfo.InvariantCulture),
             normalizedType,
-            numberOfWeeks.Value.ToString(CultureInfo.InvariantCulture),
-            createdAt.Value.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture));
+            numberOfWeeks.Value.ToString(CultureInfo.InvariantCulture));
     }
 
     private sealed record ReconciliationCandidate(PromiseRecord Promise, string? Key);
