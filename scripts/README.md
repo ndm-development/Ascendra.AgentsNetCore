@@ -28,8 +28,10 @@ python3 scripts/generar_crm_referencias.py \
 
 ## Credenciales de usuarios
 
-El padrón `data/input/usuarios_ascendra.xlsx` define quién puede entrar y su
-rol. Las contraseñas se guardan únicamente en la variable secreta de Render
+El padrón `data/input/headcount.xlsx` define quién puede entrar y su rol. El
+archivo también conserva el historial de agentes para reconciliar pagos y
+promesas, pero sólo los registros activos pueden autenticarse. Las contraseñas
+se guardan únicamente en la variable secreta de Render
 `ASCENDRA_AGENT_CREDENTIALS_JSON`.
 
 Para crear el hash de una persona:

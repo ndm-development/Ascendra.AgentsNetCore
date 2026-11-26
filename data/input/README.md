@@ -32,7 +32,7 @@ el archivo de `generated` completo para conservar el cruce.
 
 ## Dashboard de agentes
 
-Estos cuatro archivos tienen el mismo formato y nombre que la versión de
+Estos archivos tienen el mismo formato y nombre que la versión de
 Management. Reemplázalos completos al actualizar la información y reinicia el
 servicio para cargar el nuevo corte:
 
@@ -44,10 +44,13 @@ servicio para cargar el nuevo corte:
 - `clientes_asignados.xlsx`: cartera vigente con `CLIENTE_UNICO`,
   `ESTATUS_PLAN` y `FIDIAPAGO`. `FIDIAPAGO` define el día programado que se
   muestra y filtra en Recurrencia.
-- `agentes_activos.xlsx`: padrón vigente con las columnas `A. PATERNO`,
-  `A. MATERNO` y `NOMBRE`. Determina el filtro **Estatus del agente** de
-  Cobranza y Cumplimiento de promesas. Un gestor ausente del padrón se muestra
-  como inactivo.
+- `headcount.xlsx`: fuente única de personas activas e históricas. Requiere las
+  columnas `id`, `a_paterno`, `a_materno`, `nombre`, `usuario`,
+  `nombre_visible`, `estado` y `rol`. El ID es la identidad operativa y
+  `nombre_visible` es el nombre completo canónico que se muestra y se guarda
+  en las nuevas promesas. Las filas inactivas se conservan para reconciliar
+  pagos y promesas históricas, pero no pueden iniciar sesión ni aparecer en
+  reasignaciones o rankings.
 
 El dashboard de agentes excluye automáticamente las filas cuyo agente sea
 `Orgánico` (incluye variantes sin acento). No es necesario eliminarlas del

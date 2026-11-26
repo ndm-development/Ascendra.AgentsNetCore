@@ -1,4 +1,6 @@
 @inject DashboardQueries Queries
+@inject ExcelSnapshotStore Snapshots
+@implements IDisposable
 
 @{
     var baseScope = Queries.Scope();
@@ -39,7 +41,7 @@
     }
     else
     {
-        <div class="field"><label for="team-week">Semana</label><select id="team-week" @bind="_week">@foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }</select></div>
+    <div class="field"><label for="team-week">Semana</label><select id="team-week" @bind="_week" @bind:after="SelectWeek">@foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }</select></div>
     }
     <button type="button" class="secondary-button filter-reset" @onclick="Clear">Limpiar filtros</button>
 </section>
@@ -58,14 +60,27 @@ else
 
 @code {
     private int _week;
+    private bool _weekWasChosen;
     private string View { get; set; } = "compliance";
     private string Agent { get; set; } = string.Empty;
     private string AgentStatus { get; set; } = string.Empty;
     private HashSet<int> _selectedWeeks = [];
+    protected override void OnInitialized() => Snapshots.Changed += HandleSnapshotChanged;
     private void Clear() { View = "compliance"; Agent = string.Empty; AgentStatus = string.Empty; _selectedWeeks = []; }
+    private void SelectWeek() => _weekWasChosen = true;
     private void ToggleWeek(int week, ChangeEventArgs args)
     {
         if (bool.TryParse(args.Value?.ToString(), out var isSelected) && isSelected) _selectedWeeks.Add(week);
         else _selectedWeeks.Remove(week);
     }
+
+    private void HandleSnapshotChanged() => _ = InvokeAsync(() =>
+    {
+        var scope = Queries.FilterAgentStatus(Queries.Scope(), AgentStatus);
+        if (!_weekWasChosen || !scope.Weeks.Contains(_week)) _week = Queries.CurrentWeek(scope);
+        _selectedWeeks.IntersectWith(scope.Weeks);
+        StateHasChanged();
+    });
+
+    public void Dispose() => Snapshots.Changed -= HandleSnapshotChanged;
 }

@@ -79,8 +79,9 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         var aliases = snapshot.AgentDirectory
             .Where(directory => TextNormalization.AgentId(directory.Id)
                 .Equals(user.Id, StringComparison.OrdinalIgnoreCase))
-            .Select(directory => $"{directory.FirstName} {directory.PaternalSurname}".Trim())
+            .SelectMany(directory => directory.Aliases)
             .Where(alias => !string.IsNullOrWhiteSpace(alias))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         bool Owns(string sourceAgent, string sourceId) =>
@@ -143,7 +144,8 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     public int CurrentWeek(ScopedOperations scope)
     {
         if (scope.Weeks.Count == 0) return 0;
-        var currentIsoWeek = ISOWeek.GetWeekOfYear(DateTime.Today);
+        var currentDate = OperationalClock.Date(DateTimeOffset.UtcNow);
+        var currentIsoWeek = ISOWeek.GetWeekOfYear(currentDate.ToDateTime(TimeOnly.MinValue));
         return scope.Weeks.Where(week => week <= currentIsoWeek).DefaultIfEmpty(scope.Weeks[^1]).Last();
     }
 
@@ -177,17 +179,34 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     {
         if (string.IsNullOrWhiteSpace(status)) return scope;
         var activeByAgent = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        bool IsActive(string agent)
+        bool IsActive(string agentId, string agentName)
         {
-            if (activeByAgent.TryGetValue(agent, out var isActive)) return isActive;
-            isActive = Snapshot.AgentDirectory.Any(directory =>
-                TextNormalization.AgentNameMatches(agent, $"{directory.FirstName} {directory.PaternalSurname}"));
-            activeByAgent[agent] = isActive;
+            var cacheKey = $"{TextNormalization.AgentId(agentId)}\u001f{TextNormalization.Normalize(agentName)}";
+            if (activeByAgent.TryGetValue(cacheKey, out var isActive)) return isActive;
+
+            var normalizedId = TextNormalization.AgentId(agentId);
+            var direct = Snapshot.AgentDirectory.FirstOrDefault(directory =>
+                !string.IsNullOrWhiteSpace(normalizedId)
+                && directory.Id.Equals(normalizedId, StringComparison.OrdinalIgnoreCase));
+            if (direct is not null)
+            {
+                activeByAgent[cacheKey] = direct.IsActive;
+                return direct.IsActive;
+            }
+
+            var candidates = Snapshot.AgentDirectory
+                .Where(directory => directory.Aliases.Any(alias => TextNormalization.AgentNameMatches(agentName, alias)))
+                .Select(directory => directory.Id)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            isActive = candidates.Length == 1
+                && Snapshot.AgentDirectory.First(directory => directory.Id.Equals(candidates[0], StringComparison.OrdinalIgnoreCase)).IsActive;
+            activeByAgent[cacheKey] = isActive;
             return isActive;
         }
         var wantActive = status.Equals("Activo", StringComparison.OrdinalIgnoreCase);
-        var payments = scope.Payments.Where(x => IsActive(x.Agent) == wantActive).ToArray();
-        var promises = scope.Promises.Where(x => IsActive(x.Agent) == wantActive).ToArray();
+        var payments = scope.Payments.Where(x => IsActive(x.AgentId, x.Agent) == wantActive).ToArray();
+        var promises = scope.Promises.Where(x => IsActive(x.AgentId, x.Agent) == wantActive).ToArray();
         return BuildScope(payments, promises, scope.Portfolio);
     }
 
@@ -246,7 +265,7 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
     {
         var scope = Scope();
         var current = scope.Payments.Where(x => x.Week == week && x.Recovery > 0m).Sum(x => x.Recovery);
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        var today = OperationalClock.Date(DateTimeOffset.UtcNow);
         var elapsed = week == ISOWeek.GetWeekOfYear(today.ToDateTime(TimeOnly.MinValue)) ? (int)today.DayOfWeek : 7;
         if (elapsed == 0) elapsed = 7;
         var name = session.ShortName;
@@ -347,17 +366,18 @@ public sealed class DashboardQueries(ExcelSnapshotStore snapshots, DashboardSess
         var currentUser = session.User;
         var agents = new Dictionary<string, RankingAgent>(StringComparer.OrdinalIgnoreCase);
 
-        // agentes_activos.xlsx es el padrón operativo preferido para no incluir
-        // gestiones históricas de personas que ya no están activas.
-        foreach (var directory in Snapshot.AgentDirectory)
+        // El historial completo permanece disponible para reconciliar nombres,
+        // pero el ranking sólo debe mostrar a los agentes actualmente activos.
+        foreach (var directory in Snapshot.AgentDirectory.Where(directory => directory.IsActive
+            && directory.Role.Equals("Agente", StringComparison.OrdinalIgnoreCase)))
         {
             var id = TextNormalization.AgentId(directory.Id);
-            var fullName = $"{directory.FirstName} {directory.PaternalSurname}".Trim();
+            var fullName = directory.DisplayName;
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(fullName)) continue;
             agents.TryAdd(id, new RankingAgent(
                 id,
                 fullName,
-                CompactAgentName(directory.FirstName, directory.PaternalSurname),
+                CompactAgentName(fullName),
                 IsCurrentAgent(id, fullName, currentUser)));
         }
 

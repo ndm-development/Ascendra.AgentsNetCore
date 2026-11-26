@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ascendra.Agents.Web.Domain;
 using Ascendra.Agents.Web.Infrastructure;
 using Npgsql;
@@ -51,7 +52,6 @@ public sealed class PromiseRegistrationService(
         decimal? weeklyAmount,
         int numberOfWeeks,
         string? promiseType,
-        string? agentName,
         string? agentId,
         CancellationToken cancellationToken = default)
     {
@@ -83,8 +83,12 @@ public sealed class PromiseRegistrationService(
             throw new InvalidOperationException("Selecciona un tipo de promesa válido.");
         }
 
-        var normalizedAgentName = NormalizeRequired(agentName, "Agente Ascendra");
-        var normalizedAgentId = NormalizeRequired(agentId, "Sin ID");
+        // El nombre nunca llega como dato confiable desde la pantalla. Se
+        // resuelve por ID en el headcount vigente para que PostgreSQL conserve
+        // siempre el nombre completo canónico elegido para esa persona.
+        var agent = RequireActiveAgent(agentId);
+        var normalizedAgentName = agent.DisplayName;
+        var normalizedAgentId = agent.Id;
         var legacyActivePromise = FindLegacyActivePromise(normalizedClientId);
         if (legacyActivePromise is not null)
         {
@@ -174,7 +178,7 @@ public sealed class PromiseRegistrationService(
         CancellationToken cancellationToken = default)
     {
         await SynchronizeReconciledStatusesAsync(cancellationToken);
-        var (reconciledStatuses, _) = ReconciledStatuses(_snapshots.Current);
+        var reconciledStatuses = ReconciledStatuses(_snapshots.Current).Statuses;
         var entries = new List<DatabasePromiseEntry>();
         await using var connection = await _database.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
@@ -227,12 +231,20 @@ public sealed class PromiseRegistrationService(
                 return;
             }
 
-            var (statuses, conflictingIds) = ReconciledStatuses(snapshot);
-            if (conflictingIds > 0)
+            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+            var reconciliation = await ReconciledStatusesAsync(snapshot, connection, cancellationToken);
+            var statuses = reconciliation.Statuses;
+            if (reconciliation.ConflictingIds > 0)
             {
                 _logger.LogWarning(
                     "El corte contiene {ConflictingIds} IdPromesa_Ascendra con estatus contradictorios; se omitieron de la sincronización.",
-                    conflictingIds);
+                    reconciliation.ConflictingIds);
+            }
+            if (reconciliation.AmbiguousFallbacks > 0)
+            {
+                _logger.LogWarning(
+                    "Se omitieron {AmbiguousFallbacks} promesas sin IdPromesa_Ascendra porque su coincidencia no fue única.",
+                    reconciliation.AmbiguousFallbacks);
             }
 
             if (statuses.Count == 0)
@@ -241,7 +253,6 @@ public sealed class PromiseRegistrationService(
                 return;
             }
 
-            await using var connection = await _database.OpenConnectionAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
             await using var update = new NpgsqlCommand("""
                 UPDATE promesas
@@ -265,8 +276,8 @@ public sealed class PromiseRegistrationService(
             if (updatedCount > 0)
             {
                 _logger.LogInformation(
-                    "Se sincronizaron {UpdatedCount} estatus de promesas desde el corte reconciliado de Ascendra.",
-                    updatedCount);
+                    "Se sincronizaron {UpdatedCount} estatus de promesas desde el corte reconciliado de Ascendra; {FallbackMatches} se enlazaron mediante la llave segura de compatibilidad.",
+                    updatedCount, reconciliation.FallbackMatches);
                 NotifyChanged();
             }
         }
@@ -292,7 +303,8 @@ public sealed class PromiseRegistrationService(
         AgentUser editor,
         CancellationToken cancellationToken = default)
     {
-        if (!editor.CanManagePromises)
+        var canonicalEditor = RequireActiveAgent(editor.Id);
+        if (!canonicalEditor.CanManagePromises)
         {
             throw new InvalidOperationException("No tienes permiso para modificar promesas.");
         }
@@ -363,7 +375,7 @@ public sealed class PromiseRegistrationService(
                 """, connection, transaction))
             {
                 AddEditParameters(history, request.IdPromise, clientId, assignee, phone, request,
-                    promiseType, createdAt, editor.DisplayName, modifiedAt);
+                    promiseType, createdAt, canonicalEditor.DisplayName, modifiedAt);
                 if (await history.ExecuteNonQueryAsync(cancellationToken) == 0)
                 {
                     throw new InvalidOperationException("La promesa ya no existe.");
@@ -393,7 +405,7 @@ public sealed class PromiseRegistrationService(
                 """, connection, transaction))
             {
                 AddEditParameters(command, request.IdPromise, clientId, assignee, phone, request,
-                    promiseType, createdAt, editor.DisplayName, modifiedAt);
+                    promiseType, createdAt, canonicalEditor.DisplayName, modifiedAt);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 if (!await reader.ReadAsync(cancellationToken))
                 {
@@ -418,7 +430,8 @@ public sealed class PromiseRegistrationService(
         AgentUser editor,
         CancellationToken cancellationToken = default)
     {
-        if (!editor.CanManagePromises)
+        var canonicalEditor = RequireActiveAgent(editor.Id);
+        if (!canonicalEditor.CanManagePromises)
         {
             throw new InvalidOperationException("No tienes permiso para eliminar promesas.");
         }
@@ -444,7 +457,7 @@ public sealed class PromiseRegistrationService(
             {
                 history.Parameters.AddWithValue("idPromise", idPromise);
                 history.Parameters.AddWithValue("deletedAt", deletedAt);
-                history.Parameters.AddWithValue("deletedBy", editor.DisplayName);
+                history.Parameters.AddWithValue("deletedBy", canonicalEditor.DisplayName);
                 if (await history.ExecuteNonQueryAsync(cancellationToken) == 0)
                 {
                     throw new InvalidOperationException("La promesa ya no existe.");
@@ -489,6 +502,8 @@ public sealed class PromiseRegistrationService(
             var origin = reader.IsDBNull(2) ? "Ascendra" : reader.GetString(2);
             var historicalId = reader.IsDBNull(1) ? null : reader.GetString(1);
             var isAscendra = origin.Equals("Ascendra", StringComparison.OrdinalIgnoreCase);
+            var agentId = reader.IsDBNull(6) ? null : reader.GetString(6);
+            var agentName = reader.IsDBNull(5) ? string.Empty : reader.GetString(5);
             entries.Add(new PromiseCrossSourceEntry(
                 registrationId,
                 !isAscendra && !string.IsNullOrWhiteSpace(historicalId)
@@ -497,8 +512,8 @@ public sealed class PromiseRegistrationService(
                 isAscendra ? registrationId : null,
                 reader.GetString(3),
                 reader.GetString(4),
-                reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
-                reader.IsDBNull(6) ? null : reader.GetString(6),
+                CanonicalAgentName(agentId, agentName),
+                agentId,
                 reader.GetFieldValue<DateOnly>(7),
                 reader.IsDBNull(8) ? null : reader.GetDecimal(8),
                 reader.IsDBNull(9) ? null : reader.GetDecimal(9),
@@ -582,11 +597,12 @@ public sealed class PromiseRegistrationService(
         while (await reader.ReadAsync(cancellationToken))
         {
             var clientId = reader.GetString(1);
+            var agentId = reader.GetString(10);
             entries.Add(new PromiseRegistrationEntry(
                 reader.GetInt32(0),
                 clientId,
                 FindClient(clientId)?.Name ?? "Nombre no disponible en cartera vigente",
-                reader.GetString(2),
+                CanonicalAgentName(agentId, reader.GetString(2)),
                 reader.GetString(3),
                 reader.GetFieldValue<DateOnly>(4),
                 reader.IsDBNull(5) ? null : reader.GetDecimal(5),
@@ -594,7 +610,7 @@ public sealed class PromiseRegistrationService(
                 reader.GetString(7),
                 reader.GetInt16(8),
                 reader.GetFieldValue<DateTimeOffset>(9),
-                reader.GetString(10)));
+                agentId));
         }
         return entries;
     }
@@ -668,7 +684,83 @@ public sealed class PromiseRegistrationService(
             "activa" or "vigente" or "esperando pago" or "pendiente de pago"
             or "incumplida" or "duplicada" or "robada");
 
-    private static (IReadOnlyDictionary<int, string> Statuses, int ConflictingIds) ReconciledStatuses(
+    private async Task<ReconciledStatusResult> ReconciledStatusesAsync(
+        AgentDataSnapshot snapshot,
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var direct = ReconciledStatuses(snapshot);
+        var candidates = snapshot.Promises
+            .Where(promise => promise.AscendraRegistrationId is null && !string.IsNullOrWhiteSpace(promise.Status))
+            .Select(promise => new ReconciliationCandidate(promise, ReconciliationKey(promise)))
+            .Where(candidate => candidate.Key is not null)
+            .ToArray();
+        if (candidates.Length == 0) return direct;
+
+        var groupedCandidates = candidates.GroupBy(candidate => candidate.Key!, StringComparer.Ordinal).ToArray();
+        var uniqueCandidates = groupedCandidates
+            .Where(group => group.Count() == 1)
+            .Select(group => group.Single())
+            .ToArray();
+        var ambiguousFallbacks = groupedCandidates.Count(group => group.Count() > 1);
+        if (uniqueCandidates.Length == 0)
+        {
+            return direct with { AmbiguousFallbacks = ambiguousFallbacks };
+        }
+
+        var clientIds = uniqueCandidates
+            .Select(candidate => candidate.Promise.ClientId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var databaseByKey = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        await using var command = new NpgsqlCommand("""
+            SELECT id_promesa, cliente_unico, agente, usu_alta, fecha_promesa,
+                   monto_inicial, monto_semanal, tipo_promesa, numero_semanas,
+                   fecha_creacion
+            FROM promesas
+            WHERE origen = 'Ascendra'
+              AND cliente_unico = ANY(@clientIds);
+            """, connection);
+        command.Parameters.AddWithValue("clientIds", NpgsqlDbType.Array | NpgsqlDbType.Text, clientIds);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var key = ReconciliationKey(
+                reader.GetString(1),
+                reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                reader.GetFieldValue<DateOnly>(4),
+                reader.IsDBNull(5) ? null : reader.GetDecimal(5),
+                reader.IsDBNull(6) ? null : reader.GetDecimal(6),
+                reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetInt16(8),
+                OperationalClock.LocalDateTime(reader.GetFieldValue<DateTimeOffset>(9)));
+            if (key is null) continue;
+            if (!databaseByKey.TryGetValue(key, out var ids))
+            {
+                ids = [];
+                databaseByKey[key] = ids;
+            }
+            ids.Add(reader.GetInt32(0));
+        }
+
+        var statuses = direct.Statuses.ToDictionary(pair => pair.Key, pair => pair.Value);
+        var fallbackMatches = 0;
+        foreach (var candidate in uniqueCandidates)
+        {
+            if (!databaseByKey.TryGetValue(candidate.Key!, out var ids)) continue;
+            if (ids.Count != 1)
+            {
+                ambiguousFallbacks++;
+                continue;
+            }
+
+            statuses[ids[0]] = candidate.Promise.Status.Trim();
+            fallbackMatches++;
+        }
+        return new ReconciledStatusResult(statuses, direct.ConflictingIds, ambiguousFallbacks, fallbackMatches);
+    }
+
+    private static ReconciledStatusResult ReconciledStatuses(
         AgentDataSnapshot snapshot)
     {
         var statuses = new Dictionary<int, string>();
@@ -692,8 +784,68 @@ public sealed class PromiseRegistrationService(
 
             statuses[group.Key] = candidates[0].First()!;
         }
-        return (statuses, conflictingIds);
+        return new ReconciledStatusResult(statuses, conflictingIds, 0, 0);
     }
+
+    /// <summary>
+    /// Llave de compatibilidad usada exclusivamente cuando un corte heredado
+    /// omite IdPromesa_Ascendra. Incluye el instante de alta y todos los datos
+    /// operativos para actualizar sólo coincidencias uno-a-uno; si hay duda,
+    /// la fila se deja intacta hasta recibir el identificador correcto.
+    /// </summary>
+    private static string? ReconciliationKey(PromiseRecord promise) => ReconciliationKey(
+        promise.ClientId,
+        promise.AgentId,
+        promise.PromiseDate,
+        promise.InitialAmount,
+        promise.WeeklyAmount,
+        promise.Type,
+        promise.NumberOfWeeks,
+        promise.SourceCreatedAt);
+
+    private static string? ReconciliationKey(
+        string clientId,
+        string agentId,
+        DateOnly? promiseDate,
+        decimal? initialAmount,
+        decimal? weeklyAmount,
+        string promiseType,
+        int? numberOfWeeks,
+        DateTime? createdAt)
+    {
+        var normalizedClient = clientId?.Trim();
+        var normalizedAgent = TextNormalization.AgentId(agentId);
+        var normalizedType = TextNormalization.Normalize(promiseType);
+        if (string.IsNullOrWhiteSpace(normalizedClient)
+            || string.IsNullOrWhiteSpace(normalizedAgent)
+            || promiseDate is null
+            || initialAmount is null
+            || weeklyAmount is null
+            || string.IsNullOrWhiteSpace(normalizedType)
+            || numberOfWeeks is null
+            || createdAt is null)
+        {
+            return null;
+        }
+
+        return string.Join('\u001f',
+            normalizedClient.ToUpperInvariant(),
+            normalizedAgent,
+            promiseDate.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+            initialAmount.Value.ToString("0.################", CultureInfo.InvariantCulture),
+            weeklyAmount.Value.ToString("0.################", CultureInfo.InvariantCulture),
+            normalizedType,
+            numberOfWeeks.Value.ToString(CultureInfo.InvariantCulture),
+            createdAt.Value.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture));
+    }
+
+    private sealed record ReconciliationCandidate(PromiseRecord Promise, string? Key);
+
+    private sealed record ReconciledStatusResult(
+        IReadOnlyDictionary<int, string> Statuses,
+        int ConflictingIds,
+        int AmbiguousFallbacks,
+        int FallbackMatches);
 
     private IReadOnlyList<PromiseRegistrationEntry> FilterReconciled(
         IReadOnlyList<PromiseRegistrationEntry> entries) =>
@@ -705,12 +857,14 @@ public sealed class PromiseRegistrationService(
     private DatabasePromiseEntry ReadDatabasePromiseEntry(NpgsqlDataReader reader)
     {
         var clientId = reader.GetString(1);
+        var agentId = reader.IsDBNull(3) ? string.Empty : reader.GetString(3);
+        var agentName = reader.IsDBNull(2) ? "Sin agente" : reader.GetString(2);
         return new DatabasePromiseEntry(
             reader.GetInt32(0),
             clientId,
             FindClient(clientId)?.Name ?? "Nombre no disponible en cartera vigente",
-            reader.IsDBNull(2) ? "Sin agente" : reader.GetString(2),
-            reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+            CanonicalAgentName(agentId, agentName),
+            agentId,
             reader.GetString(4),
             reader.GetFieldValue<DateOnly>(5),
             reader.IsDBNull(6) ? null : reader.GetDecimal(6),
@@ -722,6 +876,27 @@ public sealed class PromiseRegistrationService(
             reader.IsDBNull(12) ? "Ascendra" : reader.GetString(12),
             reader.IsDBNull(13) ? null : reader.GetString(13),
             reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14));
+    }
+
+    private AgentUser RequireActiveAgent(string? agentId)
+    {
+        var normalizedId = TextNormalization.AgentId(agentId);
+        var agent = _snapshots.Current.Users.FirstOrDefault(user =>
+            user.IsActive && user.Id.Equals(normalizedId, StringComparison.OrdinalIgnoreCase));
+        if (agent is null)
+        {
+            throw new InvalidOperationException("El agente ya no está activo en el headcount.");
+        }
+        return agent;
+    }
+
+    private string CanonicalAgentName(string? agentId, string? fallback)
+    {
+        var normalizedId = TextNormalization.AgentId(agentId);
+        var agent = _snapshots.Current.AgentDirectory.FirstOrDefault(candidate =>
+            candidate.Id.Equals(normalizedId, StringComparison.OrdinalIgnoreCase));
+        return agent?.DisplayName
+            ?? (string.IsNullOrWhiteSpace(fallback) ? "Sin agente" : fallback.Trim());
     }
 
     private ClientMatch? FindClient(string clientId)

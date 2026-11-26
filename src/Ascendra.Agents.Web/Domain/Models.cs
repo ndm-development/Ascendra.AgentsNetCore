@@ -52,7 +52,11 @@ public sealed record PromiseRecord(
     int? AscendraRegistrationId = null,
     // Identificador canónico de PostgreSQL. El Id histórico se conserva para
     // el cruce, pero nunca debe presentarse como el ID principal al usuario.
-    int? DatabasePromiseId = null);
+    int? DatabasePromiseId = null,
+    // Fecha-hora original del corte. Se conserva para poder reconciliar de
+    // forma segura los archivos heredados que todavía no incluyen el ID de
+    // Ascendra, sin confundir promesas parecidas del mismo cliente.
+    DateTime? SourceCreatedAt = null);
 
 /// <summary>
 /// Promesa capturada directamente por Ascendra. A diferencia del historial
@@ -275,7 +279,42 @@ public sealed record ClientDispositionSummary(
     string Channel,
     string Phone);
 
-public sealed record AgentDirectoryRecord(string Id, string FirstName, string PaternalSurname);
+/// <summary>
+/// Identidad canónica de una persona en Ascendra. El ID es la llave estable;
+/// <see cref="DisplayName"/> es el nombre completo acordado para nuevas
+/// operaciones y los demás nombres sólo ayudan a reconocer cortes históricos.
+/// </summary>
+public sealed record AgentDirectoryRecord(
+    string Id,
+    string FirstName,
+    string PaternalSurname,
+    string MaternalSurname,
+    string DisplayName,
+    string Username,
+    string Role,
+    bool IsActive)
+{
+    public IReadOnlyList<string> Aliases =>
+        new[]
+        {
+            DisplayName,
+            JoinName(FirstName, PaternalSurname, MaternalSurname),
+            JoinName(FirstName, PaternalSurname),
+            JoinName(FirstToken(FirstName), PaternalSurname),
+            JoinName(FirstToken(FirstName), MaternalSurname),
+        }
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static string JoinName(params string[] values) => string.Join(' ', values
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value.Trim()));
+
+    private static string FirstToken(string value) => value
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .FirstOrDefault() ?? string.Empty;
+}
 
 public sealed record AgentDataSnapshot(
     string Version,

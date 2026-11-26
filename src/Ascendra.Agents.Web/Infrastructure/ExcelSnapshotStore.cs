@@ -20,6 +20,13 @@ public sealed class ExcelSnapshotStore(
     private DataHealth _health = new(false, "Estamos preparando el corte de trabajo…", null, "pending");
     private string? _lastFingerprint;
 
+    /// <summary>
+    /// Se emite sólo después de reemplazar un corte válido. Las pantallas
+    /// interactivas se suscriben para no quedarse mostrando cifras del Excel
+    /// anterior mientras siguen abiertas.
+    /// </summary>
+    public event Action? Changed;
+
     public AgentDataSnapshot Current => Volatile.Read(ref _current);
     public DataHealth Health => Volatile.Read(ref _health);
     public int RefreshSeconds => Math.Clamp(options.CurrentValue.RefreshSeconds, 15, 900);
@@ -41,18 +48,19 @@ public sealed class ExcelSnapshotStore(
                     snapshot.Users.Count > 0,
                     snapshot.Users.Count > 0
                         ? $"Corte cargado · {snapshot.LoadedAt:dd/MM/yyyy HH:mm}"
-                        : "Falta usuarios_ascendra.xlsx para habilitar el acceso.",
+                        : "Falta headcount.xlsx para habilitar el acceso.",
                     snapshot.LoadedAt,
                     snapshot.Version));
                 _lastFingerprint = fingerprint;
                 logger.LogInformation("Corte de Agentes actualizado. Pagos: {Payments}; promesas: {Promises}; contactos: {Contacts}.",
                     snapshot.Payments.Count, snapshot.Promises.Count, snapshot.Contacts.Count);
+                Changed?.Invoke();
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
             {
                 var current = Current;
                 var message = current == AgentDataSnapshot.Empty
-                    ? "No se pudo leer el corte. Revisa los nombres y columnas de los Excel."
+                    ? $"No se pudo cargar el corte: {exception.Message}"
                     : "El nuevo corte tiene un problema; se conserva el último corte válido.";
                 Volatile.Write(ref _health, new DataHealth(current.Users.Count > 0, message, current.LoadedAt == DateTimeOffset.MinValue ? null : current.LoadedAt, current.Version));
                 logger.LogError(exception, "No se pudo actualizar el corte de Agentes.");
@@ -64,27 +72,30 @@ public sealed class ExcelSnapshotStore(
     private AgentDataSnapshot Load(DataPaths paths, string fingerprint)
     {
         var warnings = new List<string>();
-        var users = ReadOptional(paths.Input("usuarios_ascendra.xlsx"), ReadUsers, warnings);
-        var directory = ReadOptional(paths.Input("agentes_activos.xlsx"), ReadAgentDirectory, warnings);
-        var loadedPayments = ReadOptional(paths.Input("agents_collections.xlsx"), ReadPayments, warnings);
+        var headcount = ReadHeadcount(paths.Input("headcount.xlsx"), warnings);
+        var catalog = new AgentIdentityCatalog(headcount.Directory);
+        var loadedPayments = ReadOptional(paths.Input("agents_collections.xlsx"), ReadPayments, warnings)
+            .Select(catalog.Canonicalize)
+            .ToArray();
         // Se separa la cobranza orgánica para que sólo la consola de equipo
         // pueda consultarla: nunca se mezcla con la vista personal del agente.
         var payments = loadedPayments.Where(x => !IsOrganicPayment(x)).ToArray();
         var organicPayments = loadedPayments.Where(IsOrganicPayment).ToArray();
         var promises = ReadOptional(paths.Input("promesas_estatus.xlsx"), ReadPromises, warnings)
+            .Select(catalog.Canonicalize)
             .Where(x => !TextNormalization.IsOrganic(x.Agent)).ToArray();
         var portfolio = ReadOptional(paths.Input("Descarga_cartera.xlsx"), ReadPortfolio, warnings);
         var contacts = ReadContacts(paths, portfolio, warnings);
         return new AgentDataSnapshot(
             fingerprint,
             DateTimeOffset.Now,
-            users,
+            headcount.Users,
             payments,
             organicPayments,
             promises,
             portfolio,
             contacts,
-            directory,
+            headcount.Directory,
             warnings);
     }
 
@@ -102,21 +113,112 @@ public sealed class ExcelSnapshotStore(
         return read(path);
     }
 
-    private static IReadOnlyList<AgentUser> ReadUsers(string path) => WorkbookTable.Read(path).Rows
-        .Select(row => new AgentUser(
-            TextNormalization.AgentId(row.Text("id")),
-            TextNormalization.Normalize(row.Text("usuario")),
-            row.Text("nombre_visible"),
-            NormaliseRole(row.Text("rol")),
-            IsActive(row.Text("estado"))))
-        .Where(x => !string.IsNullOrWhiteSpace(x.Username) && !string.IsNullOrWhiteSpace(x.DisplayName))
-        .ToArray();
+    private static HeadcountRoster ReadHeadcount(string path, ICollection<string> warnings)
+    {
+        if (!File.Exists(path))
+        {
+            throw new InvalidDataException("Falta headcount.xlsx.");
+        }
 
-    private static IReadOnlyList<AgentDirectoryRecord> ReadAgentDirectory(string path) => WorkbookTable.Read(path).Rows
-        .Select(row => new AgentDirectoryRecord(
-            TextNormalization.AgentId(row.Text("ID")), row.Text("NOMBRE"), row.Text("A. PATERNO", "APATERNO")))
-        .Where(x => !string.IsNullOrWhiteSpace(x.Id))
-        .ToArray();
+        var workbook = WorkbookTable.Read(path);
+        var requiredHeaders = new[]
+        {
+            "id", "a_paterno", "a_materno", "nombre", "usuario", "nombre_visible", "estado", "rol",
+        };
+        var missingHeaders = requiredHeaders.Where(header => !workbook.HasHeader(header)).ToArray();
+        if (missingHeaders.Length > 0)
+        {
+            throw new InvalidDataException($"headcount.xlsx no contiene: {string.Join(", ", missingHeaders)}.");
+        }
+
+        var directory = workbook.Rows
+            .Select(row =>
+            {
+                var rawRole = row.Text("rol");
+                var active = IsActive(row.Text("estado"));
+                if (active && !IsKnownRole(rawRole))
+                {
+                    if (TextNormalization.Normalize(rawRole) == "activo")
+                    {
+                        warnings.Add($"El rol 'Activo' se interpretó como Agente para el ID {row.Text("id")}.");
+                    }
+                    else
+                    {
+                        throw new InvalidDataException($"El ID {row.Text("id")} tiene un rol activo no reconocido.");
+                    }
+                }
+
+                return new AgentDirectoryRecord(
+                    TextNormalization.AgentId(row.Text("id")),
+                    row.Text("nombre"),
+                    row.Text("a_paterno", "apaterno"),
+                    row.Text("a_materno", "amaterno"),
+                    row.Text("nombre_visible"),
+                    TextNormalization.Normalize(row.Text("usuario")),
+                    NormaliseRole(rawRole),
+                    active);
+            })
+            .Where(agent => !string.IsNullOrWhiteSpace(agent.Id))
+            .ToArray();
+
+        if (directory.Length == 0)
+        {
+            throw new InvalidDataException("headcount.xlsx no contiene personas.");
+        }
+
+        var missingIdentity = directory.FirstOrDefault(agent =>
+            string.IsNullOrWhiteSpace(agent.Id)
+            || string.IsNullOrWhiteSpace(agent.FirstName)
+            || string.IsNullOrWhiteSpace(agent.PaternalSurname)
+            || string.IsNullOrWhiteSpace(agent.DisplayName));
+        if (missingIdentity is not null)
+        {
+            throw new InvalidDataException("headcount.xlsx contiene una persona sin ID, nombre, apellido paterno o nombre visible.");
+        }
+
+        var duplicatedIds = directory
+            .GroupBy(agent => agent.Id, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
+        if (duplicatedIds.Length > 0)
+        {
+            throw new InvalidDataException($"headcount.xlsx contiene IDs duplicados: {string.Join(", ", duplicatedIds)}.");
+        }
+
+        var activeAgents = directory.Where(agent => agent.IsActive).ToArray();
+        var incompleteActive = activeAgents.FirstOrDefault(agent =>
+            IsPlaceholder(agent.Username) || IsPlaceholder(agent.DisplayName));
+        if (incompleteActive is not null)
+        {
+            throw new InvalidDataException($"El ID {incompleteActive.Id} está activo sin usuario o nombre visible válido.");
+        }
+
+        var duplicatedUsernames = activeAgents
+            .GroupBy(agent => agent.Username, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
+        if (duplicatedUsernames.Length > 0)
+        {
+            throw new InvalidDataException($"headcount.xlsx contiene usuarios activos duplicados: {string.Join(", ", duplicatedUsernames)}.");
+        }
+
+        var users = activeAgents
+            .Select(agent => new AgentUser(
+                agent.Id,
+                agent.Username,
+                agent.DisplayName,
+                agent.Role,
+                true))
+            .ToArray();
+        if (users.Length == 0)
+        {
+            throw new InvalidDataException("headcount.xlsx no contiene usuarios activos.");
+        }
+
+        return new HeadcountRoster(users, directory);
+    }
 
     private static IReadOnlyList<PaymentRecord> ReadPayments(string path) => WorkbookTable.Read(path).Rows
         .Select(row =>
@@ -144,7 +246,8 @@ public sealed class ExcelSnapshotStore(
             row.Decimal("Monto_Semanal", "Monto Semanal"), row.Text("Tipo_Promesa", "Tipo Promesa"),
             row.Integer("Numero_Semanas", "Número de semanas", "Numero Semanas"),
             row.Date("Fecha_Creacion", "Fecha Creacion"), row.Text("Estatus"),
-            row.Integer("IdPromesa_Ascendra", "ID Promesa Ascendra", "AscendraPromiseId")))
+            row.Integer("IdPromesa_Ascendra", "ID Promesa Ascendra", "AscendraPromiseId"),
+            SourceCreatedAt: row.Timestamp("Fecha_Creacion", "Fecha Creacion")))
         .ToArray();
 
     private static IReadOnlyList<PortfolioRecord> ReadPortfolio(string path) => WorkbookTable.Read(path).Rows
@@ -222,7 +325,7 @@ public sealed class ExcelSnapshotStore(
     {
         var files = new[]
         {
-            paths.Input("usuarios_ascendra.xlsx"), paths.Input("agentes_activos.xlsx"), paths.Input("agents_collections.xlsx"),
+            paths.Input("headcount.xlsx"), paths.Input("agents_collections.xlsx"),
             paths.Input("promesas_estatus.xlsx"), paths.Input("Descarga_cartera.xlsx"), paths.Input("Referencias.xlsx"), paths.Generated("CRM_Contactos.xlsx"),
         };
         var material = string.Join('|', files.Select(path => File.Exists(path)
@@ -232,10 +335,15 @@ public sealed class ExcelSnapshotStore(
     }
 
     private static bool IsActive(string value) => TextNormalization.Normalize(value) is "activo" or "active" or "1" or "true" or "si";
+    private static bool IsKnownRole(string value) => TextNormalization.Normalize(value) is "agente" or "supervisor" or "gerente" or "director";
     private static string NormaliseRole(string value) => TextNormalization.Normalize(value) switch
     {
-        "agente" => "Agente", "supervisor" => "Supervisor", "gerente" => "Gerente", "director" => "Director", _ => "Agente",
+        "agente" => "Agente", "supervisor" => "Supervisor", "gerente" => "Gerente", "director" => "Director",
+        // Compatibilidad con un registro histórico donde el estado se copió
+        // accidentalmente en la columna rol. Sólo concede facultades de agente.
+        "activo" => "Agente", _ => "Agente",
     };
+    private static bool IsPlaceholder(string value) => TextNormalization.Normalize(value) is "" or "n/a" or "na";
     private static decimal? OptionalDecimal(WorkbookRow row, params string[] candidates)
     {
         var source = row.Text(candidates);
@@ -252,5 +360,68 @@ public sealed class ExcelSnapshotStore(
     {
         public string Input(string file) => Path.Combine(InputPath, file);
         public string Generated(string file) => Path.Combine(GeneratedPath, file);
+    }
+
+    private sealed record HeadcountRoster(
+        IReadOnlyList<AgentUser> Users,
+        IReadOnlyList<AgentDirectoryRecord> Directory);
+
+    /// <summary>
+    /// Resuelve primero por ID y sólo después por un alias único. Así una fila
+    /// histórica sin ID puede beneficiarse del padrón, pero dos homónimos nunca
+    /// se fusionan por accidente.
+    /// </summary>
+    private sealed class AgentIdentityCatalog
+    {
+        private readonly IReadOnlyDictionary<string, AgentDirectoryRecord> _byId;
+        private readonly IReadOnlyDictionary<string, IReadOnlyList<AgentDirectoryRecord>> _byAlias;
+
+        public AgentIdentityCatalog(IReadOnlyList<AgentDirectoryRecord> agents)
+        {
+            _byId = agents.ToDictionary(agent => agent.Id, StringComparer.OrdinalIgnoreCase);
+            _byAlias = agents
+                .SelectMany(agent => agent.Aliases.Select(alias => new { Alias = TextNormalization.Normalize(alias), Agent = agent }))
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Alias))
+                .GroupBy(entry => entry.Alias, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<AgentDirectoryRecord>)group
+                        .Select(entry => entry.Agent)
+                        .DistinctBy(agent => agent.Id, StringComparer.OrdinalIgnoreCase)
+                        .ToArray(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        public PaymentRecord Canonicalize(PaymentRecord payment)
+        {
+            var agent = Resolve(payment.AgentId, payment.Agent);
+            return agent is null
+                ? payment
+                : payment with { Agent = agent.DisplayName, AgentId = agent.Id };
+        }
+
+        public PromiseRecord Canonicalize(PromiseRecord promise)
+        {
+            var agent = Resolve(promise.AgentId, promise.Agent);
+            return agent is null
+                ? promise
+                : promise with { Agent = agent.DisplayName, AgentId = agent.Id };
+        }
+
+        private AgentDirectoryRecord? Resolve(string? agentId, string? agentName)
+        {
+            var normalizedId = TextNormalization.AgentId(agentId);
+            if (!string.IsNullOrWhiteSpace(normalizedId) && _byId.TryGetValue(normalizedId, out var byId))
+            {
+                return byId;
+            }
+
+            var normalizedName = TextNormalization.Normalize(agentName);
+            return !string.IsNullOrWhiteSpace(normalizedName)
+                && _byAlias.TryGetValue(normalizedName, out var candidates)
+                && candidates.Count == 1
+                ? candidates[0]
+                : null;
+        }
     }
 }

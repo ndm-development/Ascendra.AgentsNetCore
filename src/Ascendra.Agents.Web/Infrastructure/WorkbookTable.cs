@@ -7,9 +7,16 @@ namespace Ascendra.Agents.Web.Infrastructure;
 
 internal sealed class WorkbookTable
 {
-    private WorkbookTable(IReadOnlyList<WorkbookRow> rows) => Rows = rows;
+    private WorkbookTable(IReadOnlyList<WorkbookRow> rows, IReadOnlySet<string> headers)
+    {
+        Rows = rows;
+        Headers = headers;
+    }
 
     public IReadOnlyList<WorkbookRow> Rows { get; }
+    public IReadOnlySet<string> Headers { get; }
+
+    public bool HasHeader(string header) => Headers.Contains(TextNormalization.Header(header));
 
     public static WorkbookTable Read(string path, string? sheetName = null)
     {
@@ -25,12 +32,15 @@ internal sealed class WorkbookTable
             : dataSet.Tables.Cast<DataTable>().FirstOrDefault(x => x.TableName.Equals(sheetName, StringComparison.OrdinalIgnoreCase));
         if (table is null) throw new InvalidDataException($"El archivo {Path.GetFileName(path)} no contiene una hoja utilizable.");
 
+        var headers = table.Columns.Cast<DataColumn>()
+            .Select(column => TextNormalization.Header(column.ColumnName))
+            .ToHashSet(StringComparer.Ordinal);
         var rows = table.Rows.Cast<DataRow>().Select(row => new WorkbookRow(
             table.Columns.Cast<DataColumn>().ToDictionary(
                 column => TextNormalization.Header(column.ColumnName),
                 column => row.IsNull(column) ? null : row[column],
                 StringComparer.Ordinal))).ToArray();
-        return new WorkbookTable(rows);
+        return new WorkbookTable(rows, headers);
     }
 }
 

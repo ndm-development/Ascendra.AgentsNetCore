@@ -57,7 +57,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Genera hashes de acceso para Ascendra Agentes.")
     parser.add_argument("--usuario", action="append", default=[], help="Usuario a configurar; puede repetirse.")
     parser.add_argument("--todos-activos", action="store_true", help="Solicita una contraseña para cada usuario activo del padrón.")
-    parser.add_argument("--padron", type=Path, default=PROJECT_DIR / "data/input/usuarios_ascendra.xlsx")
+    parser.add_argument("--padron", type=Path, default=PROJECT_DIR / "data/input/headcount.xlsx")
     args = parser.parse_args()
 
     users = [value.strip().casefold() for value in args.usuario if value.strip()]

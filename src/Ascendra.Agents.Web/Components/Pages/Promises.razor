@@ -4,6 +4,7 @@
 @inject DashboardQueries Queries
 @inject DashboardSession Session
 @inject PromiseRegistrationService PromiseRegistrations
+@inject ExcelSnapshotStore Snapshots
 
 @{
     var sourceScope = !Session.HasFullAccess && AgentPromiseScope is not null
@@ -30,7 +31,8 @@
         .ToArray();
     if (_week == 0 || !availableWeeks.Contains(_week))
     {
-        var currentWeek = System.Globalization.ISOWeek.GetWeekOfYear(DateTime.Today);
+        var currentWeek = System.Globalization.ISOWeek.GetWeekOfYear(
+            OperationalClock.Date(DateTimeOffset.UtcNow).ToDateTime(TimeOnly.MinValue));
         _week = availableWeeks.Where(week => week <= currentWeek).DefaultIfEmpty(availableWeeks.LastOrDefault()).Last();
     }
     var periodRows = isClientHistoryView
@@ -157,6 +159,7 @@ else
     protected override void OnInitialized()
     {
         PromiseRegistrations.Changed += HandlePromiseRegistrationChanged;
+        Snapshots.Changed += HandleSnapshotChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -196,7 +199,17 @@ else
         StateHasChanged();
     });
 
-    public void Dispose() => PromiseRegistrations.Changed -= HandlePromiseRegistrationChanged;
+    private void HandleSnapshotChanged() => _ = InvokeAsync(async () =>
+    {
+        await ReloadRegisteredPromisesAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        PromiseRegistrations.Changed -= HandlePromiseRegistrationChanged;
+        Snapshots.Changed -= HandleSnapshotChanged;
+    }
 
     private void Clear() { ClientQuery = string.Empty; _metricStatus = null; _selectedPromise = null; }
     private void ClearSelectedPromise() => _selectedPromise = null;

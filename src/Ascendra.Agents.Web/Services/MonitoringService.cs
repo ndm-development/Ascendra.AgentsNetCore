@@ -245,18 +245,25 @@ public sealed class MonitoringService(PostgresDatabase database, ExcelSnapshotSt
     private sealed class MonitoringAgentCatalog
     {
         private readonly IReadOnlyDictionary<string, IReadOnlyList<string>> _namesById;
+        private readonly IReadOnlyDictionary<string, string> _canonicalNamesById;
         private readonly IReadOnlyList<RawAgentIdentity> _knownAliases;
 
         public MonitoringAgentCatalog(AgentDataSnapshot snapshot, IReadOnlyList<RawAgentIdentity> rawAgents)
         {
             var known = new List<RawAgentIdentity>(rawAgents);
             known.AddRange(snapshot.Users.Select(user => new RawAgentIdentity(user.Id, user.DisplayName)));
-            known.AddRange(snapshot.AgentDirectory.Select(agent => new RawAgentIdentity(
-                agent.Id,
-                $"{agent.FirstName} {agent.PaternalSurname}".Trim())));
+            known.AddRange(snapshot.AgentDirectory.SelectMany(agent => agent.Aliases
+                .Select(alias => new RawAgentIdentity(agent.Id, alias))));
             _knownAliases = known
                 .Where(alias => HasAgentId(alias.AgentId) && HasAgentName(alias.AgentName))
                 .ToArray();
+            _canonicalNamesById = snapshot.AgentDirectory
+                .Where(agent => HasAgentId(agent.Id) && HasAgentName(agent.DisplayName))
+                .GroupBy(agent => NormalizeAgentId(agent.Id), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().DisplayName.Trim(),
+                    StringComparer.OrdinalIgnoreCase);
             _namesById = _knownAliases
                 .GroupBy(alias => NormalizeAgentId(alias.AgentId), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
@@ -311,6 +318,12 @@ public sealed class MonitoringService(PostgresDatabase database, ExcelSnapshotSt
 
         private string DisplayName(string key, IEnumerable<string> sourceNames)
         {
+            if (key.StartsWith("id:", StringComparison.OrdinalIgnoreCase)
+                && _canonicalNamesById.TryGetValue(key[3..], out var canonicalName))
+            {
+                return canonicalName;
+            }
+
             var candidates = sourceNames
                 .Concat(key.StartsWith("id:", StringComparison.OrdinalIgnoreCase)
                     && _namesById.TryGetValue(key[3..], out var aliases)

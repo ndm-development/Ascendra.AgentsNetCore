@@ -1,7 +1,9 @@
 @page "/"
 @attribute [Authorize]
+@implements IDisposable
 @inject DashboardQueries Queries
 @inject DashboardSession Session
+@inject ExcelSnapshotStore Snapshots
 
 @{
     var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
@@ -33,7 +35,7 @@ else
 <section class="operations-filter-card glass-card agent-collections-filters recovery-filter-card" aria-label="Filtros de mi recuperación">
     <div class="field compact-field">
         <label for="week">Semana</label>
-        <select id="week" @bind="_week" @bind:after="ClearSelectedDay">
+        <select id="week" @bind="_week" @bind:after="SelectWeek">
             @foreach (var week in scope.Weeks) { <option value="@week">Semana @week</option> }
         </select>
     </div>
@@ -119,10 +121,16 @@ else
 @code
 {
     private int _week;
+    private bool _weekWasChosen;
     private string? _selectedDay;
     private string ClientQuery { get; set; } = string.Empty;
+    protected override void OnInitialized() => Snapshots.Changed += HandleSnapshotChanged;
     private void ClearFilters() { ClientQuery = string.Empty; _selectedDay = null; }
-    private void ClearSelectedDay() => _selectedDay = null;
+    private void SelectWeek()
+    {
+        _weekWasChosen = true;
+        _selectedDay = null;
+    }
     private Task SelectRecoveryDay(ChartPointSelection selection)
     {
         _selectedDay = DashboardQueries.Days.Contains(selection.X, StringComparer.OrdinalIgnoreCase)
@@ -130,4 +138,17 @@ else
             : null;
         return InvokeAsync(StateHasChanged);
     }
+
+    private void HandleSnapshotChanged() => _ = InvokeAsync(() =>
+    {
+        var scope = Queries.FilterByClient(Queries.Scope(), ClientQuery);
+        if (!_weekWasChosen || !scope.Weeks.Contains(_week))
+        {
+            _week = Queries.CurrentWeek(scope);
+            _selectedDay = null;
+        }
+        StateHasChanged();
+    });
+
+    public void Dispose() => Snapshots.Changed -= HandleSnapshotChanged;
 }

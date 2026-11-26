@@ -43,8 +43,10 @@ public sealed class AgentAuthenticator(
             user.IsActive && string.Equals(user.Username, username, StringComparison.Ordinal));
         if (currentUser is null) return false;
 
+        var claimedAgentId = principal.FindFirstValue(AgentClaimTypes.AgentId);
         var claimedRole = principal.FindFirstValue(ClaimTypes.Role);
-        return string.Equals(currentUser.Role, claimedRole, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(currentUser.Id, claimedAgentId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(currentUser.Role, claimedRole, StringComparison.OrdinalIgnoreCase);
     }
 
     public AgentUser? Authenticate(string username, string password)

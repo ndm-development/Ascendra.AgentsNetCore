@@ -53,8 +53,7 @@ La aplicación usa estas rutas incluidas en la imagen:
 Reemplaza en GitHub (o en tu copia local antes de hacer `push`) los siguientes
 archivos en `data/input`:
 
-- `usuarios_ascendra.xlsx`
-- `agentes_activos.xlsx`
+- `headcount.xlsx`
 - `agents_collections.xlsx`
 - `promesas_estatus.xlsx`
 - `Descarga_cartera.xlsx`
@@ -66,8 +65,9 @@ reconstruirá la imagen con el nuevo corte. No hay pasos adicionales en Render.
 
 ## 5. Usuarios y contraseñas
 
-El Excel `usuarios_ascendra.xlsx` es el padrón autorizado. Las contraseñas no
-van en ese archivo: genera los hashes con:
+El Excel `headcount.xlsx` es el padrón autorizado. Incluye tanto agentes
+activos como históricos; sólo las filas con estado `Activo` pueden iniciar
+sesión. Las contraseñas no van en ese archivo: genera los hashes con:
 
 ```bash
 python3 scripts/generar_credenciales.py --usuario nombre_de_usuario

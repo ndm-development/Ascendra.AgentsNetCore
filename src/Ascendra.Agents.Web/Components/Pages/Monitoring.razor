@@ -4,6 +4,7 @@
 @inject MonitoringService MonitorService
 @inject CallDispositionService Dispositions
 @inject PromiseRegistrationService PromiseRegistrations
+@inject ExcelSnapshotStore Snapshots
 
 @if (Snapshot is null)
 {
@@ -147,6 +148,7 @@ else
     {
         Dispositions.Changed += HandleDataChanged;
         PromiseRegistrations.Changed += HandleDataChanged;
+        Snapshots.Changed += HandleDataChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -246,5 +248,6 @@ else
         RefreshCancellation?.Dispose();
         Dispositions.Changed -= HandleDataChanged;
         PromiseRegistrations.Changed -= HandleDataChanged;
+        Snapshots.Changed -= HandleDataChanged;
     }
 }

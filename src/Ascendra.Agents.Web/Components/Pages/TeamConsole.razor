@@ -5,12 +5,14 @@
 @inject DashboardQueries Queries
 @inject EphemeralChatService Chat
 @inject PromiseRegistrationService PromiseRegistrations
+@inject ExcelSnapshotStore Snapshots
 @inject IJSRuntime JS
 
 @{
     var scope = Queries.FilterByClient(Queries.TeamScope(), ClientQuery);
     if (_week == 0) _week = Queries.CurrentWeek(scope);
-    if (_week == 0) _week = System.Globalization.ISOWeek.GetWeekOfYear(DateTime.Today);
+    if (_week == 0) _week = System.Globalization.ISOWeek.GetWeekOfYear(
+        OperationalClock.Date(DateTimeOffset.UtcNow).ToDateTime(TimeOnly.MinValue));
     var teamPayments = FilterPayments(scope).ToArray();
     var teamPromises = FilterDatabasePromises().ToArray();
     var paymentPageCount = PageCount(teamPayments.Length);
@@ -396,6 +398,7 @@
     protected override void OnInitialized()
     {
         PromiseRegistrations.Changed += HandlePromiseRegistrationChanged;
+        Snapshots.Changed += HandleSnapshotChanged;
     }
 
     private IReadOnlyList<ChatParticipant> OnlineUsers => ChatState.ConnectedUsers;
@@ -484,8 +487,9 @@
         var weeks = scope.Payments.Select(payment => payment.Week)
             .Where(week => week.HasValue).Select(week => week!.Value)
             .Distinct().Order().ToArray();
-        if (weeks.Length == 0) return ISOWeek.GetWeekOfYear(DateTime.Today);
-        var currentWeek = ISOWeek.GetWeekOfYear(DateTime.Today);
+        var currentDate = OperationalClock.Date(DateTimeOffset.UtcNow);
+        if (weeks.Length == 0) return ISOWeek.GetWeekOfYear(currentDate.ToDateTime(TimeOnly.MinValue));
+        var currentWeek = ISOWeek.GetWeekOfYear(currentDate.ToDateTime(TimeOnly.MinValue));
         return weeks.Where(week => week <= currentWeek).DefaultIfEmpty(weeks[^1]).Last();
     }
     private IEnumerable<PaymentRecord> FilterPayments(ScopedOperations scope) => scope.Payments.Where(payment =>
@@ -701,6 +705,13 @@
     {
         if (IsDisposed || !AreTeamPromisesLoaded) return;
         await ReloadTeamPromisesAsync();
+        StateHasChanged();
+    });
+
+    private void HandleSnapshotChanged() => _ = InvokeAsync(async () =>
+    {
+        if (IsDisposed) return;
+        if (AreTeamPromisesLoaded) await ReloadTeamPromisesAsync();
         StateHasChanged();
     });
 
@@ -933,6 +944,7 @@
     {
         IsDisposed = true;
         PromiseRegistrations.Changed -= HandlePromiseRegistrationChanged;
+        Snapshots.Changed -= HandleSnapshotChanged;
         RemoveAttachment();
         if (ChatRegistered)
         {

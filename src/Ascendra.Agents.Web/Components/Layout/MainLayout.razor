@@ -326,6 +326,14 @@
     // intentamos detener el temporizador si realmente llegó a iniciarse en el
     // cliente interactivo.
     private bool SessionTrackingStarted { get; set; }
+
+    protected override void OnInitialized() => SnapshotStore.Changed += HandleSnapshotChanged;
+
+    private void HandleSnapshotChanged() => _ = InvokeAsync(() =>
+    {
+        if (!IsDisposed) StateHasChanged();
+    });
+
     private string ThemeClass => Appearance switch
     {
         AppearanceMode.Dark => "theme-dark",
@@ -822,6 +830,7 @@
     public async ValueTask DisposeAsync()
     {
         IsDisposed = true;
+        SnapshotStore.Changed -= HandleSnapshotChanged;
         if (ReminderPollingCancellation is not null)
         {
             ReminderPollingCancellation.Cancel();
