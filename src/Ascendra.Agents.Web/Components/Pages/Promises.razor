@@ -185,9 +185,11 @@ else
         {
             RegisteredPromises = await PromiseRegistrations.GetPendingForAgentAsync(user.Id);
             var storedPromises = await PromiseRegistrations.GetCrossSourceAsync();
+            var deletedPromises = await PromiseRegistrations.GetDeletedCrossSourceEntriesAsync();
             var effectivePromises = PromiseRegistrationService.ApplyStoredEdits(
                 Queries.Snapshot.Promises,
-                storedPromises);
+                storedPromises,
+                deletedPromises);
             AgentPromiseScope = Queries.Scope(effectivePromises);
         }
         IsLoadingRegistrations = false;

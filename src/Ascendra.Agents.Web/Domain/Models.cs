@@ -162,6 +162,16 @@ public sealed record PromiseCrossSourceEntry(
     int NumberOfWeeks,
     DateTimeOffset CreatedAt);
 
+/// <summary>
+/// Baja administrativa de una promesa. Se conserva después de eliminar la
+/// fila operativa para impedir que un corte histórico anterior la vuelva a
+/// mostrar en las vistas de Ascendra.
+/// </summary>
+public sealed record DeletedPromiseCrossSourceEntry(
+    int DatabasePromiseId,
+    string? PromiseId,
+    int? AscendraRegistrationId);
+
 public sealed record PromiseActiveLock(
     string PromiseId,
     DateOnly PromiseDate,

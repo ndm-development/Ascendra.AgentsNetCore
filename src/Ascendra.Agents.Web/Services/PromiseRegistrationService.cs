@@ -525,14 +525,48 @@ public sealed class PromiseRegistrationService(
     }
 
     /// <summary>
-    /// El cruce conserva el estatus y el nombre provenientes del Excel, pero
-    /// los campos administrativos editables se resuelven siempre desde
-    /// PostgreSQL. Así un cambio realizado por Gerencia se refleja en Mis
-    /// promesas de inmediato, aun antes del siguiente cruce.
+    /// Obtiene las bajas persistentes de promesas. Al eliminar una promesa
+    /// histórica, su fila ya no vive en <c>promesas</c>, pero el corte Excel
+    /// anterior puede seguir teniéndola; esta marca evita que resurja en la
+    /// cuenta del agente o en Gerencia.
+    /// </summary>
+    public async Task<IReadOnlyList<DeletedPromiseCrossSourceEntry>> GetDeletedCrossSourceEntriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var entries = new List<DeletedPromiseCrossSourceEntry>();
+        await using var connection = await _database.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT DISTINCT ON (id_promesa)
+                   id_promesa,
+                   datos_anteriores ->> 'id_promesa_origen' AS id_promesa_origen,
+                   COALESCE(datos_anteriores ->> 'origen', 'Ascendra') AS origen
+            FROM promesas_historial
+            WHERE accion = 'Eliminación'
+            ORDER BY id_promesa, registrado_en DESC, id DESC;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var databasePromiseId = reader.GetInt32(0);
+            var origin = reader.IsDBNull(2) ? "Ascendra" : reader.GetString(2);
+            var isAscendra = origin.Equals("Ascendra", StringComparison.OrdinalIgnoreCase);
+            entries.Add(new DeletedPromiseCrossSourceEntry(
+                databasePromiseId,
+                !isAscendra && !reader.IsDBNull(1) ? reader.GetString(1) : null,
+                isAscendra ? databasePromiseId : null));
+        }
+        return entries;
+    }
+
+    /// <summary>
+    /// El cruce conserva el estatus y el nombre provenientes del Excel. Los
+    /// campos administrativos y las bajas se resuelven desde PostgreSQL, para
+    /// que los cambios de Gerencia se reflejen antes del siguiente cruce.
     /// </summary>
     public static IReadOnlyList<PromiseRecord> ApplyStoredEdits(
         IReadOnlyList<PromiseRecord> snapshotPromises,
-        IReadOnlyList<PromiseCrossSourceEntry> storedPromises)
+        IReadOnlyList<PromiseCrossSourceEntry> storedPromises,
+        IReadOnlyList<DeletedPromiseCrossSourceEntry> deletedPromises)
     {
         var storedByKey = storedPromises
             .GroupBy(StoredPromiseKey)
@@ -540,8 +574,15 @@ public sealed class PromiseRegistrationService(
                 group => group.Key,
                 group => group.OrderByDescending(entry => entry.CreatedAt).First(),
                 StringComparer.Ordinal);
+        var deletedKeys = deletedPromises
+            .Select(DeletedPromiseKey)
+            .Where(key => key is not null)
+            .Cast<string>()
+            .ToHashSet(StringComparer.Ordinal);
 
-        return snapshotPromises.Select(snapshot =>
+        return snapshotPromises
+            .Where(snapshot => !deletedKeys.Contains(SnapshotPromiseKey(snapshot)))
+            .Select(snapshot =>
         {
             if (!storedByKey.TryGetValue(SnapshotPromiseKey(snapshot), out var stored)) return snapshot;
 
@@ -571,6 +612,13 @@ public sealed class PromiseRegistrationService(
         promise.AscendraRegistrationId is int registrationId
             ? $"ascendra:{registrationId}"
             : $"historial:{promise.PromiseId.Trim()}";
+
+    private static string? DeletedPromiseKey(DeletedPromiseCrossSourceEntry promise) =>
+        promise.AscendraRegistrationId is int registrationId
+            ? $"ascendra:{registrationId}"
+            : string.IsNullOrWhiteSpace(promise.PromiseId)
+                ? null
+                : $"historial:{promise.PromiseId.Trim()}";
 
     private async Task<IReadOnlyList<PromiseRegistrationEntry>> GetEntriesAsync(
         string whereClause,
