@@ -15,6 +15,12 @@ public sealed class PostgresOperationalProcessingRepository(PostgresDatabase dat
 {
     private const string RuleVersion = "2026-11-27-csharp-v1";
 
+    public async Task<string> ReadSourceFingerprintAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await database.OpenConnectionAsync(cancellationToken);
+        return await SourceFingerprintAsync(connection, cancellationToken);
+    }
+
     public async Task<OperationalProcessingInput> ReadInputAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await database.OpenConnectionAsync(cancellationToken);

@@ -159,6 +159,8 @@ internal sealed class DirectoryTestHost : IDisposable
 
 internal sealed class EmptyOperationalProcessingRepository : IOperationalProcessingRepository
 {
+    public Task<string> ReadSourceFingerprintAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(string.Empty);
     public Task<OperationalProcessingInput> ReadInputAsync(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
     public Task<OperationalProcessingRun?> ReadCurrentAsync(CancellationToken cancellationToken = default) =>

@@ -122,7 +122,15 @@ public sealed class PostgresDatabase(
         builder.MaxPoolSize = Math.Clamp(requestedPoolSize, 30, 50);
         builder.MinPoolSize = 0;
         builder.Timeout = 15;
-        builder.CommandTimeout = 30;
+        // El corte inicial copia cientos de miles de pagos. Treinta segundos
+        // sirve para pantallas, no para el trabajo transaccional de fondo.
+        // Las operaciones siguen cancelables y el worker conserva el corte
+        // previo si una ejecución no termina.
+        builder.CommandTimeout = 300;
+        // Npgsql 10 intenta GSSAPI por defecto. Render no trae Kerberos y el
+        // intento sólo ensucia el log; TLS configurado en la conexión sigue
+        // siendo el mecanismo de cifrado.
+        builder.GssEncryptionMode = GssEncryptionMode.Disable;
         return builder;
     }
 

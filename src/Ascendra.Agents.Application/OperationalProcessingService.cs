@@ -19,6 +19,8 @@ public sealed record OperationalProcessingRun(
 
 public interface IOperationalProcessingRepository
 {
+    /// <summary>Huella ligera de lotes vigentes y promesas, sin leer sus filas.</summary>
+    Task<string> ReadSourceFingerprintAsync(CancellationToken cancellationToken = default);
     Task<OperationalProcessingInput> ReadInputAsync(CancellationToken cancellationToken = default);
     Task<OperationalProcessingRun?> ReadCurrentAsync(CancellationToken cancellationToken = default);
     Task<OperationalProcessingRun> SaveAsync(string sourceFingerprint, OperationalProcessingResult result,
@@ -36,14 +38,19 @@ public sealed class OperationalProcessingService(IOperationalProcessingRepositor
 
     public async Task<OperationalProcessingRun> ProcessAsync(DateOnly cutoff, CancellationToken cancellationToken = default)
     {
-        var input = await repository.ReadInputAsync(cancellationToken);
         // El corte cambia Vigente/Incumplida aun cuando no llegue un archivo.
         // Incorporar la fecha operativa evita que una promesa venza sólo al
         // siguiente pago o carga de cartera.
-        var fingerprint = $"{input.SourceFingerprint}:{cutoff:yyyyMMdd}";
         var current = await repository.ReadCurrentAsync(cancellationToken);
-        if (current is not null && current.SourceFingerprint == fingerprint) return current;
+        var fingerprint = $"{await repository.ReadSourceFingerprintAsync(cancellationToken)}:{cutoff:yyyyMMdd}";
+        if (current is not null && current.SourceFingerprint == fingerprint)
+            return current;
 
+        var input = await repository.ReadInputAsync(cancellationToken);
+        // La carga de fuentes es atómica, pero si un lote se publicó justo al
+        // leerlo, su propia huella conserva el corte coherente y el siguiente
+        // ciclo publicará el lote recién llegado.
+        fingerprint = $"{input.SourceFingerprint}:{cutoff:yyyyMMdd}";
         var result = OperationalProcessingRules.Process(input.Payments, input.Promises, input.Portfolio,
             input.References, input.ContactSeeds, input.Geography, input.Agents, cutoff);
         return await repository.SaveAsync(fingerprint, result, cancellationToken);
