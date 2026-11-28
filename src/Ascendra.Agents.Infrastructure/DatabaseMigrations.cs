@@ -82,5 +82,132 @@ public static class DatabaseMigrations
             );
             """),
         new(OperationalImportSchema.MigrationId, OperationalImportSchema.Sql),
+        new("2026-11-27-03-operational-processing", """
+            CREATE TABLE IF NOT EXISTS crm_proceso_ejecuciones (
+                id_ejecucion uuid PRIMARY KEY,
+                huella_fuentes text NOT NULL UNIQUE,
+                version_reglas text NOT NULL,
+                terminado_en timestamptz NOT NULL DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS crm_proceso_actual (
+                id boolean PRIMARY KEY DEFAULT true CHECK (id),
+                id_ejecucion uuid NOT NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                actualizado_en timestamptz NOT NULL DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS crm_proceso_contactos (
+                id_ejecucion uuid NOT NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                posicion integer NOT NULL,
+                cliente_unico text NULL,
+                telefono text NULL,
+                nombre_referencia text NULL,
+                parentesco text NULL,
+                nombre_cliente text NULL,
+                producto text NULL,
+                saldo_total numeric NULL,
+                estatus text NULL,
+                origen text NULL,
+                PRIMARY KEY (id_ejecucion, posicion)
+            );
+            CREATE TABLE IF NOT EXISTS crm_proceso_cartera (
+                id_ejecucion uuid NOT NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                posicion integer NOT NULL,
+                cliente_unico text NULL,
+                nombre_cliente text NULL,
+                producto text NULL,
+                saldo_total numeric NULL,
+                estatus text NULL,
+                dia_pago text NULL,
+                zona_geografica text NULL,
+                telefonos jsonb NULL,
+                PRIMARY KEY (id_ejecucion, posicion)
+            );
+            CREATE TABLE IF NOT EXISTS crm_proceso_pagos (
+                id_ejecucion uuid NOT NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                id_pago_origen bigint NOT NULL,
+                cliente_unico text NULL,
+                fecha_recepcion date NULL,
+                recuperacion_por_gestion numeric NULL,
+                semana integer NULL,
+                producto text NULL,
+                concepto_calculo text NULL,
+                plan_de_pago text NULL,
+                zona_geografica text NULL,
+                agente text NULL,
+                agente_id text NULL,
+                nombre_cliente text NULL,
+                dia_semana text NULL,
+                id_promesa_asignada text NULL,
+                id_promesa_base integer NULL,
+                tipo_asignacion text NULL,
+                PRIMARY KEY (id_ejecucion, id_pago_origen)
+            );
+            CREATE TABLE IF NOT EXISTS crm_proceso_promesas (
+                id_ejecucion uuid NOT NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                id_promesa_base integer NOT NULL,
+                id_promesa text NULL,
+                id_promesa_ascendra integer NULL,
+                cliente_unico text NULL,
+                nombre_cliente text NULL,
+                numero_cliente text NULL,
+                agente text NULL,
+                agente_id text NULL,
+                fecha_promesa date NULL,
+                monto_inicial numeric NULL,
+                monto_semanal numeric NULL,
+                tipo_promesa text NULL,
+                numero_semanas integer NULL,
+                fecha_creacion timestamp without time zone NULL,
+                estatus text NULL,
+                PRIMARY KEY (id_ejecucion, id_promesa_base)
+            );
+            -- Estado actual por cliente. El corte diario es la única fuente
+            -- de actividad; una ausencia desactiva, pero jamás elimina.
+            CREATE TABLE IF NOT EXISTS crm_clientes_operativos (
+                cliente_unico text PRIMARY KEY,
+                activo boolean NOT NULL,
+                id_ejecucion_actual uuid NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                primera_visto_en timestamptz NOT NULL DEFAULT now(),
+                actualizado_en timestamptz NOT NULL DEFAULT now()
+            );
+            -- Libreta acumulativa: referencias cargadas y teléfonos que en
+            -- algún corte vinieron en cartera. No depende de seguir activo.
+            CREATE TABLE IF NOT EXISTS crm_contactos_operativos (
+                id_contacto bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                clave_contacto text NOT NULL UNIQUE,
+                cliente_unico text NOT NULL,
+                telefono text NOT NULL,
+                nombre_referencia text NOT NULL DEFAULT '',
+                parentesco text NOT NULL DEFAULT '',
+                origen text NOT NULL,
+                primera_ejecucion uuid NOT NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                ultima_ejecucion uuid NOT NULL REFERENCES crm_proceso_ejecuciones(id_ejecucion),
+                primera_visto_en timestamptz NOT NULL DEFAULT now(),
+                ultimo_visto_en timestamptz NOT NULL DEFAULT now()
+            );
+            CREATE INDEX IF NOT EXISTS ix_crm_proceso_contactos_cliente
+                ON crm_proceso_contactos (id_ejecucion, cliente_unico);
+            CREATE INDEX IF NOT EXISTS ix_crm_proceso_cartera_cliente
+                ON crm_proceso_cartera (id_ejecucion, cliente_unico);
+            CREATE INDEX IF NOT EXISTS ix_crm_proceso_pagos_agente
+                ON crm_proceso_pagos (id_ejecucion, agente_id, fecha_recepcion);
+            CREATE INDEX IF NOT EXISTS ix_crm_proceso_promesas_agente
+                ON crm_proceso_promesas (id_ejecucion, agente_id, fecha_promesa);
+            CREATE INDEX IF NOT EXISTS ix_crm_clientes_operativos_activo
+                ON crm_clientes_operativos (activo, cliente_unico);
+            CREATE INDEX IF NOT EXISTS ix_crm_contactos_operativos_cliente_telefono
+                ON crm_contactos_operativos (cliente_unico, telefono);
+            CREATE OR REPLACE VIEW crm_proceso_contactos_vigentes AS
+                SELECT fila.* FROM crm_proceso_contactos fila
+                JOIN crm_proceso_actual actual ON actual.id_ejecucion = fila.id_ejecucion;
+            CREATE OR REPLACE VIEW crm_proceso_cartera_vigente AS
+                SELECT fila.* FROM crm_proceso_cartera fila
+                JOIN crm_proceso_actual actual ON actual.id_ejecucion = fila.id_ejecucion;
+            CREATE OR REPLACE VIEW crm_proceso_pagos_vigentes AS
+                SELECT fila.* FROM crm_proceso_pagos fila
+                JOIN crm_proceso_actual actual ON actual.id_ejecucion = fila.id_ejecucion;
+            CREATE OR REPLACE VIEW crm_proceso_promesas_vigentes AS
+                SELECT fila.* FROM crm_proceso_promesas fila
+                JOIN crm_proceso_actual actual ON actual.id_ejecucion = fila.id_ejecucion;
+            """),
     ];
 }

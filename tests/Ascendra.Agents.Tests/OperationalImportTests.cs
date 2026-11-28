@@ -148,6 +148,69 @@ public sealed class OperationalImportTests
         Assert.Equal(2L, await Scalar(dataSource, "SELECT count(*) FROM crm_pagos WHERE producto IS NULL"));
     }
 
+    [PostgresFact]
+    public async Task ProcessingPublishesOneAtomicDatabaseCutAndAuditsChangedPromiseStatus()
+    {
+        await using var test = await TestDatabase.CreateAsync();
+        await using var source = NpgsqlDataSource.Create(test.ConnectionString);
+        // Inicializa esquema CRM y nuevas tablas de resultado antes de cargar
+        // las fuentes crudas, igual que ocurrirá en la aplicación.
+        await using (var initialized = await test.Database.OpenConnectionAsync()) { }
+        var imports = new OperationalImportService(new PostgresOperationalImportRepository(source));
+        await imports.ImportAsync(new("pagos", "pagos/2026/semana-32", "Semana32.xlsx", "Segmento", "payments-v1",
+            [new("cliente_unico", "Cliente_Unico", ImportValueType.Text), new("fecha_recepcion", "Fecha_Recepción", ImportValueType.Timestamp),
+             new("recuperacion_por_gestion", "Recuperación_por_Gestión", ImportValueType.Decimal), new("semana", "Semana", ImportValueType.Integer)],
+            [new(2, ["001", new DateTime(2026, 8, 3), 100m, 32]) ]));
+        await imports.ImportAsync(new("cartera", "cartera", "Descarga_cartera.xlsx", "Cartera", "portfolio-v1",
+            [new("cliente_unico", "CLIENTE_UNICO", ImportValueType.Text), new("nombre_cte", "NOMBRE_CTE", ImportValueType.Text),
+             new("producto", "PRODUCTO", ImportValueType.Text), new("saldo_total", "SALDO_TOTAL", ImportValueType.Decimal),
+             new("telefono1", "TELEFONO1", ImportValueType.Text)],
+            [new(2, ["001", "Cliente DB", "Producto", 99m, "5511112222"]) ]));
+        await imports.ImportAsync(new("referencias", "referencias", "Referencias.xlsx", "Dashboard", "references-v1",
+            [new("cliente_unico", "CLIENTE_UNICO", ImportValueType.Text), new("telefono_1", "Telefono 1", ImportValueType.Text),
+             new("referencia", "Referencia", ImportValueType.Text), new("parentesco", "Parentesco", ImportValueType.Text)],
+            [new(2, ["001", "5533334444", "Referencia", "Amiga"]) ]));
+        await imports.ImportAsync(new("catalogo_agentes", "catalogo_agentes", "catalogo.xlsx", "Agentes", "agents-v1",
+            [new("agente_id", "Agente_ID", ImportValueType.Text), new("agente", "Agente", ImportValueType.Text)],
+            [new(2, ["10", "Alicia López García"]) ]));
+        await using (var connection = await test.Database.OpenConnectionAsync())
+        await using (var command = new NpgsqlCommand("""
+            INSERT INTO promesas (cliente_unico, agente, numero_cliente, fecha_promesa, monto_inicial, monto_semanal,
+                tipo_promesa, numero_semanas, fecha_creacion, usu_alta, estatus)
+            VALUES ('001', 'Alias anterior', '5511112222', '2026-08-03', 1, 1, 'Parcial', 1,
+                '2026-08-01 15:00:00+00', '10', 'Pendiente de pago');
+            """, connection))
+        {
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var processing = new OperationalProcessingService(new PostgresOperationalProcessingRepository(test.Database));
+        var first = await processing.ProcessAsync(new(2026, 8, 10));
+        var second = await processing.ProcessAsync(new(2026, 8, 10));
+
+        Assert.Equal(first.Id, second.Id);
+        Assert.Equal("Vigente", Assert.Single(first.Result.Payments).AssignmentType);
+        Assert.Equal("Activa", Assert.Single(first.Result.Promises).Status);
+        Assert.Equal("Activa", await Scalar(source, "SELECT estatus FROM promesas WHERE id_promesa=1"));
+        Assert.Equal(1L, await Scalar(source, "SELECT count(*) FROM promesas_historial WHERE accion='Conciliación automática'"));
+        Assert.Equal(2L, await Scalar(source, "SELECT count(*) FROM crm_proceso_contactos_vigentes"));
+        Assert.Equal(1L, await Scalar(source, "SELECT count(*) FROM crm_proceso_pagos_vigentes"));
+        Assert.Equal(1L, await Scalar(source, "SELECT count(*) FROM crm_proceso_promesas_vigentes"));
+
+        // El segundo corte ya no contiene 001. Sus teléfonos/referencia no se
+        // borran, pero el cliente deja de estar activo; la cartera anterior
+        // sigue disponible por ejecución para saldo/producto/zona históricos.
+        await imports.ImportAsync(new("cartera", "cartera", "Descarga_cartera.xlsx", "Cartera", "portfolio-v2",
+            [new("cliente_unico", "CLIENTE_UNICO", ImportValueType.Text), new("nombre_cte", "NOMBRE_CTE", ImportValueType.Text),
+             new("producto", "PRODUCTO", ImportValueType.Text), new("saldo_total", "SALDO_TOTAL", ImportValueType.Decimal),
+             new("telefono1", "TELEFONO1", ImportValueType.Text)],
+            [new(2, ["002", "Cliente nuevo", "Producto nuevo", 77m, "5544444444"]) ]));
+        await processing.ProcessAsync(new(2026, 8, 10));
+        Assert.False((bool)(await Scalar(source, "SELECT activo FROM crm_clientes_operativos WHERE cliente_unico='001'"))!);
+        Assert.Equal(2L, await Scalar(source, "SELECT count(*) FROM crm_contactos_operativos WHERE cliente_unico='001'"));
+        Assert.Equal(1L, await Scalar(source, "SELECT count(*) FROM crm_proceso_cartera WHERE cliente_unico='001'"));
+    }
+
     private static DataImportBatch Batch() => new("pagos", "pagos/2026/semana-48", "Semana48.xlsx", "Segmento", "source-hash",
         [new("cliente_unico", "Cliente_Unico", ImportValueType.Text), new("anio", "Año", ImportValueType.Integer),
             new("semana", "Semana", ImportValueType.Integer), new("recuperacion_por_gestion", "Recuperación_por_Gestión", ImportValueType.Decimal)],

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Ascendra.Agents.Application;
 using Ascendra.Agents.Domain;
+using Ascendra.Agents.Infrastructure;
 using Ascendra.Agents.Web.Auth;
 using Ascendra.Agents.Web.Infrastructure;
 using Ascendra.Agents.Web.Services;
@@ -60,7 +61,7 @@ public sealed class DirectoryAccessTests
         Assert.Equal("Agente", (await host.Authenticator.AuthenticateAsync("m", "test-only"))!.Role);
         Assert.Equal("Gerente", host.Snapshots.Current.Users.Single(row => row.Id == "M").Role);
         var promises = new PromiseRegistrationService(host.Snapshots, test.Database, test.Service,
-            host.DirectoryOptions, NullLogger<PromiseRegistrationService>.Instance);
+            host.DirectoryOptions, host.ProcessingOptions, NullLogger<PromiseRegistrationService>.Instance);
         await Assert.ThrowsAsync<InvalidOperationException>(() => promises.DeleteAsync(1,
             DirectoryRulesTests.Person("M", "Gerente").ToUser()));
         await test.Service.SaveAsync(manager with { IsActive = false }, "D", manager.Revision);
@@ -130,6 +131,7 @@ internal sealed class DirectoryTestHost : IDisposable
     public TestEnvironment Environment { get; }
     public StaticOptions<AgentDataOptions> DataOptions { get; }
     public IOptions<AgentDirectoryOptions> DirectoryOptions { get; }
+    public IOptions<OperationalProcessingOptions> ProcessingOptions { get; }
     public ExcelSnapshotStore Snapshots { get; }
     public AgentAuthenticator Authenticator { get; }
 
@@ -139,7 +141,9 @@ internal sealed class DirectoryTestHost : IDisposable
         Directory.CreateDirectory(Environment.ContentRootPath);
         DataOptions = new(new() { InputPath = Environment.ContentRootPath, GeneratedPath = Environment.ContentRootPath });
         DirectoryOptions = Options.Create(new AgentDirectoryOptions { UsePostgres = postgres });
-        Snapshots = new(DataOptions, Environment, service, DirectoryOptions, NullLogger<ExcelSnapshotStore>.Instance);
+        ProcessingOptions = Options.Create(new OperationalProcessingOptions());
+        Snapshots = new(DataOptions, Environment, service, DirectoryOptions, ProcessingOptions,
+            new OperationalProcessingService(new EmptyOperationalProcessingRepository()), NullLogger<ExcelSnapshotStore>.Instance);
         System.Environment.SetEnvironmentVariable(_credentialsVariable, "{\"m\":\"test-only\",\"i\":\"test-only\"}");
         Authenticator = new(Snapshots, service, DirectoryOptions,
             new StaticOptions<SecurityOptions>(new() { CredentialsEnvironmentVariable = _credentialsVariable }),
@@ -151,6 +155,16 @@ internal sealed class DirectoryTestHost : IDisposable
         System.Environment.SetEnvironmentVariable(_credentialsVariable, null);
         Directory.Delete(Environment.ContentRootPath, recursive: true);
     }
+}
+
+internal sealed class EmptyOperationalProcessingRepository : IOperationalProcessingRepository
+{
+    public Task<OperationalProcessingInput> ReadInputAsync(CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+    public Task<OperationalProcessingRun?> ReadCurrentAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<OperationalProcessingRun?>(null);
+    public Task<OperationalProcessingRun> SaveAsync(string sourceFingerprint, OperationalProcessingResult result,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
 }
 
 internal sealed class StaticOptions<T>(T value) : IOptionsMonitor<T>

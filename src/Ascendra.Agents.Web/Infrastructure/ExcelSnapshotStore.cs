@@ -16,6 +16,8 @@ public sealed class ExcelSnapshotStore(
     IHostEnvironment environment,
     AgentDirectoryService agentDirectory,
     IOptions<AgentDirectoryOptions> directoryOptions,
+    IOptions<OperationalProcessingOptions> processingOptions,
+    OperationalProcessingService operationalProcessing,
     ILogger<ExcelSnapshotStore> logger)
 {
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -45,13 +47,19 @@ public sealed class ExcelSnapshotStore(
             {
                 var directory = directoryOptions.Value.UsePostgres
                     ? await agentDirectory.GetAsync(cancellationToken) : null;
-                var fingerprint = $"{Fingerprint(paths, directory is not null)}:{directory?.Version ?? "excel"}";
+                var operational = processingOptions.Value.UsePostgres
+                    ? await operationalProcessing.GetCurrentAsync(cancellationToken)
+                        ?? throw new InvalidOperationException("El proceso PostgreSQL todavía no ha publicado un corte válido.")
+                    : null;
+                var fingerprint = operational is null
+                    ? $"{Fingerprint(paths, directory is not null)}:{directory?.Version ?? "excel"}"
+                    : $"postgres:{operational.SourceFingerprint}:{directory?.Version ?? "excel"}";
                 if (fingerprint == _lastFingerprint)
                 {
                     Volatile.Write(ref _health, new DataHealth(true, "Corte disponible.", Current.LoadedAt, Current.Version));
                     return;
                 }
-                var snapshot = Load(paths, fingerprint, directory);
+                var snapshot = Load(paths, fingerprint, directory, operational);
                 Volatile.Write(ref _current, snapshot);
                 Volatile.Write(ref _health, new DataHealth(
                     directory is not null || snapshot.Users.Count > 0,
@@ -80,25 +88,45 @@ public sealed class ExcelSnapshotStore(
         finally { _refreshLock.Release(); }
     }
 
-    private AgentDataSnapshot Load(DataPaths paths, string fingerprint, AgentDirectorySnapshot? directory)
+    private AgentDataSnapshot Load(DataPaths paths, string fingerprint, AgentDirectorySnapshot? directory,
+        OperationalProcessingRun? operational)
     {
         var warnings = new List<string>();
         var headcount = directory is null
             ? ReadHeadcount(paths.Input("headcount.xlsx"), warnings)
             : new HeadcountRoster(directory.Users, directory.Directory);
         var catalog = new AgentIdentityCatalog(headcount.Directory);
-        var loadedPayments = ReadOptional(paths.Input("agents_collections.xlsx"), ReadPayments, warnings)
+        var loadedPayments = (operational is null
+                ? ReadOptional(paths.Input("agents_collections.xlsx"), ReadPayments, warnings)
+                : operational.Result.Payments.Select(payment => new PaymentRecord(
+                    payment.Agent, payment.AgentId, payment.ReceivedOn, payment.Product, payment.Concept,
+                    payment.Recovery ?? 0m, payment.Week, payment.ClientId, payment.ClientName, payment.Day,
+                    payment.PaymentPlan, payment.PromiseId, payment.AssignmentType, payment.Zone)).ToArray())
             .Select(catalog.Canonicalize)
             .ToArray();
         // Se separa la cobranza orgánica para que sólo la consola de equipo
         // pueda consultarla: nunca se mezcla con la vista personal del agente.
         var payments = loadedPayments.Where(x => !IsOrganicPayment(x)).ToArray();
         var organicPayments = loadedPayments.Where(IsOrganicPayment).ToArray();
-        var promises = ReadOptional(paths.Input("promesas_estatus.xlsx"), ReadPromises, warnings)
+        var promises = (operational is null
+                ? ReadOptional(paths.Input("promesas_estatus.xlsx"), ReadPromises, warnings)
+                : operational.Result.Promises.Select(promise => new PromiseRecord(
+                    promise.VisibleId, promise.ClientId, promise.ClientName, promise.ClientNumber, promise.Agent,
+                    promise.AgentId, promise.PromiseDate, promise.InitialAmount ?? 0m, promise.WeeklyAmount ?? 0m,
+                    promise.PromiseType, promise.NumberOfWeeks, promise.CreatedAt is null ? null : DateOnly.FromDateTime(promise.CreatedAt.Value),
+                    promise.Status, promise.AscendraRegistrationId, promise.DatabasePromiseId, promise.CreatedAt)).ToArray())
             .Select(catalog.Canonicalize)
             .Where(x => !TextNormalization.IsOrganic(x.Agent)).ToArray();
-        var portfolio = ReadOptional(paths.Input("Descarga_cartera.xlsx"), ReadPortfolio, warnings);
-        var contacts = ReadContacts(paths, portfolio, warnings);
+        var portfolio = operational is null
+            ? ReadOptional(paths.Input("Descarga_cartera.xlsx"), ReadPortfolio, warnings)
+            : operational.Result.Portfolio.Select(row => new PortfolioRecord(row.ClientId, row.ClientName, row.Product,
+                row.TotalBalance, row.Status, row.PaymentDay, row.Zone,
+                row.Phones.Select(TextNormalization.Phone).Where(phone => phone.Length == 10).Distinct().ToArray())).ToArray();
+        var contacts = operational is null
+            ? ReadContacts(paths, portfolio, warnings)
+            : operational.Result.Contacts.Select(row => new ContactRecord(row.ClientId, TextNormalization.Phone(row.Phone),
+                row.ReferenceName, row.Relationship, row.ClientName, row.Product, row.TotalBalance, row.Status, row.Source))
+                .Where(row => row.Phone.Length == 10).ToArray();
         return new AgentDataSnapshot(
             fingerprint,
             DateTimeOffset.Now,

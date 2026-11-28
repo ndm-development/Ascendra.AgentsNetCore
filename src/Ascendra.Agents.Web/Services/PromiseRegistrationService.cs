@@ -16,6 +16,7 @@ public sealed class PromiseRegistrationService(
     PostgresDatabase database,
     AgentDirectoryService agentDirectory,
     IOptions<AgentDirectoryOptions> directoryOptions,
+    IOptions<OperationalProcessingOptions> processingOptions,
     ILogger<PromiseRegistrationService> logger)
 {
     private static readonly IReadOnlyList<string> AvailablePromiseTypes =
@@ -217,6 +218,7 @@ public sealed class PromiseRegistrationService(
     public async Task SynchronizeReconciledStatusesAsync(
         CancellationToken cancellationToken = default)
     {
+        if (processingOptions.Value.UsePostgres) return;
         var snapshot = _snapshots.Current;
         if (snapshot == AgentDataSnapshot.Empty
             || string.Equals(Volatile.Read(ref _lastReconciledSnapshotVersion), snapshot.Version, StringComparison.Ordinal))

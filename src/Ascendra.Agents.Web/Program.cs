@@ -32,6 +32,7 @@ if (!string.IsNullOrWhiteSpace(dataProtectionPath))
 
 builder.Services.Configure<AgentDataOptions>(builder.Configuration.GetSection("Data"));
 builder.Services.Configure<AgentDirectoryOptions>(builder.Configuration.GetSection("AgentDirectory"));
+builder.Services.Configure<OperationalProcessingOptions>(builder.Configuration.GetSection(OperationalProcessingOptions.SectionName));
 builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection("Security"));
 builder.Services.Configure<ChatOptions>(builder.Configuration.GetSection(ChatOptions.SectionName));
 builder.Services.Configure<CallDispositionOptions>(builder.Configuration.GetSection(CallDispositionOptions.SectionName));
@@ -87,6 +88,9 @@ builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddSingleton<WhatsAppTemplateCatalog>();
 builder.Services.AddSingleton<PostgresDatabase>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresDatabase>());
+builder.Services.AddSingleton<IOperationalProcessingRepository, PostgresOperationalProcessingRepository>();
+builder.Services.AddSingleton<OperationalProcessingService>();
+builder.Services.AddHostedService<OperationalProcessingWorker>();
 builder.Services.AddSingleton<IAgentDirectoryRepository, PostgresAgentDirectoryRepository>();
 builder.Services.AddSingleton<AgentDirectoryService>();
 builder.Services.AddSingleton<HeadcountImportReader>();

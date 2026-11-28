@@ -1,10 +1,12 @@
 using Ascendra.Agents.Web.Services;
+using Microsoft.Extensions.Options;
 
 namespace Ascendra.Agents.Web.Infrastructure;
 
 public sealed class ExcelRefreshService(
     ExcelSnapshotStore store,
     PromiseRegistrationService promiseRegistrations,
+    IOptions<OperationalProcessingOptions> processingOptions,
     ILogger<ExcelRefreshService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -27,6 +29,12 @@ public sealed class ExcelRefreshService(
     private async Task RefreshAndSynchronizeAsync(CancellationToken cancellationToken)
     {
         await store.RefreshAsync(cancellationToken);
-        await promiseRegistrations.SynchronizeReconciledStatusesAsync(cancellationToken);
+        // En modo PostgreSQL el mismo proceso publica y audita los estatus en
+        // la transacción del corte; la sincronización heredada sólo existe
+        // mientras la fuente sean los dos Excel generados por Python.
+        if (!processingOptions.Value.UsePostgres)
+        {
+            await promiseRegistrations.SynchronizeReconciledStatusesAsync(cancellationToken);
+        }
     }
 }
