@@ -1,0 +1,11 @@
+.directory-page { display: grid; gap: 1rem; }
+.directory-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.2rem; }
+.directory-heading h1 { margin: .3rem 0; }
+.directory-panel { padding: 1.2rem; }
+.directory-notice { padding: 1rem 1.2rem; margin: 0; }
+.directory-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.directory-actions { display: flex; gap: .6rem; margin-top: 1rem; }
+.directory-table { overflow-x: auto; margin-top: 1rem; }
+.directory-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.directory-table th, .directory-table td { padding: .7rem; border-bottom: 1px solid rgba(120, 140, 165, .25); }
+@media (max-width: 640px) { .directory-fields { grid-template-columns: 1fr; } .directory-heading { align-items: flex-start; flex-direction: column; } }

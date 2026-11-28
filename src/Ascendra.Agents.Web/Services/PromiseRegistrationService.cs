@@ -3,6 +3,7 @@ using Ascendra.Agents.Web.Domain;
 using Ascendra.Agents.Web.Infrastructure;
 using Npgsql;
 using NpgsqlTypes;
+using Microsoft.Extensions.Options;
 
 namespace Ascendra.Agents.Web.Services;
 
@@ -13,6 +14,8 @@ namespace Ascendra.Agents.Web.Services;
 public sealed class PromiseRegistrationService(
     ExcelSnapshotStore snapshots,
     PostgresDatabase database,
+    AgentDirectoryService agentDirectory,
+    IOptions<AgentDirectoryOptions> directoryOptions,
     ILogger<PromiseRegistrationService> logger)
 {
     private static readonly IReadOnlyList<string> AvailablePromiseTypes =
@@ -86,7 +89,7 @@ public sealed class PromiseRegistrationService(
         // El nombre nunca llega como dato confiable desde la pantalla. Se
         // resuelve por ID en el headcount vigente para que PostgreSQL conserve
         // siempre el nombre completo canónico elegido para esa persona.
-        var agent = RequireActiveAgent(agentId);
+        var agent = await RequireActiveAgentAsync(agentId, cancellationToken);
         var normalizedAgentName = agent.DisplayName;
         var normalizedAgentId = agent.Id;
         var legacyActivePromise = FindLegacyActivePromise(normalizedClientId);
@@ -303,7 +306,7 @@ public sealed class PromiseRegistrationService(
         AgentUser editor,
         CancellationToken cancellationToken = default)
     {
-        var canonicalEditor = RequireActiveAgent(editor.Id);
+        var canonicalEditor = await RequireActiveAgentAsync(editor.Id, cancellationToken);
         if (!canonicalEditor.CanManagePromises)
         {
             throw new InvalidOperationException("No tienes permiso para modificar promesas.");
@@ -337,7 +340,9 @@ public sealed class PromiseRegistrationService(
         {
             throw new InvalidOperationException("Selecciona un tipo de promesa válido.");
         }
-        var assignee = _snapshots.Current.Users.FirstOrDefault(user =>
+        var assignableUsers = directoryOptions.Value.UsePostgres
+            ? (await agentDirectory.GetAsync(cancellationToken)).Users : _snapshots.Current.Users;
+        var assignee = assignableUsers.FirstOrDefault(user =>
             user.IsActive && user.IsAgent
             && user.Id.Equals(request.AssignedAgentId?.Trim(), StringComparison.OrdinalIgnoreCase));
         if (assignee is null)
@@ -430,7 +435,7 @@ public sealed class PromiseRegistrationService(
         AgentUser editor,
         CancellationToken cancellationToken = default)
     {
-        var canonicalEditor = RequireActiveAgent(editor.Id);
+        var canonicalEditor = await RequireActiveAgentAsync(editor.Id, cancellationToken);
         if (!canonicalEditor.CanManagePromises)
         {
             throw new InvalidOperationException("No tienes permiso para eliminar promesas.");
@@ -923,8 +928,10 @@ public sealed class PromiseRegistrationService(
             reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14));
     }
 
-    private AgentUser RequireActiveAgent(string? agentId)
+    private async Task<AgentUser> RequireActiveAgentAsync(string? agentId, CancellationToken cancellationToken)
     {
+        if (directoryOptions.Value.UsePostgres)
+            return await agentDirectory.RequireActiveAsync(agentId, cancellationToken);
         var normalizedId = TextNormalization.AgentId(agentId);
         var agent = _snapshots.Current.Users.FirstOrDefault(user =>
             user.IsActive && user.Id.Equals(normalizedId, StringComparison.OrdinalIgnoreCase));

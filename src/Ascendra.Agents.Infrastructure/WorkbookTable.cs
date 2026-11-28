@@ -3,9 +3,9 @@ using System.Globalization;
 using System.Text;
 using ExcelDataReader;
 
-namespace Ascendra.Agents.Web.Infrastructure;
+namespace Ascendra.Agents.Infrastructure;
 
-internal sealed class WorkbookTable
+public sealed class WorkbookTable
 {
     private WorkbookTable(IReadOnlyList<WorkbookRow> rows, IReadOnlySet<string> headers)
     {
@@ -20,8 +20,13 @@ internal sealed class WorkbookTable
 
     public static WorkbookTable Read(string path, string? sheetName = null)
     {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return Read(stream, sheetName, Path.GetFileName(path));
+    }
+
+    public static WorkbookTable Read(Stream stream, string? sheetName = null, string fileName = "Excel")
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         using var reader = ExcelReaderFactory.CreateReader(stream);
         var dataSet = reader.AsDataSet(new ExcelDataSetConfiguration
         {
@@ -30,7 +35,7 @@ internal sealed class WorkbookTable
         var table = string.IsNullOrWhiteSpace(sheetName)
             ? dataSet.Tables.Cast<DataTable>().FirstOrDefault()
             : dataSet.Tables.Cast<DataTable>().FirstOrDefault(x => x.TableName.Equals(sheetName, StringComparison.OrdinalIgnoreCase));
-        if (table is null) throw new InvalidDataException($"El archivo {Path.GetFileName(path)} no contiene una hoja utilizable.");
+        if (table is null) throw new InvalidDataException($"El archivo {fileName} no contiene una hoja utilizable.");
 
         var headers = table.Columns.Cast<DataColumn>()
             .Select(column => TextNormalization.Header(column.ColumnName))
@@ -44,7 +49,7 @@ internal sealed class WorkbookTable
     }
 }
 
-internal sealed class WorkbookRow(IReadOnlyDictionary<string, object?> values)
+public sealed class WorkbookRow(IReadOnlyDictionary<string, object?> values)
 {
     public string Text(params string[] candidates)
     {

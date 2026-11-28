@@ -24,6 +24,8 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
     private readonly Dictionary<Guid, string> _stagedAttachmentOwners = [];
     private readonly List<ChatMessage> _messages = [];
     private readonly PostgresDatabase _database;
+    private readonly AgentDirectoryService _directory;
+    private readonly bool _postgresDirectory;
     private readonly ILogger<EphemeralChatService> _logger;
     private readonly ExcelSnapshotStore _snapshots;
     private readonly string _storagePath;
@@ -36,9 +38,13 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
         IWebHostEnvironment environment,
         ExcelSnapshotStore snapshots,
         PostgresDatabase database,
+        AgentDirectoryService directory,
+        IOptions<AgentDirectoryOptions> directoryOptions,
         ILogger<EphemeralChatService> logger)
     {
         _database = database;
+        _directory = directory;
+        _postgresDirectory = directoryOptions.Value.UsePostgres;
         _logger = logger;
         _snapshots = snapshots;
         var configuration = options.Value;
@@ -254,6 +260,19 @@ public sealed class EphemeralChatService : IHostedService, IDisposable
 
     private async Task AddMessageAsync(ChatParticipant sender, ChatParticipant? recipient, string? content, ChatAttachment? attachment)
     {
+        if (_postgresDirectory)
+        {
+            var users = (await _directory.GetAsync()).Users;
+            var actor = users.FirstOrDefault(user => user.Username.Equals(sender.Username, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException("Tu acceso ya no está activo.");
+            sender = ParticipantFor(actor);
+            if (recipient is not null)
+            {
+                var target = users.FirstOrDefault(user => user.Username.Equals(recipient.Username, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException("La persona destinataria ya no está activa.");
+                recipient = ParticipantFor(target);
+            }
+        }
         var contentValue = CleanMessage(content, attachment is not null);
         ChatMessage newMessage;
         lock (_gate)

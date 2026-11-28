@@ -2,6 +2,9 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY ["src/Ascendra.Agents.Web/Ascendra.Agents.Web.csproj", "src/Ascendra.Agents.Web/"]
+COPY ["src/Ascendra.Agents.Domain/Ascendra.Agents.Domain.csproj", "src/Ascendra.Agents.Domain/"]
+COPY ["src/Ascendra.Agents.Application/Ascendra.Agents.Application.csproj", "src/Ascendra.Agents.Application/"]
+COPY ["src/Ascendra.Agents.Infrastructure/Ascendra.Agents.Infrastructure.csproj", "src/Ascendra.Agents.Infrastructure/"]
 RUN dotnet restore "src/Ascendra.Agents.Web/Ascendra.Agents.Web.csproj"
 
 COPY . .

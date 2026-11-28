@@ -1,6 +1,6 @@
 using Npgsql;
 
-namespace Ascendra.Agents.Web.Infrastructure;
+namespace Ascendra.Agents.Infrastructure;
 
 /// <summary>
 /// Punto único de acceso a PostgreSQL. Prepara el esquema antes de que los
@@ -65,9 +65,13 @@ public sealed class PostgresDatabase(
             try
             {
                 await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-                await using var command = new NpgsqlCommand(SchemaSql, connection);
+                await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+                await using (var schemaLock = new NpgsqlCommand("SELECT pg_advisory_xact_lock(831731, 0);", connection, transaction))
+                    await schemaLock.ExecuteNonQueryAsync(cancellationToken);
+                await using var command = new NpgsqlCommand(SchemaSql, connection, transaction);
                 await command.ExecuteNonQueryAsync(cancellationToken);
-                await ApplyMigrationsAsync(connection, cancellationToken);
+                await ApplyMigrationsAsync(connection, transaction, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
                 _dataSource = dataSource;
                 logger.LogInformation("PostgreSQL de Ascendra está disponible con un máximo de {MaxPoolSize} conexiones agrupadas.", builder.MaxPoolSize);
             }
@@ -83,7 +87,7 @@ public sealed class PostgresDatabase(
         }
     }
 
-    private static NpgsqlConnectionStringBuilder BuildConnectionString(string rawConnectionString, int requestedPoolSize)
+    public static NpgsqlConnectionStringBuilder BuildConnectionString(string rawConnectionString, int requestedPoolSize)
     {
         NpgsqlConnectionStringBuilder builder;
         if (Uri.TryCreate(rawConnectionString, UriKind.Absolute, out var uri)
@@ -122,18 +126,16 @@ public sealed class PostgresDatabase(
         return builder;
     }
 
-    private static async Task ApplyMigrationsAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    private static async Task ApplyMigrationsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
     {
         foreach (var migration in DatabaseMigrations.All)
         {
-            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
             await using (var applied = new NpgsqlCommand(
                 "SELECT 1 FROM application_schema_migrations WHERE migration_id = @id;", connection, transaction))
             {
                 applied.Parameters.AddWithValue("id", migration.Id);
                 if (await applied.ExecuteScalarAsync(cancellationToken) is not null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     continue;
                 }
             }
@@ -151,7 +153,6 @@ public sealed class PostgresDatabase(
                 record.Parameters.AddWithValue("id", migration.Id);
                 await record.ExecuteNonQueryAsync(cancellationToken);
             }
-            await transaction.CommitAsync(cancellationToken);
         }
     }
 

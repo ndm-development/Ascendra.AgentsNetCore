@@ -59,6 +59,8 @@ public sealed class CallDispositionService : IHostedService
     private readonly SemaphoreSlim _summaryIndexGate = new(1, 1);
     private readonly ExcelSnapshotStore _snapshots;
     private readonly PostgresDatabase _database;
+    private readonly AgentDirectoryService _directory;
+    private readonly bool _postgresDirectory;
     private readonly ILogger<CallDispositionService> _logger;
     private readonly string _storageDirectory;
     private readonly int _historyDisplayLimit;
@@ -72,10 +74,14 @@ public sealed class CallDispositionService : IHostedService
         IOptions<CallDispositionOptions> options,
         IWebHostEnvironment environment,
         PostgresDatabase database,
+        AgentDirectoryService directory,
+        IOptions<AgentDirectoryOptions> directoryOptions,
         ILogger<CallDispositionService> logger)
     {
         _snapshots = snapshots;
         _database = database;
+        _directory = directory;
+        _postgresDirectory = directoryOptions.Value.UsePostgres;
         _logger = logger;
         _storageDirectory = ResolveStorageDirectory(options.Value.StoragePath, environment);
         _historyDisplayLimit = Math.Clamp(options.Value.HistoryDisplayLimit, 20, 250);
@@ -228,6 +234,12 @@ public sealed class CallDispositionService : IHostedService
         string? agentName,
         CancellationToken cancellationToken = default)
     {
+        if (_postgresDirectory)
+        {
+            var actor = await _directory.RequireActiveAsync(agentId, cancellationToken);
+            agentId = actor.Id;
+            agentName = actor.DisplayName;
+        }
         var normalizedClientId = NormalizeClientId(clientId);
         var normalizedPhone = TextNormalization.Phone(phone);
         if (normalizedClientId.Length == 0 || normalizedPhone.Length == 0)

@@ -10,18 +10,20 @@ using Microsoft.Extensions.Options;
 namespace Ascendra.Agents.Web.Auth;
 
 /// <summary>
-/// Une el padrón de usuarios en Excel con el secreto de credenciales. El Excel
-/// nunca contiene contraseñas y el secreto jamás se devuelve al navegador.
+/// Valida acceso y sesión contra la fuente de padrón seleccionada.
+/// En modo PostgreSQL siempre lee la base; las credenciales siguen en el secreto del entorno.
 /// </summary>
 public sealed class AgentAuthenticator(
     ExcelSnapshotStore snapshots,
+    AgentDirectoryService directory,
+    IOptions<AgentDirectoryOptions> directoryOptions,
     IOptionsMonitor<SecurityOptions> options,
     IHostEnvironment environment,
     ILogger<AgentAuthenticator> logger)
 {
     public string RegistryVersion => snapshots.Current.Version;
 
-    public bool IsSessionCurrent(ClaimsPrincipal? principal)
+    public async Task<bool> IsSessionCurrentAsync(ClaimsPrincipal? principal, CancellationToken cancellationToken = default)
     {
         if (principal is null) return false;
 
@@ -37,9 +39,11 @@ public sealed class AgentAuthenticator(
         // en memoria. Conservar la cookie ya validada evita expulsar a todo el
         // equipo por esa ventana transitoria; en cuanto termina la carga se
         // vuelve a comprobar su estado y su rol actuales.
-        if (!snapshots.Health.IsReady) return true;
+        if (!directoryOptions.Value.UsePostgres && !snapshots.Health.IsReady) return true;
 
-        var currentUser = snapshots.Current.Users.FirstOrDefault(user =>
+        var users = directoryOptions.Value.UsePostgres
+            ? (await directory.GetAsync(cancellationToken)).Users : snapshots.Current.Users;
+        var currentUser = users.FirstOrDefault(user =>
             user.IsActive && string.Equals(user.Username, username, StringComparison.Ordinal));
         if (currentUser is null) return false;
 
@@ -49,10 +53,12 @@ public sealed class AgentAuthenticator(
             && string.Equals(currentUser.Role, claimedRole, StringComparison.OrdinalIgnoreCase);
     }
 
-    public AgentUser? Authenticate(string username, string password)
+    public async Task<AgentUser?> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
     {
         var normalized = TextNormalization.Normalize(username);
-        var user = snapshots.Current.Users.FirstOrDefault(x =>
+        var users = directoryOptions.Value.UsePostgres
+            ? (await directory.GetAsync(cancellationToken)).Users : snapshots.Current.Users;
+        var user = users.FirstOrDefault(x =>
             x.IsActive && string.Equals(x.Username, normalized, StringComparison.Ordinal));
 
         if (user is null && CanUseLocalPreview() && normalized == "preview" && password == "preview")

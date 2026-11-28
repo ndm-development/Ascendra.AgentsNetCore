@@ -1,6 +1,7 @@
 using Ascendra.Agents.Web.Domain;
 using Ascendra.Agents.Web.Infrastructure;
 using Npgsql;
+using Microsoft.Extensions.Options;
 
 namespace Ascendra.Agents.Web.Services;
 
@@ -11,7 +12,9 @@ namespace Ascendra.Agents.Web.Services;
 /// </summary>
 public sealed class FollowUpReminderService(
     PromiseRegistrationService promiseRegistrations,
-    PostgresDatabase database)
+    PostgresDatabase database,
+    AgentDirectoryService directory,
+    IOptions<AgentDirectoryOptions> directoryOptions)
 {
     private readonly PromiseRegistrationService _promiseRegistrations = promiseRegistrations;
     private readonly PostgresDatabase _database = database;
@@ -21,6 +24,7 @@ public sealed class FollowUpReminderService(
         AgentUser agent,
         CancellationToken cancellationToken = default)
     {
+        if (directoryOptions.Value.UsePostgres) agent = await directory.RequireActiveAsync(agent.Id, cancellationToken);
         if (!agent.IsAgent)
         {
             throw new InvalidOperationException("Sólo los agentes pueden programar seguimientos.");
@@ -111,6 +115,7 @@ public sealed class FollowUpReminderService(
         AgentUser agent,
         CancellationToken cancellationToken = default)
     {
+        if (directoryOptions.Value.UsePostgres) agent = await directory.RequireActiveAsync(agent.Id, cancellationToken);
         if (!agent.IsAgent)
         {
             throw new InvalidOperationException("Sólo el agente que creó el seguimiento puede cancelarlo.");
@@ -143,6 +148,7 @@ public sealed class FollowUpReminderService(
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(agentId)) return [];
+        if (directoryOptions.Value.UsePostgres) await directory.RequireActiveAsync(agentId, cancellationToken);
 
         var notifiedAt = DateTimeOffset.UtcNow;
         await using var connection = await _database.OpenConnectionAsync(cancellationToken);

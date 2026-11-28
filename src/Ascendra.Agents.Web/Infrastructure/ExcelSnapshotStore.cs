@@ -3,19 +3,22 @@ using System.Text;
 using System.Globalization;
 using Ascendra.Agents.Web.Domain;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Ascendra.Agents.Web.Infrastructure;
 
 /// <summary>
-/// Lee cortes completos de Excel en memoria. Cada solicitud consume un único
-/// snapshot inmutable: nunca mezcla archivos de dos cortes distintos.
+/// Conserva una vista en memoria de los archivos todavía pendientes de migración.
+/// Al activar AgentDirectory:UsePostgres, la identidad procede de PostgreSQL.
 /// </summary>
 public sealed class ExcelSnapshotStore(
     IOptionsMonitor<AgentDataOptions> options,
     IHostEnvironment environment,
+    AgentDirectoryService agentDirectory,
+    IOptions<AgentDirectoryOptions> directoryOptions,
     ILogger<ExcelSnapshotStore> logger)
 {
-    private readonly object _refreshLock = new();
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private AgentDataSnapshot _current = AgentDataSnapshot.Empty;
     private DataHealth _health = new(false, "Estamos preparando el corte de trabajo…", null, "pending");
     private string? _lastFingerprint;
@@ -31,22 +34,28 @@ public sealed class ExcelSnapshotStore(
     public DataHealth Health => Volatile.Read(ref _health);
     public int RefreshSeconds => Math.Clamp(options.CurrentValue.RefreshSeconds, 15, 900);
 
-    public Task RefreshAsync(CancellationToken cancellationToken = default)
+    public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        lock (_refreshLock)
+        await _refreshLock.WaitAsync(cancellationToken);
+        try
         {
             cancellationToken.ThrowIfCancellationRequested();
             var paths = Paths();
-            var fingerprint = Fingerprint(paths);
-            if (fingerprint == _lastFingerprint) return Task.CompletedTask;
-
             try
             {
-                var snapshot = Load(paths, fingerprint);
+                var directory = directoryOptions.Value.UsePostgres
+                    ? await agentDirectory.GetAsync(cancellationToken) : null;
+                var fingerprint = $"{Fingerprint(paths, directory is not null)}:{directory?.Version ?? "excel"}";
+                if (fingerprint == _lastFingerprint)
+                {
+                    Volatile.Write(ref _health, new DataHealth(true, "Corte disponible.", Current.LoadedAt, Current.Version));
+                    return;
+                }
+                var snapshot = Load(paths, fingerprint, directory);
                 Volatile.Write(ref _current, snapshot);
                 Volatile.Write(ref _health, new DataHealth(
-                    snapshot.Users.Count > 0,
-                    snapshot.Users.Count > 0
+                    directory is not null || snapshot.Users.Count > 0,
+                    directory is not null || snapshot.Users.Count > 0
                         ? $"Corte cargado · {snapshot.LoadedAt:dd/MM/yyyy HH:mm}"
                         : "Falta headcount.xlsx para habilitar el acceso.",
                     snapshot.LoadedAt,
@@ -56,23 +65,27 @@ public sealed class ExcelSnapshotStore(
                     snapshot.Payments.Count, snapshot.Promises.Count, snapshot.Contacts.Count);
                 Changed?.Invoke();
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                or InvalidDataException or InvalidOperationException or NpgsqlException or TimeoutException)
             {
                 var current = Current;
                 var message = current == AgentDataSnapshot.Empty
                     ? $"No se pudo cargar el corte: {exception.Message}"
                     : "El nuevo corte tiene un problema; se conserva el último corte válido.";
-                Volatile.Write(ref _health, new DataHealth(current.Users.Count > 0, message, current.LoadedAt == DateTimeOffset.MinValue ? null : current.LoadedAt, current.Version));
+                Volatile.Write(ref _health, new DataHealth(!directoryOptions.Value.UsePostgres && current.Users.Count > 0,
+                    message, current.LoadedAt == DateTimeOffset.MinValue ? null : current.LoadedAt, current.Version));
                 logger.LogError(exception, "No se pudo actualizar el corte de Agentes.");
             }
         }
-        return Task.CompletedTask;
+        finally { _refreshLock.Release(); }
     }
 
-    private AgentDataSnapshot Load(DataPaths paths, string fingerprint)
+    private AgentDataSnapshot Load(DataPaths paths, string fingerprint, AgentDirectorySnapshot? directory)
     {
         var warnings = new List<string>();
-        var headcount = ReadHeadcount(paths.Input("headcount.xlsx"), warnings);
+        var headcount = directory is null
+            ? ReadHeadcount(paths.Input("headcount.xlsx"), warnings)
+            : new HeadcountRoster(directory.Users, directory.Directory);
         var catalog = new AgentIdentityCatalog(headcount.Directory);
         var loadedPayments = ReadOptional(paths.Input("agents_collections.xlsx"), ReadPayments, warnings)
             .Select(catalog.Canonicalize)
@@ -321,13 +334,14 @@ public sealed class ExcelSnapshotStore(
         return Path.GetFullPath(Path.Combine(environment.ContentRootPath, "..", "..", path));
     }
 
-    private static string Fingerprint(DataPaths paths)
+    private static string Fingerprint(DataPaths paths, bool postgresDirectory)
     {
         var files = new[]
         {
-            paths.Input("headcount.xlsx"), paths.Input("agents_collections.xlsx"),
+            paths.Input("agents_collections.xlsx"),
             paths.Input("promesas_estatus.xlsx"), paths.Input("Descarga_cartera.xlsx"), paths.Input("Referencias.xlsx"), paths.Generated("CRM_Contactos.xlsx"),
         };
+        if (!postgresDirectory) files = files.Append(paths.Input("headcount.xlsx")).ToArray();
         var material = string.Join('|', files.Select(path => File.Exists(path)
             ? $"{path}:{new FileInfo(path).Length}:{File.GetLastWriteTimeUtc(path).Ticks}"
             : $"{path}:missing"));

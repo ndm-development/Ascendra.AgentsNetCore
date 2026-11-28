@@ -31,11 +31,13 @@ if (!string.IsNullOrWhiteSpace(dataProtectionPath))
 }
 
 builder.Services.Configure<AgentDataOptions>(builder.Configuration.GetSection("Data"));
+builder.Services.Configure<AgentDirectoryOptions>(builder.Configuration.GetSection("AgentDirectory"));
 builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection("Security"));
 builder.Services.Configure<ChatOptions>(builder.Configuration.GetSection(ChatOptions.SectionName));
 builder.Services.Configure<CallDispositionOptions>(builder.Configuration.GetSection(CallDispositionOptions.SectionName));
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider, DirectoryAuthenticationStateProvider>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -51,7 +53,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Events.OnValidatePrincipal = async context =>
         {
             var authenticator = context.HttpContext.RequestServices.GetRequiredService<AgentAuthenticator>();
-            if (authenticator.IsSessionCurrent(context.Principal)) return;
+            if (await authenticator.IsSessionCurrentAsync(context.Principal, context.HttpContext.RequestAborted)) return;
 
             context.RejectPrincipal();
             await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
@@ -77,7 +79,6 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddSingleton<ExcelSnapshotStore>();
-builder.Services.AddHostedService<ExcelRefreshService>();
 builder.Services.AddSingleton<AgentAuthenticator>();
 builder.Services.AddSingleton<OperationalAssetUrls>();
 builder.Services.AddSingleton<ExcelExportService>();
@@ -86,6 +87,12 @@ builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddSingleton<WhatsAppTemplateCatalog>();
 builder.Services.AddSingleton<PostgresDatabase>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresDatabase>());
+builder.Services.AddSingleton<IAgentDirectoryRepository, PostgresAgentDirectoryRepository>();
+builder.Services.AddSingleton<AgentDirectoryService>();
+builder.Services.AddSingleton<HeadcountImportReader>();
+builder.Services.AddSingleton<OperationalDataPaths>();
+builder.Services.AddHostedService<AgentDirectoryBootstrapService>();
+builder.Services.AddHostedService<ExcelRefreshService>();
 builder.Services.AddSingleton<EphemeralChatService>();
 builder.Services.AddSingleton<CallDispositionService>();
 builder.Services.AddSingleton<PromiseRegistrationService>();
@@ -176,7 +183,7 @@ app.MapPost("/account/login", async (
         await snapshots.RefreshAsync(context.RequestAborted);
     }
 
-    var user = authenticator.Authenticate(username, password);
+    var user = await authenticator.AuthenticateAsync(username, password, context.RequestAborted);
     if (user is null)
     {
         return Results.Redirect(snapshots.Health.IsReady ? "/login?error=1" : "/login?starting=1");

@@ -1,0 +1,152 @@
+@page "/usuarios"
+@attribute [Authorize(Roles = OperationalPermissions.DirectoryManagementRoles)]
+@inject AgentDirectoryService DirectoryService
+@inject Microsoft.Extensions.Options.IOptions<AgentDirectoryOptions> DirectoryOptions
+@inject AuthenticationStateProvider Authentication
+@inject ExcelSnapshotStore Snapshots
+@inject NavigationManager Navigation
+
+<section class="directory-page" aria-label="Administración de personas">
+    <header class="glass-card directory-heading">
+        <div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Personas y accesos</h1>
+            <p>Conserva el historial de cada persona y administra su estado y rol.</p></div>
+        @if (DirectoryOptions.Value.UsePostgres && Rows.Count > 0)
+        {
+            <button type="button" class="secondary-button" @onclick="NewPerson" disabled="@Busy">Nueva persona</button>
+        }
+    </header>
+    @if (!DirectoryOptions.Value.UsePostgres)
+    {
+        <section class="glass-card directory-panel"><p>La administración de personas estará disponible al activar la migración del padrón.</p></section>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(Error)) { <p class="glass-card directory-notice lookup-notice lookup-notice--error" role="alert">@Error</p> }
+        @if (!string.IsNullOrEmpty(Success)) { <p class="glass-card directory-notice lookup-notice" role="status">@Success</p> }
+        @if (Editor is not null)
+        {
+            <section class="glass-card directory-panel" aria-label="Editar persona">
+                <h2>@(Editor.Revision == 0 ? "Nueva persona" : "Editar persona")</h2>
+                <div class="directory-fields">
+                    <div class="field"><label for="person-id">ID</label><input id="person-id" @bind="Editor.Id" @bind:event="oninput" maxlength="20" disabled="@(Editor.Revision > 0 || Busy)" /></div>
+                    <div class="field"><label for="person-username">Usuario</label><input id="person-username" @bind="Editor.Username" @bind:event="oninput" autocomplete="off" disabled="@Busy" /></div>
+                    <div class="field"><label for="person-first">Nombre</label><input id="person-first" @bind="Editor.FirstName" @bind:event="oninput" disabled="@Busy" /></div>
+                    <div class="field"><label for="person-paternal">Apellido paterno</label><input id="person-paternal" @bind="Editor.PaternalSurname" @bind:event="oninput" disabled="@Busy" /></div>
+                    <div class="field"><label for="person-maternal">Apellido materno</label><input id="person-maternal" @bind="Editor.MaternalSurname" @bind:event="oninput" disabled="@Busy" /></div>
+                    <div class="field"><label for="person-alias">Nombre visible o alias</label><input id="person-alias" @bind="Editor.DisplayAlias" @bind:event="oninput" disabled="@Busy" /></div>
+                    <div class="field"><label for="person-role">Rol</label><select id="person-role" @bind="Editor.Role" disabled="@Busy">@foreach (var role in AgentDirectoryRules.Roles) { <option value="@role">@role</option> }</select></div>
+                    <div class="field"><label for="person-active">Estado</label><select id="person-active" @bind="Editor.State" disabled="@Busy"><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+                </div>
+                <p>Las personas inactivas conservan su historial. Para iniciar sesión también se requieren credenciales de acceso.</p>
+                <div class="directory-actions">
+                    <button type="button" class="secondary-button" @onclick="RequestSave" disabled="@Busy">Guardar cambios</button>
+                    <button type="button" class="secondary-button" @onclick="CancelEdit" disabled="@Busy">Cancelar</button>
+                </div>
+            </section>
+        }
+        <section class="glass-card directory-panel">
+            <div class="directory-heading">
+                <p>@Rows.Count personas · @Rows.Count(person => person.IsActive) activas</p>
+                <button type="button" class="secondary-button" @onclick="ReloadAsync" disabled="@Busy">Actualizar</button>
+            </div>
+            <div class="field"><label for="directory-search">Buscar por ID, nombre o usuario</label><input id="directory-search" @bind="Search" @bind:event="oninput" /></div>
+            <div class="directory-table"><table>
+                <thead><tr><th>ID</th><th>Nombre completo</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead>
+                <tbody>@foreach (var person in VisibleRows)
+                {
+                    <tr><td>@person.Id</td><td>@person.DisplayName</td><td>@person.Username</td><td>@person.Role</td><td>@(person.IsActive ? "Activo" : "Inactivo")</td>
+                        <td><button type="button" class="secondary-button" @onclick="() => Edit(person)" disabled="@Busy" aria-label="@($"Editar {person.DisplayName}")">Editar</button></td></tr>
+                }</tbody>
+            </table></div>
+        </section>
+    }
+</section>
+
+<ConfirmationDialog IsOpen="ConfirmSave" Title="Confirmar cambio de acceso"
+    Message="El cambio actualizará el usuario, estado o rol de esta persona y puede cerrar sus sesiones abiertas."
+    ConfirmLabel="Guardar cambio" IsBusy="Busy" Error="@Error" OnCancel="CancelConfirmation" OnConfirm="SaveAsync" />
+
+@code {
+    private IReadOnlyList<AgentDirectoryRecord> Rows = [];
+    private PersonEditor? Editor;
+    private string ActorId = string.Empty;
+    private string Search = string.Empty;
+    private string? Error;
+    private string? Success;
+    private bool Busy;
+    private bool ConfirmSave;
+
+    private IEnumerable<AgentDirectoryRecord> VisibleRows => Rows.Where(person => string.IsNullOrWhiteSpace(Search)
+        || $"{person.Id} {person.DisplayName} {person.DisplayAlias} {person.Username}".Contains(Search.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!DirectoryOptions.Value.UsePostgres) return;
+        var state = await Authentication.GetAuthenticationStateAsync();
+        ActorId = state.User.FindFirst(Ascendra.Agents.Web.Auth.AgentClaimTypes.AgentId)?.Value ?? string.Empty;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (Busy) return;
+        Busy = true;
+        Error = null;
+        try { Rows = (await DirectoryService.GetForManagementAsync(ActorId)).Directory; }
+        catch (InvalidOperationException exception) { Rows = []; Error = exception.Message; }
+        catch (Exception exception) when (exception is Npgsql.NpgsqlException or TimeoutException)
+        { Error = "No se pudo consultar el padrón. Intenta nuevamente."; }
+        finally { Busy = false; }
+    }
+
+    private void Edit(AgentDirectoryRecord person) { Editor = PersonEditor.From(person); Error = Success = null; }
+    private void NewPerson() { Editor = new(); Error = Success = null; }
+    private void CancelEdit() { Editor = null; ConfirmSave = false; Error = null; }
+    private void CancelConfirmation() { ConfirmSave = false; Error = null; }
+    private async Task RequestSave()
+    {
+        var previous = Rows.FirstOrDefault(person => person.Id == Editor?.Id);
+        if (previous is not null && (previous.IsActive != Editor!.IsActive || previous.Role != Editor.Role
+            || previous.Username != IdentityNormalization.Normalize(Editor.Username))) ConfirmSave = true;
+        else await SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (Editor is null || Busy) return;
+        Busy = true;
+        Error = null;
+        try
+        {
+            var saved = await DirectoryService.SaveAsync(Editor.ToRecord(), ActorId, Editor.Revision);
+            Rows = Rows.Where(person => person.Id != saved.Id).Append(saved).OrderBy(person => person.DisplayName).ToArray();
+            Editor = null;
+            ConfirmSave = false;
+            Success = "Los cambios quedaron guardados con su historial.";
+            await Snapshots.RefreshAsync();
+            if (saved.Id == ActorId && (!saved.IsActive || !OperationalPermissions.CanManageDirectory(saved.Role))) Navigation.NavigateTo("/login", forceLoad: true);
+        }
+        catch (InvalidOperationException exception) { Error = exception.Message; }
+        catch (Exception exception) when (exception is Npgsql.NpgsqlException or TimeoutException)
+        { Error = "No se pudo guardar el cambio. Actualiza el padrón para comprobar su estado antes de reintentar."; }
+        finally { Busy = false; }
+    }
+
+    private sealed class PersonEditor
+    {
+        public string Id { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;
+        public string PaternalSurname { get; set; } = string.Empty;
+        public string MaternalSurname { get; set; } = string.Empty;
+        public string DisplayAlias { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string Role { get; set; } = "Agente";
+        public bool IsActive { get; set; } = true;
+        public string State { get => IsActive ? "Activo" : "Inactivo"; set => IsActive = value == "Activo"; }
+        public long Revision { get; set; }
+        public AgentDirectoryRecord ToRecord() => new(Id, FirstName, PaternalSurname, MaternalSurname, DisplayAlias, Username, Role, IsActive, Revision);
+        public static PersonEditor From(AgentDirectoryRecord person) => new() { Id = person.Id, FirstName = person.FirstName,
+            PaternalSurname = person.PaternalSurname, MaternalSurname = person.MaternalSurname, DisplayAlias = person.DisplayAlias,
+            Username = person.Username, Role = person.Role, IsActive = person.IsActive, Revision = person.Revision };
+    }
+}
